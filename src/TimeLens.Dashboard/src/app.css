@@ -1,0 +1,62 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+:root {
+  --md-surface:       #0D0F0A;
+  --md-surface-1:     #141810;
+  --md-surface-2:     #1C2118;
+  --md-surface-3:     #222819;
+  --md-outline:       rgba(255,255,255,0.08);
+  --md-outline-var:   rgba(255,255,255,0.14);
+
+  --md-primary:       #C8E86A;
+  --md-on-primary:    #151E00;
+  --md-primary-cont:  #1E2E00;
+  --md-on-pri-cont:   #D6F572;
+
+  --md-secondary:     #E8A23A;
+  --md-on-secondary:  #211500;
+  --md-sec-cont:      #2C1E00;
+
+  --md-tertiary:      #7ECFA8;
+  --md-on-tertiary:   #00331F;
+  --md-ter-cont:      #00472B;
+
+  --md-error:         #E07070;
+  --md-err-cont:      #3B1212;
+
+  --md-on-surf:       #E4E8DC;
+  --md-on-surf-var:   #8A9283;
+  --md-on-surf-dim:   #4A5145;
+
+  --shape-xs:   4px;
+  --shape-sm:   8px;
+  --shape-md:   12px;
+  --shape-lg:   16px;
+  --shape-xl:   28px;
+  --shape-full: 9999px;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px; --sp-10: 40px;
+
+  --font-display: 'Inter', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+}
+
+body {
+  background: var(--md-surface);
+  color: var(--md-on-surf);
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}

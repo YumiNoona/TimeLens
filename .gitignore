@@ -1,0 +1,58 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.DotSettings
+*.nupkg
+*.exe.manifest
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Native AOT publish
+publish/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.lnk
+
+# Env
+.env
+.env.local
+
+# Temp
+tools/genicon/bin/
+tools/genicon/obj/
+tools/gen-ext-icons/bin/
+tools/gen-ext-icons/obj/
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal

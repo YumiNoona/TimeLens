@@ -70,5 +70,56 @@ public static class DatabaseInitializer
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
             """;
         cmd.ExecuteNonQuery();
+
+        SeedBuiltInRules(conn);
+    }
+
+    private static void SeedBuiltInRules(SqliteConnection conn)
+    {
+        var rules = new (string exe, string cat)[]
+        {
+            ("code.exe", "development"),
+            ("devenv.exe", "development"),
+            ("cursor.exe", "development"),
+            ("windsurf.exe", "development"),
+            ("notepad++.exe", "development"),
+            ("git-bash.exe", "development"),
+            ("powershell.exe", "development"),
+            ("cmd.exe", "development"),
+            ("windowsTerminal.exe", "development"),
+            ("slack.exe", "communication"),
+            ("discord.exe", "communication"),
+            ("teams.exe", "communication"),
+            ("zoom.exe", "communication"),
+            ("outlook.exe", "communication"),
+            ("chrome.exe", "browsing"),
+            ("msedge.exe", "browsing"),
+            ("firefox.exe", "browsing"),
+            ("zen.exe", "browsing"),
+            ("brave.exe", "browsing"),
+            ("winword.exe", "documents"),
+            ("excel.exe", "documents"),
+            ("powerpnt.exe", "documents"),
+            ("notion.exe", "documents"),
+            ("obsidian.exe", "documents"),
+            ("spotify.exe", "media"),
+            ("vlc.exe", "media"),
+            ("mpc-hc.exe", "media"),
+            ("wmplayer.exe", "media"),
+        };
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM app_categories";
+        var count = (long)cmd.ExecuteScalar()!;
+        if (count > 0) return;
+
+        foreach (var (exe, cat) in rules)
+        {
+            cmd.CommandText = "INSERT INTO app_categories (exe_name, category, is_user_defined) VALUES ($exe, $cat, 0)";
+            cmd.Parameters.Clear();
+            cmd.Parameters.AddWithValue("$exe", exe);
+            cmd.Parameters.AddWithValue("$cat", cat);
+            cmd.ExecuteNonQuery();
+        }
     }
 }

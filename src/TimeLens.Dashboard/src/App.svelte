@@ -119,7 +119,7 @@
     color: var(--md-on-surf);
     font-family: var(--font-display);
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
     overflow: hidden;
     font-size: 14px;
     line-height: 1.5;
@@ -127,6 +127,7 @@
 
   .main {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;

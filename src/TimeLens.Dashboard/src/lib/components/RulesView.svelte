@@ -1,37 +1,57 @@
 <script lang="ts">
-  const defaultRules: { pattern: string; category: string }[] = [
-    { pattern: 'code.exe', category: 'Development' },
-    { pattern: 'cursor.exe', category: 'Development' },
-    { pattern: 'windsurf.exe', category: 'Development' },
-    { pattern: 'chrome.exe', category: 'Browsing' },
-    { pattern: 'firefox.exe', category: 'Browsing' },
-    { pattern: 'msedge.exe', category: 'Browsing' },
-    { pattern: 'slack.exe', category: 'Communication' },
-    { pattern: 'discord.exe', category: 'Communication' },
-    { pattern: 'teams.exe', category: 'Communication' },
-    { pattern: 'spotify.exe', category: 'Entertainment' },
-    { pattern: 'wmplayer.exe', category: 'Entertainment' },
-    { pattern: 'notion.exe', category: 'Work' },
-    { pattern: 'obsidian.exe', category: 'Work' },
-    { pattern: 'figma.exe', category: 'Design' },
-    { pattern: 'photoshop.exe', category: 'Design' },
-  ];
+  import { onMount } from 'svelte';
 
-  let rules = $state(defaultRules.map(r => ({ ...r })));
+  let rules = $state<{ id: number; pattern: string; category: string }[]>([]);
   let newExe = $state('');
   let newCat = $state('Other');
-  let editingIdx = $state(-1);
 
-  const categories = ['Work', 'Development', 'Browsing', 'Communication', 'Entertainment', 'Design', 'Social', 'Other'];
+  const categories = [
+    { value: 'work', label: 'Work' },
+    { value: 'development', label: 'Development' },
+    { value: 'browsing', label: 'Browsing' },
+    { value: 'communication', label: 'Communication' },
+    { value: 'entertainment', label: 'Entertainment' },
+    { value: 'design', label: 'Design' },
+    { value: 'social', label: 'Social' },
+    { value: 'documents', label: 'Documents' },
+    { value: 'media', label: 'Media' },
+    { value: 'other', label: 'Other' },
+  ];
 
-  function addRule() {
-    if (!newExe.trim()) return;
-    rules = [...rules, { pattern: newExe.trim().toLowerCase(), category: newCat }];
-    newExe = '';
+  function catLabel(value: string): string {
+    return categories.find(c => c.value === value)?.label ?? value;
   }
 
-  function removeRule(idx: number) {
-    rules = rules.filter((_, i) => i !== idx);
+  async function loadRules() {
+    try {
+      const res = await fetch('/api/rules');
+      if (res.ok) {
+        const data: { id: number; pattern: string; category: string }[] = await res.json();
+        rules = data.map(r => ({ id: r.id, pattern: r.pattern, category: r.category }));
+      }
+    } catch { /* offline */ }
+  }
+
+  onMount(loadRules);
+
+  async function addRule() {
+    if (!newExe.trim()) return;
+    try {
+      await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern: newExe.trim().toLowerCase(), category: newCat }),
+      });
+      newExe = '';
+      await loadRules();
+    } catch { /* offline */ }
+  }
+
+  async function removeRule(id: number) {
+    try {
+      await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+      await loadRules();
+    } catch { /* offline */ }
   }
 </script>
 
@@ -45,19 +65,19 @@
     <input class="input" placeholder="exe name (e.g. code.exe)" bind:value={newExe} onkeydown={(e) => { if (e.key === 'Enter') addRule(); }} />
     <select class="select" bind:value={newCat}>
       {#each categories as c}
-        <option value={c}>{c}</option>
+        <option value={c.value}>{c.label}</option>
       {/each}
     </select>
     <button class="add-btn" onclick={addRule} disabled={!newExe.trim()}>Add Rule</button>
   </div>
 
   <div class="rule-list">
-    {#each rules as rule, i}
+    {#each rules as rule}
       <div class="rule-row">
         <code class="rule-pattern">{rule.pattern}</code>
         <span class="rule-arrow">→</span>
-        <span class="rule-cat">{rule.category}</span>
-        <button class="del-btn" onclick={() => removeRule(i)} aria-label="Remove rule">
+        <span class="rule-cat">{catLabel(rule.category)}</span>
+        <button class="del-btn" onclick={() => removeRule(rule.id)} aria-label="Remove rule">
           <i class="ti ti-x" aria-hidden="true"></i>
         </button>
       </div>

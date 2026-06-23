@@ -106,6 +106,66 @@ public static class ApiHost
             await ctx.Response.WriteAsJsonAsync(result, AppJsonContext.Default.DashboardResponse);
         });
 
+        app.MapGet("/api/rules", async (HttpContext ctx) =>
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT id, exe_name, category, is_user_defined FROM app_categories ORDER BY exe_name";
+            var rules = new List<RuleDto>();
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                rules.Add(new RuleDto(
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3) != 0
+                ));
+            }
+            await ctx.Response.WriteAsJsonAsync(rules, AppJsonContext.Default.ListRuleDto);
+        });
+
+        app.MapPost("/api/rules", async (HttpContext ctx) =>
+        {
+            var dto = await ctx.Request.ReadFromJsonAsync<CreateRuleDto>(AppJsonContext.Default.CreateRuleDto);
+            if (dto is null || string.IsNullOrWhiteSpace(dto.Pattern))
+            {
+                ctx.Response.StatusCode = 400;
+                return;
+            }
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO app_categories (exe_name, category, is_user_defined)
+                VALUES ($exe, $cat, 1)
+                ON CONFLICT(exe_name) DO UPDATE SET category = $cat, is_user_defined = 1
+                """;
+            cmd.Parameters.AddWithValue("$exe", dto.Pattern.Trim().ToLowerInvariant());
+            cmd.Parameters.AddWithValue("$cat", dto.Category);
+            await cmd.ExecuteNonQueryAsync();
+            ctx.Response.StatusCode = 200;
+            await ctx.Response.WriteAsJsonAsync(new { ok = true });
+        });
+
+        app.MapDelete("/api/rules/{id:long}", async (HttpContext ctx) =>
+        {
+            if (!long.TryParse(ctx.Request.RouteValues["id"]?.ToString(), out var id))
+            {
+                ctx.Response.StatusCode = 400;
+                return;
+            }
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM app_categories WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            await cmd.ExecuteNonQueryAsync();
+            ctx.Response.StatusCode = 200;
+            await ctx.Response.WriteAsJsonAsync(new { ok = true });
+        });
+
         await app.RunAsync(ct);
     }
 }
@@ -119,4 +179,7 @@ public static class ApiHost
 [JsonSerializable(typeof(HeatmapEntryDto))]
 [JsonSerializable(typeof(CategoryEntryDto))]
 [JsonSerializable(typeof(LiveStatusDto))]
+[JsonSerializable(typeof(RuleDto))]
+[JsonSerializable(typeof(List<RuleDto>))]
+[JsonSerializable(typeof(CreateRuleDto))]
 internal partial class AppJsonContext : JsonSerializerContext { }

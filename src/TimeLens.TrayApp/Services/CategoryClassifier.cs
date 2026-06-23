@@ -1,10 +1,13 @@
+using Microsoft.Data.Sqlite;
 using TimeLens.Core.Interfaces;
 
 namespace TimeLens.TrayApp.Services;
 
 public sealed class CategoryClassifier : ICategoryClassifier
 {
-    private static readonly Dictionary<string, string> ExeRules = new(StringComparer.OrdinalIgnoreCase)
+    private readonly string? _dbPath;
+
+    private static readonly Dictionary<string, string> BuiltInExeRules = new(StringComparer.OrdinalIgnoreCase)
     {
         ["code.exe"] = "development",
         ["devenv.exe"] = "development",
@@ -61,12 +64,29 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["facebook.com"] = "social",
     };
 
+    public CategoryClassifier(string? dbPath = null)
+    {
+        _dbPath = dbPath;
+    }
+
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
         if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
             return domainCat;
 
-        if (ExeRules.TryGetValue(exeName, out var exeCat))
+        if (_dbPath is not null)
+        {
+            using var conn = new SqliteConnection($"Data Source={_dbPath}");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT category FROM app_categories WHERE exe_name = $exe";
+            cmd.Parameters.AddWithValue("$exe", exeName.ToLowerInvariant());
+            var result = cmd.ExecuteScalar();
+            if (result is not null)
+                return (string)result;
+        }
+
+        if (BuiltInExeRules.TryGetValue(exeName, out var exeCat))
             return exeCat;
 
         return "other";

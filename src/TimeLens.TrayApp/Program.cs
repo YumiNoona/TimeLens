@@ -24,7 +24,7 @@ internal static class Program
         DatabaseInitializer.Initialize(dbPath);
 
         var writer = new EventWriter(dbPath);
-        var classifier = new CategoryClassifier();
+        var classifier = new CategoryClassifier(dbPath);
         var winWatcher = new WinEventWatcher();
         var idleMonitor = new IdleMonitor();
         var sessionWatcher = new SessionWatcher();

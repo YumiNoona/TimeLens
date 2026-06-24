@@ -17,7 +17,7 @@ public record AppSettings
     public int IdleThresholdSeconds { get; init; } = 180;
 
     [JsonPropertyName("theme")]
-    public string Theme { get; init; } = "moss";
+    public string Theme { get; init; } = "default";
 
     [JsonPropertyName("timelineGrouped")]
     public bool TimelineGrouped { get; init; } = false;

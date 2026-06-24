@@ -4,7 +4,7 @@
   let trackBrowser = $state(true);
   let trackInput = $state(true);
   let idleMinutes = $state(3);
-  let theme = $state('moss');
+  let theme = $state('default');
   let timelineGrouped = $state(false);
   let autoStart = $state(false);
   let retentionDays = $state(90);
@@ -26,15 +26,8 @@
   const themes = [
     { id: 'default', label: 'Acid', color: '#C8E86A' },
     { id: 'terminal', label: 'Terminal', color: '#39FF14' },
-    { id: 'moss', label: 'Moss', color: '#81C784' },
     { id: 'copper', label: 'Copper', color: '#B87333' },
     { id: 'arctic', label: 'Arctic', color: '#7EC8C8' },
-    { id: 'crimson', label: 'Crimson', color: '#DC143C' },
-    { id: 'gold', label: 'Gold', color: '#FFB000' },
-    { id: 'ember', label: 'Ember', color: '#FF8A65' },
-    { id: 'rose', label: 'Rose', color: '#F48FB1' },
-    { id: 'clay', label: 'Clay', color: '#BCAAA4' },
-    { id: 'sunset', label: 'Sunset', color: '#FFD54F' },
   ];
 
   const retentionOpts = [30, 60, 90, 180, 365];
@@ -55,7 +48,7 @@
       trackBrowser = s.trackBrowser ?? true;
       trackInput = s.trackInput ?? true;
       idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
-      theme = s.theme ?? 'moss';
+      theme = s.theme ?? 'default';
       timelineGrouped = s.timelineGrouped ?? false;
       autoStart = s.autoStart ?? false;
       retentionDays = s.retentionDays ?? 90;

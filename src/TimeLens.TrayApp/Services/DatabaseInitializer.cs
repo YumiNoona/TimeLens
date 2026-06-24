@@ -112,7 +112,7 @@ public static class DatabaseInitializer
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('idle_threshold_seconds', '180');
-            INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'moss');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'default');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'false');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('time_format', '12h');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_seconds', '30');

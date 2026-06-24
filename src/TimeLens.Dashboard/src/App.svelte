@@ -24,7 +24,7 @@
   let timelineGrouped = $state(false);
 
   let view = $state('today');
-  let currentTheme = $state('moss');
+  let currentTheme = $state('default');
   let pollInterval = $state(30);
 
   const today = new Date();

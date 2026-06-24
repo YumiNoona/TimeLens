@@ -91,6 +91,19 @@ internal static class Program
             LiveStatusStore.SystemState = state;
         }
 
+        // Focus mode — blocklist of exe names
+        var focusBlocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var list = System.Text.Json.JsonSerializer.Deserialize<string[]>(settings.FocusBlocklist);
+            if (list is not null)
+                foreach (var item in list)
+                    focusBlocked.Add(item);
+        }
+        catch { }
+        DateTime lastFocusToast = DateTime.MinValue;
+        NativeTrayIcon? tray = null;
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             var cat = classifier.Classify(exe, title);
@@ -100,6 +113,17 @@ internal static class Program
             LiveStatusStore.IsIdle = state != "active";
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
             LiveStatusStore.SystemState = state;
+
+            // Focus mode — blocklist check
+            if (LiveStatusStore.Settings.FocusMode && state == "active")
+            {
+                var blocked = focusBlocked.Contains(exe);
+                if (blocked && (DateTime.UtcNow - lastFocusToast).TotalMinutes > 5)
+                {
+                    lastFocusToast = DateTime.UtcNow;
+                    tray!.ShowBalloon("Focus Mode", $"'{exe}' is blocked — get back to work!", true);
+                }
+            }
         };
 
         sessionWatcher.StateChanged += state =>
@@ -253,13 +277,33 @@ internal static class Program
         void UpsertRule(string pattern, string category) => classifier.AddCustomRule(pattern, category);
         void DeleteRule(string pattern) => classifier.RemoveCustomRule(pattern);
 
-        using var tray = new NativeTrayIcon();
+        int consecutiveActiveMinutes = 0;
+
+        using var trayDispose = tray = new NativeTrayIcon();
         tray.StartupRequested += () =>
         {
             winWatcher.Start();
             sessionWatcher.Start();
             if (settings.TrackInput) inputMonitor.Start();
             if (settings.TrackAudio) audioMonitor.Start();
+
+            // Break reminder timer — fires every 60s
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                while (!apiCts.Token.IsCancellationRequested)
+                {
+                    await System.Threading.Tasks.Task.Delay(60_000, apiCts.Token);
+                    var s = LiveStatusStore.Settings;
+                    if (!s.BreakReminder) continue;
+                    if (LiveStatusStore.IsIdle) { consecutiveActiveMinutes = 0; continue; }
+                    consecutiveActiveMinutes++;
+                    if (consecutiveActiveMinutes >= s.BreakIntervalMinutes)
+                    {
+                        tray.ShowBalloon("TimeLens", $"You've been active for {consecutiveActiveMinutes} min — take a break!", false);
+                        consecutiveActiveMinutes = 0;
+                    }
+                }
+            }, apiCts.Token);
         };
         tray.OpenDashboardRequested += () =>
         {

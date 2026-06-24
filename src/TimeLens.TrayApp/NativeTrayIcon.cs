@@ -17,6 +17,9 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint NIF_MESSAGE = 1;
     private const uint NIF_ICON = 2;
     private const uint NIF_TIP = 4;
+    private const uint NIF_INFO = 0x10;
+    private const uint NIIF_INFO = 0x01;
+    private const uint NIIF_WARNING = 0x02;
     private const uint NIS_HIDDEN = 8;
 
     private const uint WS_EX_TOOLWINDOW = 0x00000080;
@@ -222,6 +225,22 @@ public sealed class NativeTrayIcon : IDisposable
             TranslateMessage(ref msg);
             DispatchMessageW(ref msg);
         }
+    }
+
+    public void ShowBalloon(string title, string text, bool warning = false)
+    {
+        if (_hWnd == IntPtr.Zero) return;
+        var nid = new NOTIFYICONDATAW
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
+            hWnd = _hWnd,
+            uID = TrayIconId,
+            uFlags = NIF_INFO,
+            szInfoTitle = title,
+            szInfo = text,
+            dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO,
+        };
+        Shell_NotifyIconW(NIM_MODIFY, ref nid);
     }
 
     private IntPtr WindowProcedure(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)

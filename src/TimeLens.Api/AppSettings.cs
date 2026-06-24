@@ -27,4 +27,19 @@ public record AppSettings
 
     [JsonPropertyName("retentionDays")]
     public int RetentionDays { get; init; } = 90;
+
+    [JsonPropertyName("showTitles")]
+    public bool ShowTitles { get; init; } = false;
+
+    [JsonPropertyName("breakReminder")]
+    public bool BreakReminder { get; init; } = false;
+
+    [JsonPropertyName("breakIntervalMinutes")]
+    public int BreakIntervalMinutes { get; init; } = 50;
+
+    [JsonPropertyName("focusMode")]
+    public bool FocusMode { get; init; } = false;
+
+    [JsonPropertyName("focusBlocklist")]
+    public string FocusBlocklist { get; init; } = "[]";
 }

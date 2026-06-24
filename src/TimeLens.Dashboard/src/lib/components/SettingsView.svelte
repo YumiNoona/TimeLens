@@ -8,6 +8,10 @@
   let autoStart = $state(false);
   let retentionDays = $state(90);
   let dbSizeBytes = $state(0);
+  let showTitles = $state(false);
+  let breakReminder = $state(false);
+  let breakInterval = $state(50);
+  let focusMode = $state(false);
   let apiReachable = $state(true);
   let savedKey = $state<string | null>(null);
 
@@ -49,6 +53,10 @@
       timelineGrouped = s.timelineGrouped ?? false;
       autoStart = s.autoStart ?? false;
       retentionDays = s.retentionDays ?? 90;
+      showTitles = s.showTitles ?? false;
+      breakReminder = s.breakReminder ?? false;
+      breakInterval = s.breakIntervalMinutes ?? 50;
+      focusMode = s.focusMode ?? false;
       apiReachable = true;
     } catch {
       if (attempt < 3) {
@@ -186,7 +194,7 @@
       <div class="card-header">
         <h2 class="title-small">Timeline</h2>
       </div>
-      <label class="setting-row last">
+      <label class="setting-row">
         <div class="setting-info">
           <span class="setting-label">Grouped Timeline</span>
           <span class="setting-desc">Collapse same-category runs. Turn off to show every event flat.</span>
@@ -195,6 +203,65 @@
           <input type="checkbox" class="toggle" checked={timelineGrouped}
             onchange={() => save('timelineGrouped', timelineGrouped)} />
           {#if savedKey === 'timelineGrouped'}<i class="ti ti-check saved-icon"></i>{/if}
+        </div>
+      </label>
+      <label class="setting-row last">
+        <div class="setting-info">
+          <span class="setting-label">Window Titles</span>
+          <span class="setting-desc">Show active tab/window title per event in Timeline View</span>
+        </div>
+        <div class="control">
+          <input type="checkbox" class="toggle" checked={showTitles}
+            onchange={() => save('showTitles', showTitles)} />
+          {#if savedKey === 'showTitles'}<i class="ti ti-check saved-icon"></i>{/if}
+        </div>
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="title-small">Break Reminder</h2>
+      </div>
+      <label class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">Remind me to take breaks</span>
+          <span class="setting-desc">Show a notification after continuous active time</span>
+        </div>
+        <div class="control">
+          <input type="checkbox" class="toggle" checked={breakReminder}
+            onchange={() => save('breakReminder', breakReminder)} />
+          {#if savedKey === 'breakReminder'}<i class="ti ti-check saved-icon"></i>{/if}
+        </div>
+      </label>
+      <div class="setting-row last">
+        <div class="setting-info">
+          <span class="setting-label">Break interval</span>
+          <span class="setting-desc">Minutes of activity before a reminder</span>
+        </div>
+        <div class="control">
+          <select class="select" style="width:110px" bind:value={breakInterval} onchange={() => save('breakIntervalMinutes', breakInterval)}>
+            {#each [25, 30, 45, 50, 60, 90] as n}
+              <option value={n}>{n} min</option>
+            {/each}
+          </select>
+          {#if savedKey === 'breakIntervalMinutes'}<i class="ti ti-check saved-icon"></i>{/if}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="title-small">Focus Mode</h2>
+      </div>
+      <label class="setting-row last">
+        <div class="setting-info">
+          <span class="setting-label">Block distracting apps</span>
+          <span class="setting-desc">Get a reminder when you open blocked apps or sites</span>
+        </div>
+        <div class="control">
+          <input type="checkbox" class="toggle" checked={focusMode}
+            onchange={() => save('focusMode', focusMode)} />
+          {#if savedKey === 'focusMode'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
     </div>

@@ -33,6 +33,11 @@ public sealed class SettingsService
             TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "false") == "true",
             AutoStart = dict.GetValueOrDefault("auto_start", "false") == "true",
             RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) ? rd : 90,
+            ShowTitles = dict.GetValueOrDefault("show_titles", "false") == "true",
+            BreakReminder = dict.GetValueOrDefault("break_reminder", "false") == "true",
+            BreakIntervalMinutes = int.TryParse(dict.GetValueOrDefault("break_interval_minutes", "50"), out var bi) ? bi : 50,
+            FocusMode = dict.GetValueOrDefault("focus_mode", "false") == "true",
+            FocusBlocklist = dict.GetValueOrDefault("focus_blocklist", "[]"),
         };
     }
 

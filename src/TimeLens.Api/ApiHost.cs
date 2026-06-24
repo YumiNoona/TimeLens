@@ -123,6 +123,10 @@ public static class ApiHost
                     "timelineGrouped" => "timeline_grouped",
                     "autoStart" => "auto_start",
                     "retentionDays" => "retention_days",
+                    "showTitles" => "show_titles",
+                    "breakReminder" => "break_reminder",
+                    "breakIntervalMinutes" => "break_interval_minutes",
+                    "focusMode" => "focus_mode",
                     _ => prop.Name
                 }, value);
 
@@ -166,6 +170,19 @@ public static class ApiHost
                             {
                                 RetentionDays = days
                             };
+                        break;
+                    case "showTitles":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { ShowTitles = value == "true" };
+                        break;
+                    case "breakReminder":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BreakReminder = value == "true" };
+                        break;
+                    case "breakIntervalMinutes":
+                        if (int.TryParse(value, out var bim))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with { BreakIntervalMinutes = bim };
+                        break;
+                    case "focusMode":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusMode = value == "true" };
                         break;
                 }
             }

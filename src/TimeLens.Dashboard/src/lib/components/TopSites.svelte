@@ -63,7 +63,7 @@
   .bar-row:last-child { margin-bottom: 0; }
 
   .bar-domain {
-    flex: 1; min-width: 0;
+    width: 120px; flex-shrink: 0;
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-var);
@@ -73,7 +73,7 @@
   }
 
   .bar-track {
-    flex: 1;
+    flex: 1; min-width: 60px;
     height: 16px;
     background: var(--md-surface);
     border-radius: var(--shape-full);

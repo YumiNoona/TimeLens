@@ -6,7 +6,7 @@
   let { data: initial }: { data: DashboardData } = $props();
 
   const today = new Date();
-  let selectedDate = $state(today.toISOString().slice(0, 10));
+  let selectedDate = $state(today.toLocaleDateString('en-CA'));
   let historyData = $state<DashboardData>(initial);
   let browserSites = $state<BrowserEntry[]>([]);
   let inputActivity = $state<InputEntry[]>([]);
@@ -25,7 +25,7 @@
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = d.toLocaleDateString('en-CA');
       const val = heatmapLookup.get(dateStr) ?? 0;
       days.push({
         date: dateStr,

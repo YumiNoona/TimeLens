@@ -10,6 +10,8 @@ public sealed class WinEventWatcher : IDisposable
     private readonly Win32.WinEventDelegate _hookDelegate;
     private IntPtr _fgHook;
     private IntPtr _nameHook;
+    private readonly Dictionary<int, string> _pidCache = new(200);
+    private const int MaxCacheSize = 200;
 
     public event Action<string, string, int>? ForegroundChanged;
 
@@ -59,15 +61,32 @@ public sealed class WinEventWatcher : IDisposable
 
         Win32.GetWindowThreadProcessId(hwnd, out var pid);
 
-        var exeName = "unknown";
-        try
-        {
-            using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-            exeName = proc.ProcessName + ".exe";
-        }
-        catch { }
+        var exeName = ResolveExeName((int)pid);
 
         ForegroundChanged?.Invoke(exeName, title, (int)pid);
+    }
+
+    private string ResolveExeName(int pid)
+    {
+        if (_pidCache.TryGetValue(pid, out var cached))
+            return cached;
+
+        string name;
+        try
+        {
+            using var proc = System.Diagnostics.Process.GetProcessById(pid);
+            name = proc.ProcessName + ".exe";
+        }
+        catch
+        {
+            name = "unknown";
+        }
+
+        if (_pidCache.Count >= MaxCacheSize)
+            _pidCache.Clear();
+
+        _pidCache[pid] = name;
+        return name;
     }
 
     public void Dispose()

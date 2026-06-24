@@ -14,10 +14,13 @@ public static class ApiHost
 
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "svchost", "TextInputHost", "ApplicationFrameHost", "SystemSettings",
-        "RuntimeBroker", "SearchHost", "ShellExperienceHost", "StartMenuExperienceHost",
-        "ctfmon", "conhost", "fontdrvhost", "dwm", "csrss", "smss", "wininit",
-        "winlogon", "services", "lsass", "spoolsv", "taskhostw", "sihost",
+        "ApplicationFrameHost", "TextInputHost", "SystemSettings", "RuntimeBroker",
+        "SearchHost", "ShellExperienceHost", "StartMenuExperienceHost", "ctfmon",
+        "conhost", "fontdrvhost",
+        "svchost", "dwm", "csrss", "smss", "wininit", "winlogon", "services",
+        "lsass", "spoolsv", "taskhostw", "sihost",
+        "TimeLens.TrayApp", "NVDisplay.Container", "NVIDIA Share", "nvsphelper64",
+        "explorer", "CalculatorApp",
     };
     public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
 

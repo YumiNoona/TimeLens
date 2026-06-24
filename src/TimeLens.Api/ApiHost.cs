@@ -255,6 +255,42 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapGet("/api/builtin-rules", (HttpContext ctx) =>
+        {
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartObject();
+            arr.WritePropertyName("exeRules");
+            arr.WriteStartObject();
+            arr.WriteString("code.exe", "development"); arr.WriteString("devenv.exe", "development"); arr.WriteString("cursor.exe", "development");
+            arr.WriteString("windsurf.exe", "development"); arr.WriteString("notepad++.exe", "development"); arr.WriteString("git-bash.exe", "development");
+            arr.WriteString("powershell.exe", "development"); arr.WriteString("cmd.exe", "development"); arr.WriteString("windowsTerminal.exe", "development");
+            arr.WriteString("slack.exe", "communication"); arr.WriteString("discord.exe", "communication"); arr.WriteString("teams.exe", "communication");
+            arr.WriteString("zoom.exe", "communication"); arr.WriteString("outlook.exe", "communication");
+            arr.WriteString("chrome.exe", "browsing"); arr.WriteString("msedge.exe", "browsing"); arr.WriteString("firefox.exe", "browsing");
+            arr.WriteString("zen.exe", "browsing"); arr.WriteString("brave.exe", "browsing");
+            arr.WriteString("winword.exe", "documents"); arr.WriteString("excel.exe", "documents"); arr.WriteString("powerpnt.exe", "documents");
+            arr.WriteString("notion.exe", "documents"); arr.WriteString("obsidian.exe", "documents");
+            arr.WriteString("spotify.exe", "media"); arr.WriteString("vlc.exe", "media"); arr.WriteString("mpc-hc.exe", "media"); arr.WriteString("wmplayer.exe", "media");
+            arr.WriteString("TimeLens.TrayApp.exe", "system"); arr.WriteString("ShellExperienceHost.exe", "system"); arr.WriteString("explorer.exe", "system");
+            arr.WriteString("OpenCode.exe", "development");
+            arr.WriteEndObject();
+            arr.WritePropertyName("domainRules");
+            arr.WriteStartObject();
+            arr.WriteString("github.com", "development"); arr.WriteString("gitlab.com", "development");
+            arr.WriteString("stackoverflow.com", "development"); arr.WriteString("youtube.com", "media");
+            arr.WriteString("netflix.com", "media"); arr.WriteString("spotify.com", "media"); arr.WriteString("twitch.tv", "media");
+            arr.WriteString("slack.com", "communication"); arr.WriteString("discord.com", "communication");
+            arr.WriteString("teams.microsoft.com", "communication"); arr.WriteString("zoom.us", "communication");
+            arr.WriteString("reddit.com", "social"); arr.WriteString("twitter.com", "social"); arr.WriteString("x.com", "social");
+            arr.WriteString("linkedin.com", "social"); arr.WriteString("instagram.com", "social"); arr.WriteString("facebook.com", "social");
+            arr.WriteEndObject();
+            arr.WriteEndObject();
+            arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            return System.Threading.Tasks.Task.CompletedTask;
+        });
+
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
         {
             if (!LiveStatusStore.Settings.TrackBrowser)

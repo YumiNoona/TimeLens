@@ -32,6 +32,8 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint ID_INSTALL_EXTENSION = WM_APP + 2;
     private const uint ID_EXIT = WM_APP + 3;
 
+    private const uint WM_STARTUP = WM_APP + 100;
+
     private IntPtr _hWnd;
     private IntPtr _hMenu;
     private bool _disposed;
@@ -39,6 +41,7 @@ public sealed class NativeTrayIcon : IDisposable
     public event Action? OpenDashboardRequested;
     public event Action? InstallExtensionRequested;
     public event Action? ExitRequested;
+    public event Action? StartupRequested;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATAW
@@ -209,6 +212,10 @@ public sealed class NativeTrayIcon : IDisposable
         AppendMenuW(_hMenu, MF_STRING, ID_INSTALL_EXTENSION, "Install Browser Extension");
         AppendMenuW(_hMenu, MF_STRING, ID_EXIT, "Exit");
 
+        // Post startup message — processed inside the message loop so watchers
+        // start after the message pump is running (required for WinEvent hooks).
+        PostMessageW(_hWnd, WM_STARTUP, IntPtr.Zero, IntPtr.Zero);
+
         // Message loop
         while (GetMessageW(out var msg, IntPtr.Zero, 0, 0))
         {
@@ -250,6 +257,10 @@ public sealed class NativeTrayIcon : IDisposable
 
             case WM_DESTROY:
                 PostQuitMessage(0);
+                return IntPtr.Zero;
+
+            case WM_STARTUP:
+                StartupRequested?.Invoke();
                 return IntPtr.Zero;
         }
 

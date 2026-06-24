@@ -134,10 +134,8 @@ internal static class Program
                 LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
             };
 
-        winWatcher.Start();
-        sessionWatcher.Start();
-        if (settings.TrackInput) inputMonitor.Start();
-        if (settings.TrackAudio) audioMonitor.Start();
+        // Watchers will be started inside the message loop via StartupRequested
+        // so that WinEvent hooks have a running message pump.
 
         var lastSystemState = idleMonitor.GetState();
         var lastWriteUtc = DateTime.UtcNow;
@@ -256,6 +254,13 @@ internal static class Program
         void DeleteRule(string pattern) => classifier.RemoveCustomRule(pattern);
 
         using var tray = new NativeTrayIcon();
+        tray.StartupRequested += () =>
+        {
+            winWatcher.Start();
+            sessionWatcher.Start();
+            if (settings.TrackInput) inputMonitor.Start();
+            if (settings.TrackAudio) audioMonitor.Start();
+        };
         tray.OpenDashboardRequested += () =>
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo

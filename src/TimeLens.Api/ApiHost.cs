@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -453,8 +454,8 @@ public static class ApiHost
             while (await r.ReadAsync())
             {
                 var domain = r.GetString(0);
-                var start = DateTime.Parse(r.GetString(1));
-                var next = DateTime.Parse(r.GetString(2));
+                var start = DateTime.Parse(r.GetString(1), null, DateTimeStyles.RoundtripKind);
+                var next = DateTime.Parse(r.GetString(2), null, DateTimeStyles.RoundtripKind);
                 var secs = (next - start).TotalSeconds;
                 if (secs > 0 && secs < 3600) // cap at 1 hour per event to avoid outliers
                 {

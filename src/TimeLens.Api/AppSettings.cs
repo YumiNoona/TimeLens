@@ -24,4 +24,7 @@ public record AppSettings
 
     [JsonPropertyName("autoStart")]
     public bool AutoStart { get; init; } = false;
+
+    [JsonPropertyName("retentionDays")]
+    public int RetentionDays { get; init; } = 90;
 }

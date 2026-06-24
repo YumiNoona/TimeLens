@@ -32,6 +32,7 @@ public sealed class SettingsService
             Theme = dict.GetValueOrDefault("theme", "moss").Trim('"'),
             TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "false") == "true",
             AutoStart = dict.GetValueOrDefault("auto_start", "false") == "true",
+            RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) ? rd : 90,
         };
     }
 

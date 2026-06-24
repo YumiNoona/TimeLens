@@ -122,6 +122,7 @@ public static class ApiHost
                     "theme" => "theme",
                     "timelineGrouped" => "timeline_grouped",
                     "autoStart" => "auto_start",
+                    "retentionDays" => "retention_days",
                     _ => prop.Name
                 }, value);
 
@@ -158,6 +159,13 @@ public static class ApiHost
                         {
                             TimelineGrouped = value == "true"
                         };
+                        break;
+                    case "retentionDays":
+                        if (int.TryParse(value, out var days))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with
+                            {
+                                RetentionDays = days
+                            };
                         break;
                 }
             }
@@ -633,6 +641,58 @@ public static class ApiHost
 </body>
 </html>
 """);
+        });
+
+        app.MapGet("/api/db-size", (HttpContext ctx) =>
+        {
+            ctx.Response.ContentType = "application/json";
+            ctx.Response.StatusCode = 200;
+            var size = System.IO.File.Exists(dbPath) ? new System.IO.FileInfo(dbPath).Length : 0;
+            return ctx.Response.WriteAsync($"{{\"sizeBytes\":{size}}}");
+        });
+
+        app.MapGet("/api/export", async (HttpContext ctx) =>
+        {
+            var format = ctx.Request.Query["format"].FirstOrDefault() ?? "csv";
+            ctx.Response.ContentType = format == "json" ? "application/json" : "text/csv";
+            ctx.Response.Headers.Append("Content-Disposition", $"attachment; filename=timelens-export.{format}");
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT start_time, exe_name, window_title, category, session_state,
+                       COALESCE((julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400, 0) AS duration_secs
+                FROM app_events
+                WHERE start_time >= date('now', 'start of day')
+                ORDER BY start_time
+                """;
+
+            using var r = await cmd.ExecuteReaderAsync();
+            if (format == "json")
+            {
+                await using var w = new System.IO.StreamWriter(ctx.Response.Body);
+                w.Write("[");
+                var first = true;
+                while (await r.ReadAsync())
+                {
+                    if (!first) w.Write(",");
+                    first = false;
+                    w.Write($$"""{"start":"{{r.GetString(0)}}","exe":"{{r.GetString(1)}}","title":"{{(r.IsDBNull(2) ? "" : r.GetString(2)).Replace("\"", "'")}}","category":"{{(r.IsDBNull(3) ? "" : r.GetString(3))}}","state":"{{(r.IsDBNull(4) ? "" : r.GetString(4))}}","secs":{{r.GetInt32(5)}}}""");
+                }
+                w.Write("]");
+            }
+            else
+            {
+                await using var w = new System.IO.StreamWriter(ctx.Response.Body);
+                await w.WriteLineAsync("start_time,exe_name,window_title,category,session_state,duration_secs");
+                while (await r.ReadAsync())
+                {
+                    var title = r.IsDBNull(2) ? "" : r.GetString(2).Replace("\"", "\"\"");
+                    await w.WriteLineAsync(
+                        $"{r.GetString(0)},{r.GetString(1)},\"{title}\",{(r.IsDBNull(3) ? "" : r.GetString(3))},{(r.IsDBNull(4) ? "" : r.GetString(4))},{r.GetInt32(5)}");
+                }
+            }
         });
 
         await app.RunAsync(ct);

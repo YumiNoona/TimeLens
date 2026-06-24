@@ -30,8 +30,8 @@ public sealed class EventWriter
         {
             using var insert = conn.CreateCommand();
             insert.CommandText = """
-                INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle)
-                VALUES ($exe, $title, $pid, $cat, $start, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END);
+                INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date)
+                VALUES ($exe, $title, $pid, $cat, $start, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END, $localDate);
                 """;
             insert.Parameters.AddWithValue("$exe", exeName);
             insert.Parameters.AddWithValue("$title", windowTitle);
@@ -39,6 +39,7 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$cat", category ?? (object)DBNull.Value);
             insert.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
             insert.Parameters.AddWithValue("$state", sessionState);
+            insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             insert.ExecuteNonQuery();
         });
     }

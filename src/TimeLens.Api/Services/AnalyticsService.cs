@@ -204,7 +204,7 @@ public sealed class AnalyticsService
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
-        cmd.Parameters.AddWithValue("$now", DateTime.Now.ToString("o"));
+        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
         var blocks = new List<TimelineBlockDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -278,14 +278,14 @@ public sealed class AnalyticsService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT DATE(start_time) AS day,
+            SELECT COALESCE(local_date, DATE(start_time)) AS day,
                    COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
                        (julianday(COALESCE(end_time, DATE(start_time, '+1 day'))) -
                         julianday(start_time)) * 86400
                    ELSE 0 END), 0) AS secs
             FROM app_events
             WHERE start_time >= $start
-            GROUP BY DATE(start_time)
+            GROUP BY day
             ORDER BY day
             """;
         cmd.Parameters.AddWithValue("$start", startDate.ToString("o"));

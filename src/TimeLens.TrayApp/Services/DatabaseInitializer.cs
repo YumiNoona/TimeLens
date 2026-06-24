@@ -96,6 +96,7 @@ public static class DatabaseInitializer
         // Migrate existing databases — add new columns if missing
         MigrateAddColumn(conn, "app_events", "session_state", "TEXT NOT NULL DEFAULT 'active'");
         MigrateAddColumn(conn, "app_events", "idle_reason", "TEXT");
+        MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
 
         // Backfill session_state for rows that still have NULL
         using var backfill = conn.CreateCommand();

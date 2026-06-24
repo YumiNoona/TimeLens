@@ -83,7 +83,7 @@
         aria-selected={selectedDate === day.date}
       >
         {day.label}
-        <span class="day-dot" class:l1={day.level >= 1} class:l2={day.level >= 2} class:l3={day.level >= 3}></span>
+        <span class="day-dot" class:l1={day.level >= 1} class:l2={day.level >= 2} class:l3={day.level >= 3} class:hidden={day.level === 0}></span>
       </button>
     {/each}
   </div>
@@ -201,7 +201,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--sp-2) var(--sp-3);
+    padding: var(--sp-2) var(--sp-3) var(--sp-1);
     border-radius: 999px;
     border: 1px solid var(--md-outline);
     background: var(--md-surface-2);
@@ -233,6 +233,7 @@
   .day-dot.l1 { background: var(--md-surface-3); }
   .day-dot.l2 { background: var(--md-secondary); }
   .day-dot.l3 { background: var(--md-primary); }
+  .day-dot.hidden { visibility: hidden; }
   .summary-row { display: flex; gap: var(--sp-3); }
   .stat-box {
     flex: 1;

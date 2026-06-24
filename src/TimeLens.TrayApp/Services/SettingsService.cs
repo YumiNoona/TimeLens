@@ -30,6 +30,7 @@ public sealed class SettingsService
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",
             IdleThresholdSeconds = int.TryParse(dict.GetValueOrDefault("idle_threshold_seconds", "180"), out var t) ? t : 180,
             Theme = dict.GetValueOrDefault("theme", "moss").Trim('"'),
+            TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "false") == "true",
         };
     }
 

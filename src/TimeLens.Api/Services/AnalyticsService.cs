@@ -138,12 +138,43 @@ public sealed class AnalyticsService
 
         var focusScore = activeSecs > 0 ? (int)Math.Round((double)productiveSecs / activeSecs * 100) : 0;
 
+        // Input totals
+        int totalKeys = 0, totalClicks = 0;
+        try
+        {
+            cmd.CommandText = """
+                SELECT
+                    COALESCE(SUM(keystroke_count), 0) AS total_keys,
+                    COALESCE(SUM(click_count), 0) AS total_clicks
+                FROM input_activity
+                WHERE timestamp >= $today AND timestamp < $tomorrow
+                """;
+            using (var r2 = await cmd.ExecuteReaderAsync())
+            {
+                if (await r2.ReadAsync())
+                {
+                    totalKeys = Convert.ToInt32(r2["total_keys"]);
+                    totalClicks = Convert.ToInt32(r2["total_clicks"]);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.AppendAllText(
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "TimeLens", "query_error.log"),
+                $"{DateTime.UtcNow:o} input_totals: {ex}{Environment.NewLine}");
+        }
+
         return new SummaryDto(
             FormatDuration(activeSecs), activeSecs,
             FormatDuration(idleSecs), idleSecs,
             focusScore,
             topCat, FormatDuration(topCatSecs),
-            yesterdaySecs >= 0 ? (activeSecs - yesterdaySecs) / 60 : null
+            yesterdaySecs >= 0 ? (activeSecs - yesterdaySecs) / 60 : null,
+            totalKeys,
+            totalClicks
         );
     }
 
@@ -156,24 +187,31 @@ public sealed class AnalyticsService
             FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND COALESCE(category, '') != 'system'
+              AND (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400 >= 5
             ORDER BY start_time
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$now", DateTime.Now.ToString("o"));
 
         var blocks = new List<TimelineBlockDto>();
         using var r = await cmd.ExecuteReaderAsync();
 
         while (await r.ReadAsync())
         {
-            var start = DateTime.Parse(r.GetString(3));
+            var start = DateTime.SpecifyKind(DateTime.Parse(r.GetString(3)), DateTimeKind.Utc);
             var endStr = r.IsDBNull(4) ? null : r.GetString(4);
-            var end = endStr is not null ? DateTime.Parse(endStr) : DateTime.UtcNow;
+            var end = endStr is not null
+                ? DateTime.SpecifyKind(DateTime.Parse(endStr), DateTimeKind.Utc)
+                : DateTime.UtcNow;
             var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
             var cat = r.IsDBNull(2) ? null : r.GetString(2);
 
-            var startHour = start.TimeOfDay.TotalHours;
-            var endHour = end.Date > start.Date ? 24.0 : end.TimeOfDay.TotalHours;
+            var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, TimeZoneInfo.Local);
+            var localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, TimeZoneInfo.Local);
+
+            var startHour = localStart.TimeOfDay.TotalHours;
+            var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 
@@ -287,6 +325,87 @@ public sealed class AnalyticsService
         }
 
         return cats.ToArray();
+    }
+
+    private static async Task<InputSummaryDto[]> GetInputSummaryAsync(
+        SqliteConnection conn, DateTime today, DateTime tomorrow)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT exe_name,
+                   COALESCE(SUM(keystroke_count), 0) AS keys,
+                   COALESCE(SUM(click_count), 0) AS clicks
+            FROM input_activity
+            WHERE timestamp >= $today AND timestamp < $tomorrow
+            GROUP BY exe_name ORDER BY keys DESC
+            """;
+        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+
+        var list = new List<InputSummaryDto>();
+        using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            list.Add(new InputSummaryDto(
+                r.IsDBNull(0) ? "" : r.GetString(0),
+                Convert.ToInt32(r["keys"]),
+                Convert.ToInt32(r["clicks"])));
+        }
+        return list.ToArray();
+    }
+
+    private static async Task<BrowserEntryDto[]> GetBrowserSummaryAsync(
+        SqliteConnection conn, DateTime today, DateTime tomorrow)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT domain,
+                   COUNT(*) AS visits,
+                   MAX(start_time) AS last_visit
+            FROM browser_events
+            WHERE start_time >= $today AND start_time < $tomorrow
+            GROUP BY domain ORDER BY visits DESC LIMIT 20
+            """;
+        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+
+        var list = new List<BrowserEntryDto>();
+        using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            list.Add(new BrowserEntryDto(
+                r.IsDBNull(0) ? "" : r.GetString(0),
+                Convert.ToInt32(r["visits"]),
+                r.IsDBNull(2) ? "" : r.GetString(2)));
+        }
+        return list.ToArray();
+    }
+
+    private static async Task<AudioSessionDto[]> GetAudioSummaryAsync(
+        SqliteConnection conn, DateTime today, DateTime tomorrow)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT exe_name,
+                   COUNT(*) AS sessions,
+                   MIN(timestamp) AS first_seen
+            FROM audio_activity
+            WHERE is_playing = 1 AND timestamp >= $today AND timestamp < $tomorrow
+            GROUP BY exe_name ORDER BY sessions DESC
+            """;
+        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+
+        var list = new List<AudioSessionDto>();
+        using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            list.Add(new AudioSessionDto(
+                r.IsDBNull(0) ? "" : r.GetString(0),
+                Convert.ToInt32(r["sessions"]),
+                r.IsDBNull(2) ? "" : r.GetString(2)));
+        }
+        return list.ToArray();
     }
 
     private static string FormatDuration(int totalSecs)

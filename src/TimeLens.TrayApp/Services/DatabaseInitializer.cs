@@ -83,6 +83,7 @@ public static class DatabaseInitializer
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('idle_threshold_seconds', '180');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'moss');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'false');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);

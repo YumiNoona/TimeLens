@@ -18,4 +18,7 @@ public record AppSettings
 
     [JsonPropertyName("theme")]
     public string Theme { get; init; } = "moss";
+
+    [JsonPropertyName("timelineGrouped")]
+    public bool TimelineGrouped { get; init; } = false;
 }

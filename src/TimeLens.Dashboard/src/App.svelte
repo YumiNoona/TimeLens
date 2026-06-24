@@ -12,7 +12,13 @@
   import TimelineView from './lib/components/TimelineView.svelte';
   import RulesView from './lib/components/RulesView.svelte';
   import SettingsView from './lib/components/SettingsView.svelte';
+  import TopSites from './lib/components/TopSites.svelte';
+  import type { BrowserEntry, AudioEntry } from './lib/types';
   import { data, loading, error, live, refresh } from './lib/stores/activity';
+
+  let browserSites = $state<BrowserEntry[]>([]);
+  let audioSessions = $state<AudioEntry[]>([]);
+  let timelineGrouped = $state(false);
 
   let view = $state('today');
   let currentTheme = $state('moss');
@@ -36,7 +42,17 @@
       const r = await fetch('http://127.0.0.1:47821/api/settings');
       const s = await r.json();
       if (s.theme) applyTheme(s.theme);
+      if (s.timelineGrouped !== undefined) timelineGrouped = s.timelineGrouped;
     } catch { /* tray app not running, stay with default */ }
+    // Fetch browser and audio data
+    try {
+      const br = await fetch('http://127.0.0.1:47821/api/browser-summary');
+      browserSites = await br.json();
+    } catch { browserSites = []; }
+    try {
+      const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
+      audioSessions = await ar.json();
+    } catch { audioSessions = []; }
   });
 </script>
 
@@ -104,6 +120,35 @@
         </div>
 
         <CategoryBreakdown categories={$data.categories} />
+
+        {#if $data.summary.totalKeystrokes > 0 || $data.summary.totalClicks > 0}
+          <div class="input-chips">
+            <span class="input-chip"><i class="ti ti-keyboard" aria-hidden="true"></i> {$data.summary.totalKeystrokes.toLocaleString()} keystrokes</span>
+            <span class="input-chip"><i class="ti ti-mouse" aria-hidden="true"></i> {$data.summary.totalClicks.toLocaleString()} clicks</span>
+          </div>
+        {/if}
+
+        <div class="bottom-grid">
+          <TopSites sites={browserSites} />
+          {#if audioSessions.length > 0}
+            <div class="card audio-card">
+              <div class="card-title">
+                <i class="ti ti-volume-2" aria-hidden="true"></i>
+                Media
+              </div>
+              <div role="list" class="audio-list">
+                {#each audioSessions as a}
+                  <div class="audio-row" role="listitem">
+                    <span class="audio-exe">{a.exeName}</span>
+                    <span class="audio-count">active {a.sessions} time{a.sessions > 1 ? 's' : ''}</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {:else}
+            <div></div>
+          {/if}
+        </div>
       {/if}
 
     {:else if view === 'history' && $data}
@@ -111,7 +156,7 @@
     {:else if view === 'apps' && $data}
       <AppsView data={$data} />
     {:else if view === 'timeline' && $data}
-      <TimelineView data={$data} />
+      <TimelineView data={$data} timelineGrouped={timelineGrouped} />
     {:else if view === 'rules'}
       <RulesView />
     {:else if view === 'settings'}
@@ -199,5 +244,71 @@
 
   .placeholder-view i {
     font-size: 48px;
+  }
+
+  .input-chips {
+    display: flex;
+    gap: var(--sp-3);
+  }
+
+  .input-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    background: var(--md-surface-1);
+    border: 1px solid var(--md-outline);
+    border-radius: var(--shape-sm);
+    padding: var(--sp-1) var(--sp-3);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--md-on-surf-var);
+  }
+
+  .input-chip i { font-size: 14px; color: var(--md-on-surf-dim); }
+
+  .audio-card {
+    background: var(--md-surface-1);
+    border-radius: var(--shape-lg);
+    border: 1px solid var(--md-outline);
+    padding: var(--sp-5);
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--md-on-surf);
+    margin-bottom: var(--sp-4);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+
+  .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
+
+  .audio-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .audio-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid var(--md-outline);
+    font-size: 12px;
+  }
+
+  .audio-row:last-child { border-bottom: none; }
+
+  .audio-exe {
+    font-family: var(--font-mono);
+    color: var(--md-on-surf);
+  }
+
+  .audio-count {
+    color: var(--md-on-surf-dim);
+    font-size: 11px;
   }
 </style>

@@ -1,15 +1,22 @@
 <script lang="ts">
   import { getDashboardData } from '../api';
-  import type { DashboardData } from '../types';
+  import { onMount } from 'svelte';
+  import type { DashboardData, BrowserEntry, InputEntry } from '../types';
 
   let { data: initial }: { data: DashboardData } = $props();
 
   const today = new Date();
   let selectedDate = $state(today.toISOString().slice(0, 10));
   let historyData = $state<DashboardData>(initial);
+  let browserSites = $state<BrowserEntry[]>([]);
+  let inputActivity = $state<InputEntry[]>([]);
   let loadingHistory = $state(false);
   let historyError = $state<string | null>(null);
   let historyEmpty = $state(false);
+
+  onMount(() => {
+    selectDate(selectedDate);
+  });
 
   let weekDays = $derived.by(() => {
     const days = [];
@@ -38,6 +45,15 @@
     } catch {
       historyError = 'Could not load data for this date.';
     }
+    // Fetch browser and input data for this date
+    try {
+      const br = await fetch(`http://127.0.0.1:47821/api/browser-summary?date=${date}`);
+      browserSites = await br.json();
+    } catch { browserSites = []; }
+    try {
+      const ir = await fetch(`http://127.0.0.1:47821/api/input-summary?date=${date}`);
+      inputActivity = await ir.json();
+    } catch { inputActivity = []; }
     loadingHistory = false;
   }
 
@@ -134,7 +150,41 @@
         </div>
       </div>
     {/if}
-  {/if}
+
+      {#if browserSites.length > 0}
+        <div class="section">
+          <h2 class="title-large">Top sites</h2>
+          <div class="app-list">
+            {#each browserSites as site}
+              <div class="app-row">
+                <div class="app-icon-box">
+                  <i class="ti ti-world" aria-hidden="true"></i>
+                </div>
+                <span class="app-name">{site.domain}</span>
+                <span class="app-time">{site.visits} visit{site.visits > 1 ? 's' : ''}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if inputActivity.length > 0}
+        <div class="section">
+          <h2 class="title-large">Input activity</h2>
+          <div class="app-list">
+            {#each inputActivity as row}
+              <div class="app-row">
+                <div class="app-icon-box">
+                  <i class="ti ti-keyboard" aria-hidden="true"></i>
+                </div>
+                <span class="app-name">{row.exeName}</span>
+                <span class="app-time">{row.keystrokes.toLocaleString()} keys · {row.clicks.toLocaleString()} clicks</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    {/if}
 </div>
 
 <style>

@@ -90,6 +90,7 @@ public static class ApiHost
                     "trackInput" => "track_input",
                     "idleThresholdSeconds" => "idle_threshold_seconds",
                     "theme" => "theme",
+                    "timelineGrouped" => "timeline_grouped",
                     _ => prop.Name
                 }, value);
 
@@ -119,6 +120,12 @@ public static class ApiHost
                         LiveStatusStore.Settings = LiveStatusStore.Settings with
                         {
                             Theme = value
+                        };
+                        break;
+                    case "timelineGrouped":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with
+                        {
+                            TimelineGrouped = value == "true"
                         };
                         break;
                 }
@@ -241,8 +248,95 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapGet("/api/input-summary", async (HttpContext ctx) =>
+        {
+            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+            DateTime queryDate = DateTime.Now;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            var localDate = queryDate.Date;
+            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT exe_name, COALESCE(SUM(keystroke_count),0), COALESCE(SUM(click_count),0) FROM input_activity WHERE timestamp >= $t0 AND timestamp < $t1 GROUP BY exe_name ORDER BY 2 DESC";
+            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) { arr.WriteStartObject(); arr.WriteString("exeName", r.IsDBNull(0) ? "" : r.GetString(0)); arr.WriteNumber("keystrokes", r.IsDBNull(1) ? 0 : r.GetInt32(1)); arr.WriteNumber("clicks", r.IsDBNull(2) ? 0 : r.GetInt32(2)); arr.WriteEndObject(); }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapGet("/api/audio-summary", async (HttpContext ctx) =>
+        {
+            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+            DateTime queryDate = DateTime.Now;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            var localDate = queryDate.Date;
+            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT exe_name, COUNT(*), MIN(timestamp) FROM audio_activity WHERE is_playing=1 AND timestamp>=$t0 AND timestamp<$t1 GROUP BY exe_name ORDER BY 2 DESC";
+            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) { arr.WriteStartObject(); arr.WriteString("exeName", r.IsDBNull(0) ? "" : r.GetString(0)); arr.WriteNumber("sessions", r.IsDBNull(1) ? 0 : r.GetInt32(1)); arr.WriteString("firstSeen", r.IsDBNull(2) ? "" : r.GetString(2)); arr.WriteEndObject(); }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapGet("/api/browser-summary", async (HttpContext ctx) =>
+        {
+            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+            DateTime queryDate = DateTime.Now;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            var localDate = queryDate.Date;
+            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT domain, COUNT(*), MAX(start_time) FROM browser_events WHERE start_time>=$t0 AND start_time<$t1 GROUP BY domain ORDER BY 2 DESC LIMIT 20";
+            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) { arr.WriteStartObject(); arr.WriteString("domain", r.IsDBNull(0) ? "" : r.GetString(0)); arr.WriteNumber("visits", r.IsDBNull(1) ? 0 : r.GetInt32(1)); arr.WriteString("lastVisit", r.IsDBNull(2) ? "" : r.GetString(2)); arr.WriteEndObject(); }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapGet("/api/running-processes", (HttpContext ctx) =>
+        {
+            var procs = System.Diagnostics.Process.GetProcesses()
+                .Where(p => p.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(p.ProcessName))
+                .Select(p => p.ProcessName + ".exe")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            return ctx.Response.WriteAsJsonAsync(procs, AppJsonContext.Default.StringArray);
+        });
+
         app.MapGet("/api/summary", async (HttpContext ctx) =>
         {
+            try
+            {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime? queryDate = null;
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
@@ -252,6 +346,14 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsJsonAsync(result, AppJsonContext.Default.DashboardResponse);
+            }
+            catch (Exception ex)
+            {
+                System.IO.File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens", "query_error.log"), $"{DateTime.UtcNow:o} summary: {ex}{Environment.NewLine}");
+                ctx.Response.StatusCode = 500;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"error\":\"" + ex.Message.Replace("\"", "'") + "\"}");
+            }
         });
 
         app.MapPost("/api/idle-reason", async (HttpContext ctx) =>
@@ -292,5 +394,9 @@ public static class ApiHost
 [JsonSerializable(typeof(HeatmapEntryDto))]
 [JsonSerializable(typeof(CategoryEntryDto))]
 [JsonSerializable(typeof(LiveStatusDto))]
+[JsonSerializable(typeof(InputSummaryDto))]
+[JsonSerializable(typeof(BrowserEntryDto))]
+[JsonSerializable(typeof(AudioSessionDto))]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(string[]))]
 internal partial class AppJsonContext : JsonSerializerContext { }

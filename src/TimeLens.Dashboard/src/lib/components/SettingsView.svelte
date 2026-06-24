@@ -4,6 +4,7 @@
   let trackInput = $state(true);
   let idleMinutes = $state(3);
   let theme = $state('moss');
+  let timelineGrouped = $state(false);
   let apiReachable = $state(true);
   let savedKey = $state<string | null>(null);
 
@@ -19,7 +20,7 @@
 
   const API = 'http://127.0.0.1:47821/api/settings';
 
-  async function load() {
+  async function load(attempt = 1) {
     try {
       const r = await fetch(API);
       const s = await r.json();
@@ -28,8 +29,13 @@
       trackInput = s.trackInput ?? true;
       idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
       theme = s.theme ?? 'moss';
+      timelineGrouped = s.timelineGrouped ?? false;
       apiReachable = true;
     } catch {
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 2000));
+        return load(attempt + 1);
+      }
       apiReachable = false;
     }
   }
@@ -138,6 +144,24 @@
       {/each}
     </div>
     {#if savedKey === 'theme'}<i class="ti ti-check saved-icon" style="padding: var(--sp-3) var(--sp-4)"></i>{/if}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="title-small">Timeline</h2>
+    </div>
+
+    <label class="setting-row last">
+      <div class="setting-info">
+        <span class="setting-label">Timeline Mode</span>
+        <span class="setting-desc">Flat shows every event. Grouped collapses same-category runs.</span>
+      </div>
+      <div class="control">
+        <input type="checkbox" class="toggle" checked={!timelineGrouped}
+          onchange={() => { timelineGrouped = !timelineGrouped; save('timelineGrouped', timelineGrouped); }} />
+        {#if savedKey === 'timelineGrouped'}<i class="ti ti-check saved-icon"></i>{/if}
+      </div>
+    </label>
   </div>
 
   <div class="card">

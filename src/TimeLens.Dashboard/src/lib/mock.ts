@@ -33,6 +33,8 @@ export const mockData: DashboardData = {
     topCategory: 'Work',
     topCategoryTime: '4h 22m',
     vsYesterday: 34,
+    totalKeystrokes: 2847,
+    totalClicks: 512,
   },
   timeline: tlBlocks.map(b => ({ startHour: b.s, endHour: b.e, type: b.type })),
   topApps: [

@@ -7,6 +7,8 @@ export interface TodaySummary {
   topCategory: string;
   topCategoryTime: string;
   vsYesterday: number | null;
+  totalKeystrokes: number;
+  totalClicks: number;
 }
 
 export interface TimelineBlock {
@@ -18,6 +20,24 @@ export interface TimelineBlock {
 export interface AppEntry {
   name: string;
   minutes: number;
+}
+
+export interface InputEntry {
+  exeName: string;
+  keystrokes: number;
+  clicks: number;
+}
+
+export interface BrowserEntry {
+  domain: string;
+  visits: number;
+  lastVisit: string;
+}
+
+export interface AudioEntry {
+  exeName: string;
+  sessions: number;
+  firstSeen: string;
 }
 
 export interface HeatmapEntry {

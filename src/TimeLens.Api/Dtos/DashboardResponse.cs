@@ -17,7 +17,27 @@ public sealed record SummaryDto(
     int FocusScore,
     string TopCategory,
     string TopCategoryTime,
-    int? VsYesterday
+    int? VsYesterday,
+    int TotalKeystrokes,
+    int TotalClicks
+);
+
+public sealed record InputSummaryDto(
+    string ExeName,
+    int Keystrokes,
+    int Clicks
+);
+
+public sealed record BrowserEntryDto(
+    string Domain,
+    int Visits,
+    string LastVisit
+);
+
+public sealed record AudioSessionDto(
+    string ExeName,
+    int Sessions,
+    string FirstSeen
 );
 
 public sealed record TimelineBlockDto(

@@ -1,10 +1,19 @@
 <script lang="ts">
-  import type { DashboardData } from '../types';
+  import { onMount } from 'svelte';
+  import type { DashboardData, InputEntry } from '../types';
   let { data }: { data: DashboardData } = $props();
 
   type SortKey = 'name' | 'time';
   let sortKey = $state<SortKey>('time');
   let search = $state('');
+  let inputData = $state<InputEntry[]>([]);
+
+  onMount(async () => {
+    try {
+      const r = await fetch('http://127.0.0.1:47821/api/input-summary');
+      inputData = await r.json();
+    } catch { inputData = []; }
+  });
 
   let allApps = $derived(
     data.topApps
@@ -46,6 +55,32 @@
       </div>
     {/each}
   </div>
+
+  {#if inputData.length > 0}
+    <div class="section">
+      <h2 class="section-title">
+        <i class="ti ti-keyboard" aria-hidden="true"></i>
+        Input activity
+      </h2>
+      <div class="table" role="table">
+        <div class="th" role="row">
+          <span role="columnheader">App</span>
+          <span role="columnheader">Keystrokes</span>
+          <span role="columnheader">Clicks</span>
+        </div>
+        {#each inputData as row, i}
+          <div class="tr" role="row" class:alt={i % 2 === 0}>
+            <span class="td-name" role="cell">
+              <i class="ti ti-apps" aria-hidden="true"></i>
+              {row.exeName}
+            </span>
+            <span class="td-num" role="cell">{row.keystrokes.toLocaleString()}</span>
+            <span class="td-num" role="cell">{row.clicks.toLocaleString()}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -98,4 +133,19 @@
   .td-name { flex: 1; display: flex; align-items: center; gap: var(--sp-2); }
   .td-name i { color: var(--md-primary); font-size: 16px; }
   .td-time { width: 80px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; }
+
+  .section { margin-top: var(--sp-4); }
+  .section-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--md-on-surf);
+    margin-bottom: var(--sp-3);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .section-title i { color: var(--md-on-surf-var); font-size: 16px; }
+  .th span:nth-child(2),
+  .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
+  .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; }
 </style>

@@ -111,9 +111,17 @@ Open [http://127.0.0.1:47821/](http://127.0.0.1:47821/) in your browser.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/summary?date=YYYY-MM-DD` | Dashboard data (summary, timeline, top apps, heatmap, categories, live) |
+| `GET` | `/api/summary?date=YYYY-MM-DD` | Dashboard data (summary, timeline, top apps, heatmap, categories, live, input, browser, audio) |
+| `GET` | `/api/input-summary?date=YYYY-MM-DD` | Per-app keystroke and click counts for a given day |
+| `GET` | `/api/audio-summary?date=YYYY-MM-DD` | Per-app audio session counts for a given day |
+| `GET` | `/api/browser-summary?date=YYYY-MM-DD` | Top 20 domains by visit count for a given day |
 | `POST` | `/api/browser-event` | Log a browser tab visit `{domain, url, title, browser, audible}` |
 | `POST` | `/api/audible-status` | Update audible tab state `{audible, browser}` |
+| `GET` | `/api/settings` | Get current settings |
+| `POST` | `/api/settings` | Update settings (trackAudio, trackInput, theme, etc.) |
+| `GET` | `/api/rules` | Get custom categorization rules |
+| `POST` | `/api/rules` | Add/update a categorization rule `{pattern, category}` |
+| `DELETE` | `/api/rules/{pattern}` | Delete a categorization rule |
 | `GET` | `/*` | Svelte SPA + static files |
 
 ## Database

@@ -11,9 +11,34 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        using var mutex = new Mutex(true, MutexName, out var created);
-        if (!created)
-            return;
+        try
+        {
+            MainImpl();
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.AppendAllText(
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "TimeLens", "crash.log"),
+                $"{DateTime.UtcNow:o} Fatal: {ex}{Environment.NewLine}");
+            Environment.Exit(1);
+        }
+    }
+
+    private static void MainImpl()
+    {
+        Mutex? mutex = null;
+        try
+        {
+            mutex = Mutex.OpenExisting(MutexName);
+            mutex.Dispose();
+            return; // Another instance is already running
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            mutex = new Mutex(true, MutexName, out _);
+        }
 
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -122,6 +147,7 @@ internal static class Program
         if (settings.TrackAudio) audioMonitor.Start();
 
         var lastSystemState = idleMonitor.GetState();
+        var lastWriteUtc = DateTime.UtcNow;
 
         var idleTimer = new Timer(_ =>
         {
@@ -131,12 +157,17 @@ internal static class Program
             LiveStatusStore.IdleSeconds = idleSecs;
             LiveStatusStore.SystemState = curState;
 
-            if (curState != lastSystemState)
+            var changed = curState != lastSystemState;
+            var overdue = (DateTime.UtcNow - lastWriteUtc).TotalMinutes >= 5;
+
+            if (changed || overdue)
             {
-                if (lastSystemState != "active" && curState == "active")
+                if (changed && lastSystemState != "active" && curState == "active")
                     LiveStatusStore.PendingIdleReturn = true;
 
-                lastSystemState = curState;
+                if (changed)
+                    lastSystemState = curState;
+                lastWriteUtc = DateTime.UtcNow;
                 var (exe, title, pid) = Win32.GetForegroundWindowInfo();
                 var cat = classifier.Classify(exe, title);
                 writer.OpenAppEvent(exe, title, pid, curState, cat);
@@ -218,5 +249,6 @@ internal static class Program
         };
 
         tray.Run();
+        mutex?.Dispose();
     }
 }

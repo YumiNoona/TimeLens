@@ -60,14 +60,16 @@
       {/each}
 
       <div class="tl-track">
-        {#each filled as block}
-          <div
-            class="tl-block"
-            class:gap={block.type === 'gap'}
-            data-tooltip={block.type === 'gap' ? undefined : `${block.type} · ${block.exeName} · ${fmtDuration(block.durationSeconds)}`}
-            style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'var(--md-surface)' : colorForCategory(block.type)}"
-          ></div>
-        {/each}
+        <div class="tl-track-inner">
+          {#each filled as block}
+            <div
+              class="tl-block"
+              class:gap={block.type === 'gap'}
+              data-tooltip={block.type === 'gap' ? undefined : `${block.type} · ${block.exeName} · ${fmtDuration(block.durationSeconds)}`}
+              style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'var(--md-surface)' : colorForCategory(block.type)}"
+            ></div>
+          {/each}
+        </div>
         {#if showNow}
           <div class="tl-now" style="left: {nowHour / 24 * 100}%" aria-label="Current time">
             <div class="tl-now-dot"></div>
@@ -127,6 +129,13 @@
     height: 36px;
     border-radius: var(--shape-md);
     background: var(--md-surface);
+    overflow: visible;
+  }
+
+  .tl-track-inner {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--shape-md);
     overflow: hidden;
   }
 
@@ -135,7 +144,6 @@
     top: 0;
     height: 100%;
     min-width: 2px;
-    overflow: hidden;
   }
 
   .tl-block.gap { background: transparent !important; }

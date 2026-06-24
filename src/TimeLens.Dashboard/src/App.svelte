@@ -197,8 +197,6 @@
                 {/each}
               </div>
             </div>
-          {:else}
-            <div></div>
           {/if}
         </div>
       {/if}
@@ -210,27 +208,23 @@
         <div class="topbar">
           <h1 class="headline-small">Browser</h1>
         </div>
-        <div class="bottom-grid">
-          <TopSites sites={browserSites} />
-          {#if browserTime.length > 0}
-            <div class="card audio-card">
-              <div class="card-title">
-                <i class="ti ti-clock" aria-hidden="true"></i>
-                Time on sites
-              </div>
-              <div role="list" class="audio-list">
-                {#each browserTime as bt}
-                  <div class="audio-row" role="listitem">
-                    <span class="audio-exe">{bt.domain}</span>
-                    <span class="audio-count">{bt.totalMinutes}m</span>
-                  </div>
-                {/each}
-              </div>
+        <TopSites sites={browserSites} />
+        {#if browserTime.length > 0}
+          <div class="card">
+            <div class="card-title">
+              <i class="ti ti-clock" aria-hidden="true"></i>
+              Time on sites
             </div>
-          {:else}
-            <div></div>
-          {/if}
-        </div>
+            <div role="list" class="audio-list">
+              {#each browserTime as bt}
+                <div class="audio-row" role="listitem">
+                  <span class="audio-exe">{bt.domain}</span>
+                  <span class="audio-count">{bt.totalMinutes}m</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
     {:else if view === 'apps' && $data}
       <AppsView data={$data} />
@@ -375,5 +369,11 @@
   .audio-count {
     color: var(--md-on-surf-dim);
     font-size: 11px;
+  }
+
+  .browser-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
   }
 </style>

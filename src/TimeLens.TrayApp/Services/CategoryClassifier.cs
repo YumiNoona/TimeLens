@@ -90,6 +90,33 @@ public sealed class CategoryClassifier : ICategoryClassifier
         return true;
     }
 
+    public void LoadBuiltins(string csvPath)
+    {
+        if (!File.Exists(csvPath)) return;
+
+        foreach (var line in File.ReadLines(csvPath))
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
+
+            var parts = trimmed.Split(',');
+            if (parts.Length < 3) continue;
+
+            var pattern  = parts[0].Trim();
+            var target   = parts[1].Trim();
+            var category = parts[2].Trim();
+            var ruleType = parts.Length > 3 ? parts[3].Trim() : "substring";
+
+            if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(category)) continue;
+
+            if (!CustomRules.Any(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)
+                                      && string.Equals(r.Target, target, StringComparison.OrdinalIgnoreCase)))
+            {
+                CustomRules.Add(new CustomRule(pattern, category, ruleType, target, Priority: 100));
+            }
+        }
+    }
+
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
         // Custom rules first, ordered by priority (lower = higher priority)

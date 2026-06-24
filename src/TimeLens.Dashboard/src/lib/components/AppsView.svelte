@@ -7,12 +7,40 @@
   let sortKey = $state<SortKey>('time');
   let search = $state('');
   let inputData = $state<InputEntry[]>([]);
+  let uncategorized = $state<{ exe: string; seconds: number }[]>([]);
+  let assigningFor = $state<string | null>(null);
+
+  const CATEGORIES = [
+    'development', 'work', 'documents', 'communication', 'design',
+    'entertainment', 'gaming', 'social', 'news', 'finance',
+    'health', 'education', 'utilities', 'browsing', 'other'
+  ];
+
+  async function loadUncategorized() {
+    try {
+      const r = await fetch('http://127.0.0.1:47821/api/uncategorized');
+      uncategorized = await r.json();
+    } catch { uncategorized = []; }
+  }
+
+  async function assignCategory(exe: string, category: string) {
+    try {
+      await fetch('http://127.0.0.1:47821/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern: exe, category, ruleType: 'substring', target: 'exe', priority: 0 })
+      });
+    } catch { }
+    uncategorized = uncategorized.filter(u => u.exe !== exe);
+    assigningFor = null;
+  }
 
   onMount(async () => {
     try {
       const r = await fetch('http://127.0.0.1:47821/api/input-summary');
       inputData = await r.json();
     } catch { inputData = []; }
+    loadUncategorized();
   });
 
   let allApps = $derived(
@@ -81,6 +109,36 @@
       </div>
     </div>
   {/if}
+
+  {#if uncategorized.length > 0}
+    <div class="section">
+      <h2 class="section-title">
+        <i class="ti ti-tag-off" aria-hidden="true"></i>
+        Uncategorized ({uncategorized.length})
+        <span class="section-hint">Click to assign a category — creates a rule</span>
+      </h2>
+
+      <div class="uncat-list" role="list">
+        {#each uncategorized as item}
+          <div class="uncat-row" role="listitem">
+            <span class="uncat-exe">{item.exe}</span>
+            <span class="uncat-time">{Math.floor(item.seconds / 60)}m</span>
+
+            {#if assigningFor === item.exe}
+              <div class="uncat-picker">
+                {#each CATEGORIES as cat}
+                  <button class="cat-pill" onclick={() => assignCategory(item.exe, cat)}>{cat}</button>
+                {/each}
+                <button class="cat-cancel" onclick={() => assigningFor = null}>x</button>
+              </div>
+            {:else}
+              <button class="uncat-assign" onclick={() => assigningFor = item.exe}>Assign</button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -136,4 +194,36 @@
   .th span:nth-child(2),
   .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
   .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; margin-left: var(--sp-3); }
+
+  .section-hint { font-size: 11px; color: var(--md-on-surf-dim); font-weight: 400; margin-left: var(--sp-2); }
+  .uncat-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+  .uncat-row {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--md-surface-1);
+    border-radius: var(--shape-sm);
+    border: 1px solid var(--md-outline);
+    flex-wrap: wrap;
+  }
+  .uncat-exe { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf); flex: 1; }
+  .uncat-time { font-family: var(--font-mono); font-size: 11px; color: var(--md-on-surf-dim); width: 36px; text-align: right; flex-shrink: 0; }
+  .uncat-assign {
+    font-size: 11px; padding: 3px 10px;
+    border: 1px solid var(--md-primary); border-radius: var(--shape-sm);
+    background: none; color: var(--md-primary); cursor: pointer; font-family: inherit; flex-shrink: 0;
+  }
+  .uncat-assign:hover { background: var(--md-primary-cont); }
+  .uncat-picker { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; padding-top: var(--sp-2); }
+  .cat-pill {
+    font-size: 10px; padding: 2px 8px;
+    border: 1px solid var(--md-outline); border-radius: var(--shape-full);
+    background: var(--md-surface-2); color: var(--md-on-surf-var);
+    cursor: pointer; font-family: inherit; text-transform: capitalize;
+  }
+  .cat-pill:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  .cat-cancel {
+    font-size: 11px; padding: 2px 8px;
+    border: 1px solid var(--md-outline); border-radius: var(--shape-full);
+    background: none; color: var(--md-on-surf-dim); cursor: pointer; font-family: inherit;
+  }
 </style>

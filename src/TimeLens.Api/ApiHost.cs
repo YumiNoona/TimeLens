@@ -351,6 +351,44 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
+        }        );
+
+        app.MapGet("/api/uncategorized", async (HttpContext ctx) =>
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT exe_name,
+                       COALESCE(SUM(
+                           (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                       ), 0) AS secs
+                FROM app_events
+                WHERE (category = 'other' OR category IS NULL)
+                  AND session_state = 'active'
+                  AND start_time >= $today
+                GROUP BY exe_name
+                HAVING secs > 60
+                ORDER BY secs DESC
+                LIMIT 30
+                """;
+            cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("$today", DateTime.UtcNow.Date.ToString("o"));
+
+            ctx.Response.ContentType = "application/json";
+            using var w = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            w.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                w.WriteStartObject();
+                w.WriteString("exe", r.GetString(0));
+                w.WriteNumber("seconds", Convert.ToInt32(r["secs"]));
+                w.WriteEndObject();
+            }
+            w.WriteEndArray();
+            await w.FlushAsync();
+            ctx.Response.StatusCode = 200;
         });
 
         app.MapGet("/api/goals", async (HttpContext ctx) =>

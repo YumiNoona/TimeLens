@@ -68,6 +68,16 @@ internal static class Program
 
         var writer = new EventWriter(dbPath);
         var classifier = new CategoryClassifier();
+
+        // Load community built-in rules first (lowest priority, overridden by user rules)
+        var userCsvPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TimeLens", "categories.csv");
+        var builtinCsvPath = Path.Combine(AppContext.BaseDirectory, "categories.csv");
+        var csvPath = File.Exists(userCsvPath) ? userCsvPath : builtinCsvPath;
+        classifier.LoadBuiltins(csvPath);
+
+        // Load user custom rules from DB — these override builtins (priority 0 < 100)
         using (var loadConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
         {
             loadConn.Open();

@@ -102,9 +102,7 @@
     {/if}
   </div>
 
-  <div class="settings-grid">
-
-    <div class="card">
+    <div class="card"> 
       <div class="card-header">
         <h2 class="title-small">Tracking</h2>
       </div>
@@ -170,7 +168,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card card-theme">
       <div class="card-header">
         <h2 class="title-small">Theme</h2>
       </div>
@@ -317,7 +315,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card card-about">
       <div class="card-header">
         <h2 class="title-small">About</h2>
       </div>
@@ -326,30 +324,25 @@
       </div>
     </div>
 
-  </div>
 </div>
 
 <style>
   .settings {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-4);
-    max-width: 860px;
-  }
-
-  .settings-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--sp-4);
+    align-items: start;
   }
-
-  .card:last-child { grid-column: 1 / -1; }
 
   .topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    grid-column: 1 / -1;
   }
+
+  .card-theme,
+  .card-about { grid-column: 1 / -1; }
 
   .warning {
     font-size: 12px;
@@ -500,10 +493,10 @@
   }
 
   .theme-grid {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
     gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4);
-    flex-wrap: wrap;
   }
 
   .theme-swatch {
@@ -544,6 +537,6 @@
   }
 
   @media (max-width: 700px) {
-    .settings-grid { grid-template-columns: 1fr; }
+    .settings { grid-template-columns: 1fr; }
   }
 </style>

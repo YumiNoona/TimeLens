@@ -98,6 +98,16 @@ public static class DatabaseInitializer
                 idle_reason TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS goals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                goal_type TEXT NOT NULL,
+                target TEXT NOT NULL,
+                threshold_minutes INTEGER NOT NULL,
+                notify_at INTEGER DEFAULT 80,
+                enabled INTEGER DEFAULT 1,
+                last_notified TEXT
+            );
+
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_audio', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');

@@ -16,6 +16,10 @@
   let timeFormat = $state('12h');
   let pollInterval = $state(30);
   let apiReachable = $state(true);
+  let goals: { id: number; goalType: string; target: string; thresholdMinutes: number; notifyAt: number }[] = $state([]);
+  let goalTarget = $state('');
+  let goalType = $state('max_time');
+  let goalMinutes = $state(60);
 
   let { ontheme }: { ontheme?: (t: string) => void } = $props();
 
@@ -76,6 +80,11 @@
       const j = await sz.json();
       dbSizeBytes = j.sizeBytes ?? 0;
     } catch { }
+    // Load goals
+    try {
+      const gr = await fetch('http://127.0.0.1:47821/api/goals');
+      goals = await gr.json();
+    } catch { }
   }
 
   async function save(key: string, value: boolean | number) {
@@ -91,6 +100,27 @@
 
   function exportCsv() {
     window.open('http://127.0.0.1:47821/api/export?format=csv', '_blank');
+  }
+
+  async function addGoal() {
+    const t = goalTarget.trim();
+    if (!t) return;
+    try {
+      await fetch('http://127.0.0.1:47821/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goalType, target: t, thresholdMinutes: goalMinutes, notifyAt: 80 }),
+      });
+      await load();
+      goalTarget = '';
+    } catch { apiReachable = false; }
+  }
+
+  async function removeGoal(id: number) {
+    try {
+      await fetch(`http://127.0.0.1:47821/api/goals/${id}`, { method: 'DELETE' });
+      await load();
+    } catch { apiReachable = false; }
   }
 
   $effect(() => { load(); });
@@ -345,6 +375,41 @@
       </div>
     </div>
 
+    <div class="card card-goals">
+      <div class="card-header">
+        <h2 class="title-small">Goals</h2>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info" style="gap:var(--sp-2); flex-direction:row; flex-wrap:wrap; align-items:center; flex:1">
+          <input class="input goal-input" placeholder="app or category" bind:value={goalTarget} style="flex:1;min-width:120px" />
+          <select class="select" bind:value={goalType}>
+            <option value="max_time">Max time</option>
+            <option value="min_time">Min time</option>
+          </select>
+          <select class="select" bind:value={goalMinutes}>
+            {#each [15, 30, 60, 90, 120, 180, 240] as n}
+              <option value={n}>{n} min</option>
+            {/each}
+          </select>
+          <button class="add-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
+            <i class="ti ti-plus"></i>
+          </button>
+        </div>
+      </div>
+      {#if goals.length > 0}
+        {#each goals as g, i}
+          <div class="rule-row" class:last={i === goals.length - 1}>
+            <span class="goal-type-badge" class:max={g.goalType === 'max_time'}>{g.goalType === 'max_time' ? 'max' : 'min'}</span>
+            <code class="rule-pattern">{g.target}</code>
+            <span class="rule-meta">{g.thresholdMinutes}m @ {g.notifyAt}%</span>
+            <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove"><i class="ti ti-x"></i></button>
+          </div>
+        {/each}
+      {:else}
+        <div class="empty-state"><span class="empty-text">No goals set. Add one above.</span></div>
+      {/if}
+    </div>
+
 </div>
 
 <style>
@@ -556,4 +621,15 @@
   @media (max-width: 700px) {
     .settings { grid-template-columns: 1fr; }
   }
+
+  .card-goals { grid-column: 1 / -1; }
+
+  .goal-input { height: 36px; }
+
+  .goal-type-badge {
+    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--shape-sm);
+    background: color-mix(in srgb, var(--md-error) 15%, transparent);
+    color: var(--md-error); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;
+  }
+  .goal-type-badge.max { background: color-mix(in srgb, var(--md-primary) 15%, transparent); color: var(--md-primary); }
 </style>

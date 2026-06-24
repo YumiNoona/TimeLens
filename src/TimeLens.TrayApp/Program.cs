@@ -222,6 +222,69 @@ internal static class Program
             }
         }, null, 5_000, 5_000);
 
+        var goalTimer = new Timer(_ =>
+        {
+            try
+            {
+                var today = DateTime.UtcNow.Date;
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                conn.Open();
+
+                // Query today's active time per app and category
+                using var timeCmd = conn.CreateCommand();
+                timeCmd.CommandText = """
+                    SELECT COALESCE(category,''), exe_name, SUM((julianday(COALESCE(end_time,$now)) - julianday(start_time)) * 86400)
+                    FROM app_events
+                    WHERE start_time >= $t0 AND session_state = 'active'
+                    GROUP BY 1, 2
+                    """;
+                timeCmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+                timeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                var times = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var catTimes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                using var tr = timeCmd.ExecuteReader();
+                while (tr.Read())
+                {
+                    var cat = tr.GetString(0);
+                    var exe = tr.GetString(1);
+                    var secs = tr.IsDBNull(2) ? 0 : (int)Math.Round(tr.GetDouble(2));
+                    var mins = secs / 60;
+                    if (!string.IsNullOrEmpty(exe)) times[exe] = times.GetValueOrDefault(exe) + mins;
+                    if (!string.IsNullOrEmpty(cat)) catTimes[cat] = catTimes.GetValueOrDefault(cat) + mins;
+                }
+
+                // Check each active goal
+                using var goalCmd = conn.CreateCommand();
+                goalCmd.CommandText = "SELECT id, goal_type, target, threshold_minutes, notify_at, COALESCE(last_notified,'') FROM goals WHERE enabled = 1";
+                using var gr = goalCmd.ExecuteReader();
+                var now = DateTime.UtcNow;
+                while (gr.Read())
+                {
+                    var id = gr.GetInt32(0);
+                    var goalType = gr.GetString(1);
+                    var target = gr.GetString(2);
+                    var threshold = gr.GetInt32(3);
+                    var notifyAt = gr.GetInt32(4);
+                    var lastNotified = gr.GetString(6);
+                    var notifyPct = notifyAt > 0 ? notifyAt : 80;
+                    var limit = threshold * notifyPct / 100;
+                    var current = goalType == "max_time"
+                        ? (catTimes.GetValueOrDefault(target) > 0 ? catTimes.GetValueOrDefault(target) : times.GetValueOrDefault(target))
+                        : catTimes.GetValueOrDefault(target);
+                    if (current < limit) continue;
+                    if (!string.IsNullOrEmpty(lastNotified) && DateTime.TryParse(lastNotified, null, System.Globalization.DateTimeStyles.RoundtripKind, out var ln) && (now - ln).TotalMinutes < 5)
+                        continue;
+                    tray?.ShowBalloon("Goal Alert", $"'{target}' has reached {current}/{threshold} min today", false);
+                    using var upd = conn.CreateCommand();
+                    upd.CommandText = "UPDATE goals SET last_notified = $now WHERE id = $id";
+                    upd.Parameters.AddWithValue("$now", now.ToString("o"));
+                    upd.Parameters.AddWithValue("$id", id);
+                    upd.ExecuteNonQuery();
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             var cat = classifier.Classify(exe, title);

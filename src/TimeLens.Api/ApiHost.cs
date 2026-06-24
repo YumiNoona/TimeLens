@@ -353,6 +353,73 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapGet("/api/goals", async (HttpContext ctx) =>
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT id, goal_type, target, threshold_minutes, notify_at, enabled, COALESCE(last_notified,'') FROM goals ORDER BY id";
+            using var r = await cmd.ExecuteReaderAsync();
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            while (await r.ReadAsync())
+            {
+                arr.WriteStartObject();
+                arr.WriteNumber("id", r.GetInt32(0));
+                arr.WriteString("goalType", r.GetString(1));
+                arr.WriteString("target", r.GetString(2));
+                arr.WriteNumber("thresholdMinutes", r.GetInt32(3));
+                arr.WriteNumber("notifyAt", r.GetInt32(4));
+                arr.WriteBoolean("enabled", r.GetInt32(5) != 0);
+                arr.WriteString("lastNotified", r.GetString(6));
+                arr.WriteEndObject();
+            }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapPost("/api/goals", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var r = doc.RootElement;
+            var goalType = r.TryGetProperty("goalType", out var gt) ? gt.GetString() ?? "max_time" : "max_time";
+            var target = r.TryGetProperty("target", out var tg) ? tg.GetString() ?? "" : "";
+            var minutes = r.TryGetProperty("thresholdMinutes", out var tm) && tm.TryGetInt32(out var m) ? m : 60;
+            var notifyAt = r.TryGetProperty("notifyAt", out var na) && na.TryGetInt32(out var n) ? n : 80;
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO goals (goal_type, target, threshold_minutes, notify_at) VALUES ($gt, $tgt, $min, $na)";
+            cmd.Parameters.AddWithValue("$gt", goalType);
+            cmd.Parameters.AddWithValue("$tgt", target);
+            cmd.Parameters.AddWithValue("$min", minutes);
+            cmd.Parameters.AddWithValue("$na", notifyAt);
+            await cmd.ExecuteNonQueryAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapDelete("/api/goals/{id}", async (HttpContext ctx) =>
+        {
+            if (!int.TryParse(ctx.Request.RouteValues["id"] as string, out var id))
+            { ctx.Response.StatusCode = 400; return; }
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM goals WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            await cmd.ExecuteNonQueryAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         app.MapGet("/api/builtin-rules", async (HttpContext ctx) =>
         {
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);

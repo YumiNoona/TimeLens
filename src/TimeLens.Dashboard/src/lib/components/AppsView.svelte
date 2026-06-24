@@ -72,7 +72,7 @@
           <div class="tr" role="row" class:alt={i % 2 === 0}>
             <span class="td-name" role="cell">
               <i class="ti ti-apps" aria-hidden="true"></i>
-              {row.exeName}
+              {row.exeName || 'System / Unknown'}
             </span>
             <span class="td-num" role="cell">{row.keystrokes.toLocaleString()}</span>
             <span class="td-num" role="cell">{row.clicks.toLocaleString()}</span>

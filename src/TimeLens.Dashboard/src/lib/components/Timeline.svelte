@@ -28,14 +28,22 @@
     {/each}
   </div>
 
-  <div class="tl-track" role="img" aria-label="Activity timeline">
-    {#each blocks as block}
-      <div
-        class="tl-block"
-        style="flex: {block.endHour - block.startHour} 0 0; background: {colorForCategory(block.type)}"
-      ></div>
-    {/each}
-  </div>
+  {#if blocks.length === 0}
+    <div class="tl-empty">
+      <i class="ti ti-clock-hour-4" aria-hidden="true"></i>
+      <span>No activity recorded yet</span>
+      <span class="tl-empty-hint">TimeLens tracks your foreground apps automatically</span>
+    </div>
+  {:else}
+    <div class="tl-track" role="img" aria-label="Activity timeline">
+      {#each blocks as block}
+        <div
+          class="tl-block"
+          style="flex: {block.endHour - block.startHour} 0 0; background: {colorForCategory(block.type)}"
+        ></div>
+      {/each}
+    </div>
+  {/if}
 
   <div class="tl-legend" role="list">
     {#each legendTypes as type}
@@ -89,6 +97,19 @@
   }
 
   .tl-block { height: 100%; }
+
+  .tl-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-6) 0;
+    gap: var(--sp-2);
+    color: var(--md-on-surf-dim);
+  }
+  .tl-empty i { font-size: 32px; color: var(--md-on-surf-dim); }
+  .tl-empty span { font-size: 13px; }
+  .tl-empty-hint { font-size: 11px !important; color: var(--md-on-surf-dim); opacity: 0.6; }
 
   .tl-legend {
     display: flex;

@@ -112,23 +112,27 @@
             chip={$data.summary.topCategoryTime + ' total'}
             chipClass="chip-neu"
           />
+          <StatCard
+            label="Keystrokes"
+            value={$data.summary.totalKeystrokes.toLocaleString()}
+            chip="today"
+            chipClass="chip-neu"
+          />
+          <StatCard
+            label="Clicks"
+            value={$data.summary.totalClicks.toLocaleString()}
+            chip="today"
+            chipClass="chip-neu"
+          />
         </div>
 
         <Timeline blocks={$data.timeline} />
 
         <div class="bottom-grid">
           <TopApps apps={$data.topApps} />
+          <CategoryBreakdown categories={$data.categories} />
           <CalendarHeatmap entries={$data.heatmap} />
         </div>
-
-        <CategoryBreakdown categories={$data.categories} />
-
-        {#if $data.summary.totalKeystrokes > 0 || $data.summary.totalClicks > 0}
-          <div class="input-chips">
-            <span class="input-chip"><i class="ti ti-keyboard" aria-hidden="true"></i> {$data.summary.totalKeystrokes.toLocaleString()} keystrokes</span>
-            <span class="input-chip"><i class="ti ti-mouse" aria-hidden="true"></i> {$data.summary.totalClicks.toLocaleString()} clicks</span>
-          </div>
-        {/if}
 
         <div class="bottom-grid">
           <TopSites sites={browserSites} />
@@ -155,6 +159,13 @@
 
     {:else if view === 'history' && $data}
       <HistoryView data={$data} />
+    {:else if view === 'browser'}
+      <div class="browser-view">
+        <div class="topbar">
+          <h1 class="headline-small">Browser</h1>
+        </div>
+        <TopSites sites={browserSites} />
+      </div>
     {:else if view === 'apps' && $data}
       <AppsView data={$data} />
     {:else if view === 'timeline' && $data}
@@ -216,13 +227,13 @@
 
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: var(--sp-3);
   }
 
   .bottom-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: var(--sp-4);
   }
 
@@ -247,26 +258,6 @@
   .placeholder-view i {
     font-size: 48px;
   }
-
-  .input-chips {
-    display: flex;
-    gap: var(--sp-3);
-  }
-
-  .input-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
-    background: var(--md-surface-1);
-    border: 1px solid var(--md-outline);
-    border-radius: var(--shape-sm);
-    padding: var(--sp-1) var(--sp-3);
-    font-size: 12px;
-    font-family: var(--font-mono);
-    color: var(--md-on-surf-var);
-  }
-
-  .input-chip i { font-size: 14px; color: var(--md-on-surf-dim); }
 
   .audio-card {
     background: var(--md-surface-1);

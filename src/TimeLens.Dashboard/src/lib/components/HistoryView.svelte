@@ -19,14 +19,19 @@
   });
 
   let weekDays = $derived.by(() => {
+    const heatmapLookup = new Map(initial.heatmap.map(h => [h.date, h.value]));
+    const maxVal = Math.max(...initial.heatmap.map(h => h.value), 1);
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const val = heatmapLookup.get(dateStr) ?? 0;
       days.push({
-        date: d.toISOString().slice(0, 10),
+        date: dateStr,
         label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
         isToday: i === 0,
+        level: val > 0 ? Math.ceil(val / maxVal * 3) : 0,
       });
     }
     return days;
@@ -78,6 +83,7 @@
         aria-selected={selectedDate === day.date}
       >
         {day.label}
+        <span class="day-dot" class:l1={day.level >= 1} class:l2={day.level >= 2} class:l3={day.level >= 3}></span>
       </button>
     {/each}
   </div>
@@ -192,6 +198,9 @@
   .topbar { display: flex; align-items: center; justify-content: space-between; }
   .week-nav { display: flex; gap: var(--sp-2); overflow-x: auto; padding-bottom: var(--sp-1); }
   .day-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     padding: var(--sp-2) var(--sp-3);
     border-radius: 999px;
     border: 1px solid var(--md-outline);
@@ -213,6 +222,17 @@
     font-weight: 600;
     box-shadow: 0 0 0 2px rgba(200, 232, 106, 0.3);
   }
+  .day-dot {
+    display: block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--md-outline);
+    margin-top: 4px;
+    transition: background 0.15s;
+  }
+  .day-dot.l1 { background: var(--md-surface-3); }
+  .day-dot.l2 { background: var(--md-secondary); }
+  .day-dot.l3 { background: var(--md-primary); }
   .summary-row { display: flex; gap: var(--sp-3); }
   .stat-box {
     flex: 1;

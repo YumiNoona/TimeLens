@@ -340,7 +340,7 @@ public sealed class AnalyticsService
                    COALESCE(SUM(keystroke_count), 0) AS keys,
                    COALESCE(SUM(click_count), 0) AS clicks
             FROM input_activity
-            WHERE timestamp >= $today AND timestamp < $tomorrow
+            WHERE timestamp >= $today AND timestamp < $tomorrow AND exe_name IS NOT NULL
             GROUP BY exe_name ORDER BY keys DESC
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));

@@ -1,16 +1,11 @@
 <script lang="ts">
   import type { AppEntry } from '../types';
   import { colorForApp } from '../colors';
+  import { fmtTime } from '../utils';
 
   let { apps }: { apps: AppEntry[] } = $props();
 
   const maxMins = $derived(apps.length > 0 ? apps[0].minutes : 1);
-
-  function fmtTime(mins: number): string {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return (h > 0 ? h + 'h ' : '') + m + 'm';
-  }
 </script>
 
 <div class="card">

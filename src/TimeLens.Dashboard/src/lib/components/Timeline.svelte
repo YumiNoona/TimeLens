@@ -1,17 +1,13 @@
 <script lang="ts">
   import type { TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
+  import { fmtHourShort, fmtDuration } from '../utils';
 
   let { blocks }: { blocks: TimelineBlock[] } = $props();
 
   const HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
-  function fmtHour(h: number): string {
-    if (h === 0 || h === 24) return '12a';
-    if (h < 12) return h + 'a';
-    if (h === 12) return '12p';
-    return (h - 12) + 'p';
-  }
+  function fmtHour(h: number): string { return fmtHourShort(h); }
 
   const filled = $derived.by(() => {
     if (blocks.length === 0) return [];
@@ -36,13 +32,6 @@
   const showNow = blocks.length > 0 && nowHour > 0 && nowHour < 24;
 
   const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
-
-  function fmtDuration(secs: number): string {
-    const m = Math.floor(secs / 60);
-    if (m < 60) return m + 'm';
-    const h = Math.floor(m / 60);
-    return h + 'h ' + (m % 60) + 'm';
-  }
 </script>
 
 <div class="card">

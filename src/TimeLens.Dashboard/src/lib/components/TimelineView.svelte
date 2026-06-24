@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
+  import { fmtHourFull, fmtDuration } from '../utils';
 
   let { data, timelineGrouped = false }: { data: DashboardData; timelineGrouped?: boolean } = $props();
 
@@ -106,22 +107,7 @@
     return result;
   });
 
-  function fmtHour(n: number): string {
-    const h = Math.floor(n);
-    const m = Math.floor((n % 1) * 60);
-    const mm = String(Math.min(m, 59)).padStart(2, '0');
-    if (h === 0) return `12:${mm}am`;
-    if (h < 12) return `${h}:${mm}am`;
-    if (h === 12) return `12:${mm}pm`;
-    return `${h - 12}:${mm}pm`;
-  }
-
-  function fmtDuration(secs: number): string {
-    const m = Math.floor(secs / 60);
-    if (m < 60) return m + 'm';
-    const h = Math.floor(m / 60);
-    return h + 'h ' + (m % 60) + 'm';
-  }
+  function fmtHour(n: number): string { return fmtHourFull(n); }
 
   function toggleType(t: string) {
     if (selectedTypes.includes(t)) {

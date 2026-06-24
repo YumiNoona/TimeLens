@@ -12,6 +12,7 @@
   import TimelineView from './lib/components/TimelineView.svelte';
   import RulesView from './lib/components/RulesView.svelte';
   import SettingsView from './lib/components/SettingsView.svelte';
+  import BlockView from './lib/components/BlockView.svelte';
   import TopSites from './lib/components/TopSites.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { data, loading, error, live, refresh } from './lib/stores/activity';
@@ -230,6 +231,8 @@
       <TimelineView data={$data} timelineGrouped={timelineGrouped} />
     {:else if view === 'rules'}
       <RulesView />
+    {:else if view === 'block'}
+      <BlockView />
     {:else if view === 'settings'}
       <SettingsView ontheme={applyTheme} />
     {:else if !$data}

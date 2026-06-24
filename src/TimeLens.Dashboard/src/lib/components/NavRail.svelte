@@ -10,6 +10,7 @@
   ];
 
   const bottom = [
+    { id: 'block', icon: 'ti-shield', label: 'Block' },
     { id: 'rules', icon: 'ti-tag', label: 'Rules' },
     { id: 'settings', icon: 'ti-settings-2', label: 'Settings' },
   ];

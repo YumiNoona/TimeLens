@@ -12,8 +12,6 @@
   let breakReminder = $state(false);
   let breakInterval = $state(50);
   let focusMode = $state(false);
-  let focusItems = $state<string[]>([]);
-  let newFocusItem = $state('');
   let apiReachable = $state(true);
 
   let { ontheme }: { ontheme?: (t: string) => void } = $props();
@@ -58,7 +56,6 @@
       breakReminder = s.breakReminder ?? false;
       breakInterval = s.breakIntervalMinutes ?? 50;
       focusMode = s.focusMode ?? false;
-      try { focusItems = JSON.parse(s.focusBlocklist || '[]'); } catch { focusItems = []; }
       apiReachable = true;
     } catch {
       if (attempt < 3) {
@@ -88,31 +85,6 @@
 
   function exportCsv() {
     window.open('http://127.0.0.1:47821/api/export?format=csv', '_blank');
-  }
-
-  async function addFocusItem() {
-    const item = newFocusItem.trim().toLowerCase();
-    if (!item) return;
-    const next = [...focusItems, item];
-    focusItems = next;
-    newFocusItem = '';
-    await saveFocusList(next);
-  }
-
-  async function removeFocusItem(i: number) {
-    const next = focusItems.filter((_, idx) => idx !== i);
-    focusItems = next;
-    await saveFocusList(next);
-  }
-
-  async function saveFocusList(list: string[]) {
-    try {
-      await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focusBlocklist: JSON.stringify(list) }),
-      });
-    } catch { apiReachable = false; }
   }
 
   $effect(() => { load(); });
@@ -265,33 +237,16 @@
       <div class="card-header">
         <h2 class="title-small">Focus Mode</h2>
       </div>
-      <label class="setting-row">
+      <label class="setting-row last">
         <div class="setting-info">
           <span class="setting-label">Block distracting apps</span>
-          <span class="setting-desc">Get a reminder when you open blocked apps or sites</span>
+          <span class="setting-desc">Manage your blocklist in the Block tab</span>
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={focusMode}
             onchange={() => save('focusMode', focusMode)} />
         </div>
       </label>
-      <div class="setting-row">
-        <div class="setting-info" style="flex:1">
-          <div class="focus-input-row">
-            <input class="focus-input" placeholder="exe or domain, e.g. youtube.com" bind:value={newFocusItem}
-              onkeydown={(e) => { if (e.key === 'Enter') addFocusItem(); }} />
-            <button class="focus-add-btn" onclick={addFocusItem} disabled={!newFocusItem.trim()}>
-              <i class="ti ti-plus"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-      {#each focusItems as item, i}
-        <div class="setting-row" class:last={i === focusItems.length - 1}>
-          <code class="focus-badge">{item}</code>
-          <button class="del-btn" onclick={() => removeFocusItem(i)}><i class="ti ti-x"></i></button>
-        </div>
-      {/each}
     </div>
 
     <div class="card">

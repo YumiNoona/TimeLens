@@ -166,6 +166,18 @@ internal static class Program
 
         var idleTimer = new Timer(_ =>
         {
+            // Focus mode — browser domain block check
+            var blocked = LiveStatusStore.PendingFocusBlock;
+            if (blocked is not null && LiveStatusStore.Settings.FocusMode)
+            {
+                LiveStatusStore.PendingFocusBlock = null;
+                if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 5)
+                {
+                    lastFocusToast = DateTime.UtcNow;
+                    tray!.ShowBalloon("Focus Mode", $"'{blocked}' is blocked — get back to work!", true);
+                }
+            }
+
             var curState = idleMonitor.GetState();
             var idleSecs = idleMonitor.IdleSeconds();
             LiveStatusStore.IsIdle = curState != "active";

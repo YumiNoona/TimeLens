@@ -339,6 +339,34 @@ public static class ApiHost
             cmd.Parameters.AddWithValue("$browser", evt.Browser);
             await cmd.ExecuteNonQueryAsync();
 
+            // Focus mode check — blocklist match against domain or URL
+            if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
+            {
+                var blocklist = LiveStatusStore.Settings.FocusBlocklist;
+                if (!string.IsNullOrEmpty(blocklist) && blocklist != "[]")
+                {
+                    try
+                    {
+                        var items = System.Text.Json.JsonSerializer.Deserialize<string[]>(blocklist);
+                        if (items is not null)
+                        {
+                            var host = evt.Domain.ToLowerInvariant();
+                            var url = (evt.Url ?? "").ToLowerInvariant();
+                            foreach (var item in items)
+                            {
+                                var pattern = item.ToLowerInvariant();
+                                if (host.Contains(pattern) || host.EndsWith("." + pattern) || url.Contains(pattern))
+                                {
+                                    LiveStatusStore.PendingFocusBlock = evt.Domain;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");

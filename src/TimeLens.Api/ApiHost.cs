@@ -207,10 +207,10 @@ public static class ApiHost
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusMode = value == "true" };
                         break;
                     case "focusBlocklist":
-                        LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = value };
+                        // Handled by Program.cs saveSetting callback
                         break;
                     case "blockAction":
-                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockAction = value };
+                        // Handled by Program.cs saveSetting callback
                         break;
                     case "timeFormat":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { TimeFormat = value };

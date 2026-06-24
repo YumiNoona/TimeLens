@@ -357,8 +357,16 @@ internal static class Program
                 settingsSvc.Save(k, v);
                 if (k == "auto_start")
                     AutoStartManager.SetAutoStart(v == "true");
-                if (k == "focus_blocklist" || k == "block_action")
+                if (k == "focus_blocklist")
+                {
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = v };
                     ReloadBlocklist();
+                }
+                if (k == "block_action")
+                {
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockAction = v };
+                    ReloadBlocklist();
+                }
             },
             setTrackAudio: ApplyTrackAudio,
             setTrackInput: ApplyTrackInput,

@@ -178,12 +178,12 @@
 
     <label class="setting-row last">
       <div class="setting-info">
-        <span class="setting-label">Timeline Mode</span>
-        <span class="setting-desc">Flat shows every event. Grouped collapses same-category runs.</span>
+        <span class="setting-label">Grouped Timeline</span>
+        <span class="setting-desc">Collapse same-category runs. Turn off to show every event flat.</span>
       </div>
       <div class="control">
-        <input type="checkbox" class="toggle" checked={!timelineGrouped}
-          onchange={() => { timelineGrouped = !timelineGrouped; save('timelineGrouped', timelineGrouped); }} />
+        <input type="checkbox" class="toggle" checked={timelineGrouped}
+          onchange={() => save('timelineGrouped', timelineGrouped)} />
         {#if savedKey === 'timelineGrouped'}<i class="ti ti-check saved-icon"></i>{/if}
       </div>
     </label>

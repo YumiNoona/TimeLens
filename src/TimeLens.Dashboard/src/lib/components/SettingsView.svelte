@@ -91,8 +91,8 @@
     }
   }
 
-  function exportCsv() {
-    window.open('http://127.0.0.1:47821/api/export?format=csv', '_blank');
+  function exportCsv(range: string = 'today') {
+    window.open(`http://127.0.0.1:47821/api/export?format=csv&range=${range}`, '_blank');
   }
 
   async function addGoal() {
@@ -329,11 +329,17 @@
       <div class="setting-row last">
         <div class="setting-info">
           <span class="setting-label">Export</span>
-          <span class="setting-desc">Download today's activity as CSV</span>
+          <span class="setting-desc">Download activity data as CSV</span>
         </div>
-        <div class="control">
-          <button class="export-btn" onclick={exportCsv}>
-            <i class="ti ti-download" aria-hidden="true"></i> CSV
+        <div class="control" style="gap:var(--sp-2)">
+          <button class="export-btn" onclick={() => exportCsv('today')}>
+            <i class="ti ti-download" aria-hidden="true"></i> Today
+          </button>
+          <button class="export-btn" onclick={() => exportCsv('30days')}>
+            <i class="ti ti-download" aria-hidden="true"></i> 30 days
+          </button>
+          <button class="export-btn" onclick={() => { let d = prompt('Enter date (YYYY-MM-DD):'); if (d) exportCsv(d); }}>
+            <i class="ti ti-calendar" aria-hidden="true"></i> Pick
           </button>
         </div>
       </div>
@@ -359,15 +365,6 @@
       </div>
     </div>
 
-    <div class="card card-about">
-      <div class="card-header">
-        <h2 class="title-small">About</h2>
-      </div>
-      <div class="about-body">
-        <p class="about-text">TimeLens is a privacy-first PC activity tracker. All data is stored locally in a SQLite database. No data is sent to external servers. The built-in dashboard runs on a local Kestrel server bound to 127.0.0.1.</p>
-      </div>
-    </div>
-
     <div class="card card-goals">
       <div class="card-header">
         <h2 class="title-small">Goals</h2>
@@ -389,7 +386,7 @@
           </div>
         {/each}
       {:else}
-        <div class="empty-state"><span class="empty-text">No goals set. Add one below.</span></div>
+        <div class="empty-state"><span class="empty-text">No goals yet. Set a time limit for any app or category.</span></div>
       {/if}
       <div class="setting-row last">
         <div class="setting-info">
@@ -412,6 +409,15 @@
             <i class="ti ti-plus"></i> Add
           </button>
         </div>
+      </div>
+    </div>
+
+    <div class="card card-about">
+      <div class="card-header">
+        <h2 class="title-small">About</h2>
+      </div>
+      <div class="about-body">
+        <p class="about-text">TimeLens is a privacy-first PC activity tracker. All data is stored locally in a SQLite database. No data is sent to external servers. The built-in dashboard runs on a local Kestrel server bound to 127.0.0.1.</p>
       </div>
     </div>
 

@@ -5,7 +5,8 @@
 #>
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent $PSCommandPath
+$root = Split-Path -Parent $PSCommandPath 
+$root = Split-Path -Parent $root  # scripts/ is one level down from root now
 $appDir = "$env:LOCALAPPDATA\TimeLens"
 $exePath = "$appDir\TimeLens.TrayApp.exe"
 

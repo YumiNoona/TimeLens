@@ -51,9 +51,10 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 **Prerequisites:** .NET 9 SDK · Node.js 18+
 
 ```powershell
-.\scripts\publish.ps1           # build everything
+.\scripts\publish.ps1           # build everything + deploy to root
 .\scripts\publish.ps1 -Launch   # build + launch
 .\scripts\publish.ps1 -Installer # build + Inno Setup installer
+.\scripts\install.ps1           # one-click install to %LOCALAPPDATA%
 ```
 
 ### Browser extensions
@@ -91,11 +92,11 @@ TimeLens/
 │       ├── chrome/                 # MV3 (Chrome, Edge, Brave, Arc)
 │       └── firefox/                # MV2 (Firefox, Zen)
 ├── scripts/
-│   └── publish.ps1                 # Developer build script
-├── installer/
-│   └── TimeLens.iss                # Inno Setup installer script
+│   ├── publish.ps1                 # Developer build + root deploy
+│   ├── install.ps1                 # One-click install
+│   └── TimeLens.iss                # Inno Setup installer
 └── .github/workflows/
-    └── release.yml                 # CI/CD — builds portable zip + installer + extensions
+    └── release.yml                 # CI/CD
 ```
 
 ---

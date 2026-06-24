@@ -100,6 +100,14 @@ if (Test-Path $distDir) {
     Write-Host "  Dashboard dist/ not found — exe will use embedded resources" -ForegroundColor DarkGray
 }
 
+# --- Deploy to root (double-click ready) ---
+& $header "=== Deploying to root ==="
+Remove-Item -Force "$root\*.dll", "$root\*.json", "$root\*.pdb", "$root\*.ico", "$root\*.csv" -ErrorAction SilentlyContinue
+if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
+Copy-Item -Force "$publishDir\*" "$root\" -Exclude "*.pdb","*.dll" -ErrorAction SilentlyContinue
+Copy-Item -Recurse -Force "$distDir" "$root\dashboard"
+& $ok "Root exe + dashboard deployed"
+
 # --- Summary ---
 & $header "=== Build summary ==="
 $exeItem = Get-Item $exePath -ErrorAction SilentlyContinue
@@ -121,7 +129,7 @@ Write-Host "  Output:      $publishDir" -ForegroundColor White
 if ($Installer) {
     & $header "=== Building installer ==="
     $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-    $issFile = "$root\installer\TimeLens.iss"
+    $issFile = "$root\scripts\TimeLens.iss"
 
     if (-not (Test-Path $iscc)) {
         & $fail "Inno Setup not found at: $iscc"
@@ -131,7 +139,7 @@ if ($Installer) {
         & $fail "Installer script not found: $issFile"
     } else {
         try {
-            $version = if ($exeItem) { $exeItem.VersionInfo.FileVersion ?? "0.0.0" } else { "0.0.0" }
+            $version = if ($exeItem -and $exeItem.VersionInfo.FileVersion) { $exeItem.VersionInfo.FileVersion } else { "0.0.0" }
             & $iscc $issFile /DAppVersion=$version
             $setupExe = "$root\dist\TimeLens-Setup-$version.exe"
             if (Test-Path $setupExe) {

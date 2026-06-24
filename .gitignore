@@ -52,6 +52,10 @@ Thumbs.db
 # Build artifacts (root)
 /TimeLens-portable-*.zip
 /TimeLens-extension-*.zip
+/publish-test/
+
+# Public asset mirror (source is Dashboard/public/)
+src/TimeLens.TrayApp/Public/
 
 # Temp
 tools/genicon/bin/

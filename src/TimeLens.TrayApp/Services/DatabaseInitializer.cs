@@ -98,6 +98,14 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "app_events", "idle_reason", "TEXT");
         MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
 
+        // Fix any broken rows where end_time < start_time (timezone/timer bug)
+        using var fixNeg = conn.CreateCommand();
+        fixNeg.CommandText = """
+            UPDATE app_events SET end_time = start_time
+            WHERE end_time IS NOT NULL AND end_time < start_time
+            """;
+        fixNeg.ExecuteNonQuery();
+
         // Backfill session_state for rows that still have NULL
         using var backfill = conn.CreateCommand();
         backfill.CommandText = """

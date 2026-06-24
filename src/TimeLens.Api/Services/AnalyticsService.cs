@@ -226,6 +226,8 @@ public sealed class AnalyticsService
 
             var startHour = localStart.TimeOfDay.TotalHours;
             var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
+
+            if (endHour <= startHour) continue; // skip broken rows with negative duration
             var durationSecs = (int)(end - start).TotalSeconds;
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;

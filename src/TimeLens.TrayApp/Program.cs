@@ -54,20 +54,6 @@ internal static class Program
 
         DatabaseInitializer.Initialize(dbPath);
 
-        // One-time migration: recategorize sessions that were classified before system rules existed
-        using (var migrateConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
-        {
-            migrateConn.Open();
-            using var mc = migrateConn.CreateCommand();
-            mc.CommandText = """
-                UPDATE app_events SET category = 'system'
-                WHERE category = 'other' AND exe_name IN (
-                    'TimeLens.TrayApp.exe', 'explorer.exe', 'ShellExperienceHost.exe'
-                )
-                """;
-            mc.ExecuteNonQuery();
-        }
-
         var settingsSvc = new SettingsService(dbPath);
         var settings = settingsSvc.Load();
         RuntimeConfig.Settings = settings;

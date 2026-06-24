@@ -67,16 +67,18 @@ public sealed class AnalyticsService
         cmd.CommandText = """
             SELECT
                 COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
-                    (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS active_secs,
                 COALESCE(SUM(CASE WHEN session_state IN ('idle', 'away') THEN
-                    (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS idle_secs
             FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        var now = DateTime.UtcNow.ToString("o");
+        cmd.Parameters.AddWithValue("$now", now);
 
         int activeSecs = 0, idleSecs = 0;
         using (var r = await cmd.ExecuteReaderAsync())
@@ -91,7 +93,7 @@ public sealed class AnalyticsService
         // Sum active time in productive categories for focus score
         cmd.CommandText = """
             SELECT COALESCE(SUM(
-                (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND session_state = 'active'
@@ -111,7 +113,7 @@ public sealed class AnalyticsService
         {
             cmd.CommandText = """
                 SELECT COALESCE(SUM(
-                    (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ), 0) FROM app_events
                 WHERE start_time >= $yday AND start_time < $today AND session_state = 'active'
                 """;
@@ -120,7 +122,7 @@ public sealed class AnalyticsService
 
         cmd.CommandText = """
             SELECT category, COALESCE(SUM(
-                (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow AND session_state = 'active' AND category != 'system'
             GROUP BY category ORDER BY secs DESC LIMIT 1
@@ -236,7 +238,7 @@ public sealed class AnalyticsService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT exe_name, COALESCE(SUM(
-                (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND session_state = 'active' AND COALESCE(category, '') != 'system'
@@ -244,6 +246,7 @@ public sealed class AnalyticsService
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
         var apps = new List<TopAppDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -298,7 +301,7 @@ public sealed class AnalyticsService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT COALESCE(category, 'other') AS cat, COALESCE(SUM(
-                (julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND session_state = 'active' AND COALESCE(category, '') != 'system'
@@ -306,6 +309,7 @@ public sealed class AnalyticsService
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
         var cats = new List<CategoryEntryDto>();
         double totalSecs = 0;

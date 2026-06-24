@@ -42,4 +42,7 @@ public record AppSettings
 
     [JsonPropertyName("focusBlocklist")]
     public string FocusBlocklist { get; init; } = "[]";
+
+    [JsonPropertyName("blockAction")]
+    public string BlockAction { get; init; } = "notify";
 }

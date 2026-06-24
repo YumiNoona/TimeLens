@@ -91,7 +91,7 @@ internal static class Program
             LiveStatusStore.SystemState = state;
         }
 
-        // Focus mode — blocklist of exe names
+        // Blocklist enforcement
         var focusBlocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -104,6 +104,87 @@ internal static class Program
         DateTime lastFocusToast = DateTime.MinValue;
         NativeTrayIcon? tray = null;
 
+        // Reload the blocklist when settings change via API
+        void ReloadBlocklist()
+        {
+            focusBlocked.Clear();
+            try
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<string[]>(LiveStatusStore.Settings.FocusBlocklist);
+                if (list is not null)
+                    foreach (var item in list)
+                        focusBlocked.Add(item);
+            }
+            catch { }
+        }
+
+        string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
+
+        void EnforceBlock(string exeName)
+        {
+            if (!LiveStatusStore.Settings.FocusMode) return;
+
+            var action = GetBlockAction();
+            if (action == "notify") return; // only toast (handled in foreground changed)
+
+            try
+            {
+                var exeOnly = exeName.Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
+                var procs = System.Diagnostics.Process.GetProcessesByName(exeOnly);
+
+                foreach (var proc in procs)
+                {
+                    try
+                    {
+                        if (action == "kill" || action == "strict")
+                        {
+                            proc.Kill(entireProcessTree: true);
+                            // Log the block action
+                            try
+                            {
+                                using var logConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                                logConn.Open();
+                                using var logCmd = logConn.CreateCommand();
+                                logCmd.CommandText = "INSERT INTO block_log (blocked_exe, blocked_action, timestamp) VALUES ($exe, $action, $ts)";
+                                logCmd.Parameters.AddWithValue("$exe", exeName);
+                                logCmd.Parameters.AddWithValue("$action", action);
+                                logCmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.ToString("o"));
+                                logCmd.ExecuteNonQuery();
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+
+                if (action == "hide" || action == "strict")
+                {
+                    // Minimize any visible windows of this process
+                    var windows = Win32.FindWindowsForProcess(exeName);
+                    foreach (var hwnd in windows)
+                    {
+                        Win32.ShowWindow(hwnd, Win32.SW_MINIMIZE);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Timer to periodically enforce blocks on running processes
+        var blockTimer = new Timer(_ =>
+        {
+            if (!LiveStatusStore.Settings.FocusMode) return;
+            var action = GetBlockAction();
+            if (action == "notify") return;
+
+            foreach (var blocked in focusBlocked)
+            {
+                // Only enforce exe blocks (domain blocks handled via browser extension notification)
+                if (!blocked.Contains(".exe")) continue;
+                EnforceBlock(blocked);
+            }
+        }, null, 5_000, 5_000);
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             var cat = classifier.Classify(exe, title);
@@ -114,14 +195,18 @@ internal static class Program
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
             LiveStatusStore.SystemState = state;
 
-            // Focus mode — blocklist check
+            // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && state == "active")
             {
                 var blocked = focusBlocked.Contains(exe);
-                if (blocked && (DateTime.UtcNow - lastFocusToast).TotalMinutes > 5)
+                if (blocked)
                 {
-                    lastFocusToast = DateTime.UtcNow;
-                    tray!.ShowBalloon("Focus Mode", $"'{exe}' is blocked — get back to work!", true);
+                    EnforceBlock(exe);
+                    if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
+                    {
+                        lastFocusToast = DateTime.UtcNow;
+                        tray!.ShowBalloon("Focus Mode", $"'{exe}' is blocked — get back to work!", true);
+                    }
                 }
             }
         };
@@ -235,11 +320,14 @@ internal static class Program
                 settingsSvc.Save(k, v);
                 if (k == "auto_start")
                     AutoStartManager.SetAutoStart(v == "true");
+                if (k == "focus_blocklist" || k == "block_action")
+                    ReloadBlocklist();
             },
             setTrackAudio: ApplyTrackAudio,
             setTrackInput: ApplyTrackInput,
             upsertRule: UpsertRule,
-            deleteRule: DeleteRule);
+            deleteRule: DeleteRule,
+            enforceBlock: EnforceBlock);
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {

@@ -30,7 +30,8 @@ public static class ApiHost
         Action<bool>? setTrackAudio = null,
         Action<bool>? setTrackInput = null,
         Action<string, string>? upsertRule = null,
-        Action<string>? deleteRule = null)
+        Action<string>? deleteRule = null,
+        Action<string>? enforceBlock = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -141,6 +142,7 @@ public static class ApiHost
                     "breakIntervalMinutes" => "break_interval_minutes",
                     "focusMode" => "focus_mode",
                     "focusBlocklist" => "focus_blocklist",
+                    "blockAction" => "block_action",
                     _ => prop.Name
                 }, value);
 
@@ -200,6 +202,9 @@ public static class ApiHost
                         break;
                     case "focusBlocklist":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = value };
+                        break;
+                    case "blockAction":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockAction = value };
                         break;
                 }
             }
@@ -882,6 +887,48 @@ body{
                         $"{r.GetString(0)},{r.GetString(1)},\"{title}\",{(r.IsDBNull(3) ? "" : r.GetString(3))},{(r.IsDBNull(4) ? "" : r.GetString(4))},{r.GetInt32(5)}");
                 }
             }
+        });
+
+        app.MapPost("/api/block/enforce", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var exe = doc.RootElement.GetProperty("exe").GetString();
+            if (!string.IsNullOrEmpty(exe))
+                enforceBlock?.Invoke(exe);
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapGet("/api/block/stats", async (HttpContext ctx) =>
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT blocked_exe, blocked_action, COUNT(*) as cnt
+                FROM block_log
+                WHERE timestamp >= date('now', 'start of day')
+                GROUP BY blocked_exe, blocked_action
+                ORDER BY cnt DESC
+                """;
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                arr.WriteStartObject();
+                arr.WriteString("exe", r.GetString(0));
+                arr.WriteString("action", r.GetString(1));
+                arr.WriteNumber("count", r.GetInt32(2));
+                arr.WriteEndObject();
+            }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
         });
 
         await app.RunAsync(ct);

@@ -78,6 +78,13 @@ public static class DatabaseInitializer
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS block_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                blocked_exe TEXT NOT NULL,
+                blocked_action TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_audio', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');

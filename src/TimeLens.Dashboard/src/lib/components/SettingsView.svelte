@@ -379,35 +379,47 @@
       <div class="card-header">
         <h2 class="title-small">Goals</h2>
       </div>
-      <div class="setting-row">
-        <div class="setting-info" style="gap:var(--sp-2); flex-direction:row; flex-wrap:wrap; align-items:center; flex:1">
-          <input class="input goal-input" placeholder="app or category" bind:value={goalTarget} style="flex:1;min-width:120px" />
-          <select class="select" bind:value={goalType}>
-            <option value="max_time">Max time</option>
-            <option value="min_time">Min time</option>
-          </select>
-          <select class="select" bind:value={goalMinutes}>
-            {#each [15, 30, 60, 90, 120, 180, 240] as n}
-              <option value={n}>{n} min</option>
-            {/each}
-          </select>
-          <button class="add-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
-            <i class="ti ti-plus"></i>
-          </button>
-        </div>
-      </div>
       {#if goals.length > 0}
         {#each goals as g, i}
-          <div class="rule-row" class:last={i === goals.length - 1}>
-            <span class="goal-type-badge" class:max={g.goalType === 'max_time'}>{g.goalType === 'max_time' ? 'max' : 'min'}</span>
-            <code class="rule-pattern">{g.target}</code>
-            <span class="rule-meta">{g.thresholdMinutes}m @ {g.notifyAt}%</span>
-            <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove"><i class="ti ti-x"></i></button>
+          <div class="setting-row" class:last={i === goals.length - 1 && !goals[i+1]}>
+            <div class="setting-info">
+              <span class="setting-label">
+                {g.goalType === 'max_time' ? 'Limit' : 'Minimum'} · {g.target}
+              </span>
+              <span class="setting-desc">{g.thresholdMinutes} min — alert at {g.notifyAt}%</span>
+            </div>
+            <div class="control">
+              <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove">
+                <i class="ti ti-trash"></i>
+              </button>
+            </div>
           </div>
         {/each}
       {:else}
-        <div class="empty-state"><span class="empty-text">No goals set. Add one above.</span></div>
+        <div class="empty-state"><span class="empty-text">No goals set. Add one below.</span></div>
       {/if}
+      <div class="setting-row last">
+        <div class="setting-info">
+          <span class="setting-label">New goal</span>
+          <div class="goal-fields">
+            <input class="mini-input" placeholder="app or category" bind:value={goalTarget} />
+            <select class="select mini" bind:value={goalType}>
+              <option value="max_time">max</option>
+              <option value="min_time">min</option>
+            </select>
+            <select class="select mini" bind:value={goalMinutes}>
+              {#each [15, 30, 60, 90, 120, 180, 240] as n}
+                <option value={n}>{n}m</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <div class="control">
+          <button class="export-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
+            <i class="ti ti-plus"></i> Add
+          </button>
+        </div>
+      </div>
     </div>
 
 </div>
@@ -624,12 +636,17 @@
 
   .card-goals { grid-column: 1 / -1; }
 
-  .goal-input { height: 36px; }
-
-  .goal-type-badge {
-    font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--shape-sm);
-    background: color-mix(in srgb, var(--md-error) 15%, transparent);
-    color: var(--md-error); text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;
+  .goal-fields {
+    display: flex; gap: var(--sp-2); align-items: center; margin-top: var(--sp-2);
   }
-  .goal-type-badge.max { background: color-mix(in srgb, var(--md-primary) 15%, transparent); color: var(--md-primary); }
+
+  .mini-input {
+    background: var(--md-surface-1); border: 1px solid var(--md-outline);
+    border-radius: var(--shape-sm); padding: 6px 8px; color: var(--md-on-surf);
+    font-family: var(--font-mono); font-size: 12px; outline: none;
+    width: 150px; box-sizing: border-box;
+  }
+  .mini-input:focus { border-color: var(--md-primary); }
+
+  .select.mini { height: 32px; font-size: 12px; padding: 4px 6px; }
 </style>

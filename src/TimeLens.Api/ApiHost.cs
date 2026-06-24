@@ -11,7 +11,9 @@ public static class ApiHost
     public static async Task StartAsync(string dbPath, CancellationToken ct = default,
         Action<string, string>? saveSetting = null,
         Action<bool>? setTrackAudio = null,
-        Action<bool>? setTrackInput = null)
+        Action<bool>? setTrackInput = null,
+        Action<string, string>? upsertRule = null,
+        Action<string>? deleteRule = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -58,11 +60,11 @@ public static class ApiHost
             });
         }
 
-        app.MapGet("/api/settings", (HttpContext ctx) =>
+        app.MapGet("/api/settings", async (HttpContext ctx) =>
         {
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
-            return ctx.Response.WriteAsJsonAsync(
+            await ctx.Response.WriteAsJsonAsync(
                 LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
         });
 
@@ -110,6 +112,69 @@ public static class ApiHost
                         break;
                 }
             }
+
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapGet("/api/rules", async (HttpContext ctx) =>
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT exe_pattern, category FROM custom_rules ORDER BY exe_pattern";
+            using var reader = await cmd.ExecuteReaderAsync();
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            while (await reader.ReadAsync())
+            {
+                arr.WriteStartObject();
+                arr.WriteString("pattern", reader.GetString(0));
+                arr.WriteString("category", reader.GetString(1));
+                arr.WriteEndObject();
+            }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapPost("/api/rules", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var pattern = doc.RootElement.GetProperty("pattern").GetString() ?? "";
+            var category = doc.RootElement.GetProperty("category").GetString() ?? "other";
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT OR REPLACE INTO custom_rules (exe_pattern, category) VALUES ($pattern, $category)";
+            cmd.Parameters.AddWithValue("$pattern", pattern);
+            cmd.Parameters.AddWithValue("$category", category);
+            await cmd.ExecuteNonQueryAsync();
+
+            upsertRule?.Invoke(pattern, category);
+
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapDelete("/api/rules/{pattern}", async (HttpContext ctx) =>
+        {
+            var pattern = ctx.Request.RouteValues["pattern"] as string ?? "";
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM custom_rules WHERE exe_pattern = $pattern";
+            cmd.Parameters.AddWithValue("$pattern", pattern);
+            await cmd.ExecuteNonQueryAsync();
+
+            deleteRule?.Invoke(pattern);
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";

@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/TimeLens.Dashboard/package-lock.json
+
+      - name: Build dashboard
+        working-directory: src/TimeLens.Dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish TrayApp (Native AOT)
+        run: |
+          dotnet publish src\TimeLens.TrayApp -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
+
+      - name: Bundle dashboard with exe
+        shell: pwsh
+        run: |
+          $dist = "src\TimeLens.Dashboard\dist"
+          $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
+          if (Test-Path "$publish\dashboard") { Remove-Item -Recurse -Force "$publish\dashboard" }
+          Copy-Item -Recurse "$dist" "$publish\dashboard"
+          Compress-Archive -Path "$publish\*" -DestinationPath "TimeLens-${{ github.ref_name }}.zip"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: TimeLens-*.zip
+          generate_release_notes: true

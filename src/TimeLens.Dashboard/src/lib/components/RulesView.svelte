@@ -1,45 +1,57 @@
 <script lang="ts">
-  const defaultRules: { pattern: string; category: string }[] = [
-    { pattern: 'code.exe', category: 'Development' },
-    { pattern: 'cursor.exe', category: 'Development' },
-    { pattern: 'windsurf.exe', category: 'Development' },
-    { pattern: 'chrome.exe', category: 'Browsing' },
-    { pattern: 'firefox.exe', category: 'Browsing' },
-    { pattern: 'msedge.exe', category: 'Browsing' },
-    { pattern: 'slack.exe', category: 'Communication' },
-    { pattern: 'discord.exe', category: 'Communication' },
-    { pattern: 'teams.exe', category: 'Communication' },
-    { pattern: 'spotify.exe', category: 'Entertainment' },
-    { pattern: 'wmplayer.exe', category: 'Entertainment' },
-    { pattern: 'notion.exe', category: 'Work' },
-    { pattern: 'obsidian.exe', category: 'Work' },
-    { pattern: 'figma.exe', category: 'Design' },
-    { pattern: 'photoshop.exe', category: 'Design' },
-  ];
+  import { colorForCategory } from '../colors';
 
-  let rules = $state(defaultRules.map(r => ({ ...r })));
+  let rules: { pattern: string; category: string }[] = $state([]);
   let newExe = $state('');
   let newCat = $state('Other');
-  let editingIdx = $state(-1);
+  let apiOk = $state(true);
 
   const categories = ['Work', 'Development', 'Browsing', 'Communication', 'Entertainment', 'Design', 'Social', 'Other'];
+  const API = '/api/rules';
 
-  function addRule() {
-    if (!newExe.trim()) return;
-    rules = [...rules, { pattern: newExe.trim().toLowerCase(), category: newCat }];
-    newExe = '';
+  async function load() {
+    try {
+      const r = await fetch(API);
+      rules = await r.json();
+      apiOk = true;
+    } catch {
+      apiOk = false;
+    }
   }
 
-  function removeRule(idx: number) {
-    rules = rules.filter((_, i) => i !== idx);
+  async function addRule() {
+    const pattern = newExe.trim().toLowerCase();
+    if (!pattern) return;
+    try {
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern, category: newCat }),
+      });
+      rules = [...rules, { pattern, category: newCat }];
+      newExe = '';
+    } catch { apiOk = false; }
   }
+
+  async function removeRule(pattern: string) {
+    try {
+      await fetch(`${API}/${encodeURIComponent(pattern)}`, { method: 'DELETE' });
+      rules = rules.filter(r => r.pattern !== pattern);
+    } catch { apiOk = false; }
+  }
+
+  $effect(() => { load(); });
 </script>
 
 <div class="rules">
   <div class="topbar">
     <h1 class="headline-small">Rules</h1>
   </div>
-  <p class="title-small desc">Map executable names to activity categories. Changes apply on next foreground switch.</p>
+  <p class="title-small desc">Map executable names to activity categories. Changes apply immediately.</p>
+
+  {#if !apiOk}
+    <div class="error-banner">Tray app not running — rules are read-only.</div>
+  {/if}
 
   <div class="add-row">
     <input class="input" placeholder="exe name (e.g. code.exe)" bind:value={newExe} onkeydown={(e) => { if (e.key === 'Enter') addRule(); }} />
@@ -52,16 +64,23 @@
   </div>
 
   <div class="rule-list">
-    {#each rules as rule, i}
-      <div class="rule-row">
-        <code class="rule-pattern">{rule.pattern}</code>
-        <span class="rule-arrow">→</span>
-        <span class="rule-cat">{rule.category}</span>
-        <button class="del-btn" onclick={() => removeRule(i)} aria-label="Remove rule">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
+    {#if rules.length === 0}
+      <div class="empty-state">
+        <span class="empty-text">No rules yet — add one above.</span>
       </div>
-    {/each}
+    {:else}
+      {#each rules as rule}
+        <div class="rule-row">
+          <span class="color-dot" style="background: {colorForCategory(rule.category)}"></span>
+          <code class="rule-pattern">{rule.pattern}</code>
+          <span class="rule-arrow">→</span>
+          <span class="rule-cat">{rule.category}</span>
+          <button class="del-btn" onclick={() => removeRule(rule.pattern)} aria-label="Remove rule">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+      {/each}
+    {/if}
   </div>
 </div>
 
@@ -69,6 +88,14 @@
   .rules { display: flex; flex-direction: column; gap: var(--sp-4); max-width: 640px; }
   .topbar { display: flex; align-items: center; justify-content: space-between; }
   .desc { color: var(--md-on-surf-var); }
+  .error-banner {
+    background: var(--md-err-cont);
+    color: var(--md-error);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--shape-sm);
+    font-size: 13px;
+    border: 1px solid rgba(224, 112, 112, 0.2);
+  }
   .add-row { display: flex; gap: var(--sp-2); align-items: center; }
   .input {
     flex: 1;
@@ -95,7 +122,7 @@
   .add-btn {
     padding: var(--sp-1) var(--sp-3);
     background: var(--md-primary);
-    color: var(--md-on-pri-cont);
+    color: #1a1a1a;
     border: none;
     border-radius: var(--shape-sm);
     font-family: inherit;
@@ -104,7 +131,13 @@
     cursor: pointer;
   }
   .add-btn:disabled { opacity: 0.4; cursor: default; }
-  .rule-list { display: flex; flex-direction: column; border: 1px solid var(--md-outline); border-radius: var(--shape-md); overflow: hidden; }
+  .rule-list { display: flex; flex-direction: column; border: 1px solid var(--md-outline); border-radius: var(--shape-md); overflow: hidden; min-height: 60px; }
+  .empty-state {
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--sp-6);
+    flex: 1;
+  }
+  .empty-text { font-size: 13px; color: var(--md-on-surf-dim); }
   .rule-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
@@ -112,6 +145,7 @@
     font-size: 13px;
   }
   .rule-row:last-child { border-bottom: none; }
+  .color-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .rule-pattern { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf); width: 160px; }
   .rule-arrow { color: var(--md-primary); font-size: 12px; }
   .rule-cat { color: var(--md-on-surf-var); font-weight: 500; flex: 1; }

@@ -8,6 +8,7 @@
   let selectedDate = $state(today.toISOString().slice(0, 10));
   let historyData = $state<DashboardData>(initial);
   let loadingHistory = $state(false);
+  let historyError = $state<string | null>(null);
 
   let weekDays = $derived.by(() => {
     const days = [];
@@ -26,10 +27,13 @@
   async function selectDate(date: string) {
     selectedDate = date;
     loadingHistory = true;
+    historyError = null;
     try {
       const d = await getDashboardData(date);
       historyData = d;
-    } catch {}
+    } catch {
+      historyError = 'Could not load data for this date.';
+    }
     loadingHistory = false;
   }
 
@@ -57,6 +61,10 @@
       </button>
     {/each}
   </div>
+
+  {#if historyError}
+    <div class="error-banner">{historyError}</div>
+  {/if}
 
   {#if loadingHistory}
     <p class="title-small" style="color:var(--md-on-surf-var)">Loading…</p>
@@ -183,4 +191,12 @@
   .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
   .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
   .empty { font-size: 13px; color: var(--md-on-surf-dim); padding: var(--sp-2) 0; }
+  .error-banner {
+    background: var(--md-err-cont);
+    color: var(--md-error);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--shape-sm);
+    font-size: 13px;
+    border: 1px solid rgba(224, 112, 112, 0.2);
+  }
 </style>

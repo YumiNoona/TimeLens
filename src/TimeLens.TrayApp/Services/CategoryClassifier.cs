@@ -61,8 +61,24 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["facebook.com"] = "social",
     };
 
+    public Dictionary<string, string> CustomRules { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public void AddCustomRule(string pattern, string category)
+    {
+        CustomRules[pattern] = category;
+    }
+
+    public void RemoveCustomRule(string pattern)
+    {
+        CustomRules.Remove(pattern);
+    }
+
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
+        // Custom rules first — user overrides take priority
+        if (CustomRules.TryGetValue(exeName, out var customCat))
+            return customCat;
+
         if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
             return domainCat;
 

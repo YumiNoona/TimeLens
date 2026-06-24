@@ -68,6 +68,11 @@ public static class DatabaseInitializer
                 is_user_defined INTEGER NOT NULL DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS custom_rules (
+                exe_pattern TEXT PRIMARY KEY,
+                category TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL

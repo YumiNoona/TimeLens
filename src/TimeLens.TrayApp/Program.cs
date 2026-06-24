@@ -29,6 +29,15 @@ internal static class Program
 
         var writer = new EventWriter(dbPath);
         var classifier = new CategoryClassifier();
+        using (var loadConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
+        {
+            loadConn.Open();
+            using var loadCmd = loadConn.CreateCommand();
+            loadCmd.CommandText = "SELECT exe_pattern, category FROM custom_rules";
+            using var reader = loadCmd.ExecuteReader();
+            while (reader.Read())
+                classifier.AddCustomRule(reader.GetString(0), reader.GetString(1));
+        }
         var winWatcher = new WinEventWatcher();
         var idleMonitor = new IdleMonitor { IdleThresholdSeconds = settings.IdleThresholdSeconds };
         var sessionWatcher = new SessionWatcher();
@@ -179,6 +188,9 @@ internal static class Program
             }
         }
 
+        void UpsertRule(string pattern, string category) => classifier.AddCustomRule(pattern, category);
+        void DeleteRule(string pattern) => classifier.RemoveCustomRule(pattern);
+
         using var tray = new NativeTrayIcon();
         tray.OpenDashboardRequested += () =>
         {
@@ -188,7 +200,9 @@ internal static class Program
                 _ = ApiHost.StartAsync(dbPath, apiCts.Token,
                     saveSetting: (k, v) => settingsSvc.Save(k, v),
                     setTrackAudio: ApplyTrackAudio,
-                    setTrackInput: ApplyTrackInput);
+                    setTrackInput: ApplyTrackInput,
+                    upsertRule: UpsertRule,
+                    deleteRule: DeleteRule);
             }
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {

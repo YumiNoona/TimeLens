@@ -158,7 +158,7 @@
   .toggle {
     appearance: none;
     width: 36px; height: 20px;
-    background: var(--md-surface-2);
+    background: var(--md-outline);
     border-radius: 99px;
     position: relative;
     cursor: pointer;
@@ -169,13 +169,13 @@
     content: '';
     position: absolute;
     width: 16px; height: 16px;
-    background: var(--md-on-surf);
+    background: #fff;
     border-radius: 50%;
     top: 2px; left: 2px;
     transition: transform 0.2s;
   }
   .toggle:checked { background: var(--md-primary); }
-  .toggle:checked::after { transform: translateX(16px); background: var(--md-on-pri-cont); }
+  .toggle:checked::after { transform: translateX(16px); }
   .select {
     background: var(--md-surface-1);
     border: 1px solid var(--md-outline);

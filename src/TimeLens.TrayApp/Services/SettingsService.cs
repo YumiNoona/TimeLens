@@ -29,6 +29,7 @@ public sealed class SettingsService
             TrackBrowser = dict.GetValueOrDefault("track_browser", "true") == "true",
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",
             IdleThresholdSeconds = int.TryParse(dict.GetValueOrDefault("idle_threshold_seconds", "180"), out var t) ? t : 180,
+            Theme = dict.GetValueOrDefault("theme", "moss").Trim('"'),
         };
     }
 

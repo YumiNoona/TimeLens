@@ -22,6 +22,20 @@ internal static class Program
 
         DatabaseInitializer.Initialize(dbPath);
 
+        // One-time migration: recategorize sessions that were classified before system rules existed
+        using (var migrateConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
+        {
+            migrateConn.Open();
+            using var mc = migrateConn.CreateCommand();
+            mc.CommandText = """
+                UPDATE app_events SET category = 'system'
+                WHERE category = 'other' AND exe_name IN (
+                    'TimeLens.TrayApp.exe', 'explorer.exe', 'ShellExperienceHost.exe'
+                )
+                """;
+            mc.ExecuteNonQuery();
+        }
+
         var settingsSvc = new SettingsService(dbPath);
         var settings = settingsSvc.Load();
         RuntimeConfig.Settings = settings;
@@ -133,15 +147,12 @@ internal static class Program
         AutoStartManager.EnsureAutoStart();
 
         using var apiCts = new CancellationTokenSource();
-        var apiStarted = false;
-        var apiIdleTimer = new Timer(_ =>
-        {
-            if (apiStarted && (DateTime.UtcNow - ApiHost.LastActivityUtc).TotalMinutes > 5)
-            {
-                apiCts.Cancel();
-                apiStarted = false;
-            }
-        }, null, 60_000, 60_000);
+        _ = ApiHost.StartAsync(dbPath, apiCts.Token,
+            saveSetting: (k, v) => settingsSvc.Save(k, v),
+            setTrackAudio: ApplyTrackAudio,
+            setTrackInput: ApplyTrackInput,
+            upsertRule: UpsertRule,
+            deleteRule: DeleteRule);
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {
@@ -194,23 +205,17 @@ internal static class Program
         using var tray = new NativeTrayIcon();
         tray.OpenDashboardRequested += () =>
         {
-            if (!apiStarted)
-            {
-                apiStarted = true;
-                _ = ApiHost.StartAsync(dbPath, apiCts.Token,
-                    saveSetting: (k, v) => settingsSvc.Save(k, v),
-                    setTrackAudio: ApplyTrackAudio,
-                    setTrackInput: ApplyTrackInput,
-                    upsertRule: UpsertRule,
-                    deleteRule: DeleteRule);
-            }
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "http://127.0.0.1:47821/",
                 UseShellExecute = true
             });
         };
-        tray.ExitRequested += () => Environment.Exit(0);
+        tray.ExitRequested += () =>
+        {
+            apiCts.Cancel();
+            Environment.Exit(0);
+        };
 
         tray.Run();
     }

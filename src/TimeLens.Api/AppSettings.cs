@@ -15,4 +15,7 @@ public record AppSettings
 
     [JsonPropertyName("idleThresholdSeconds")]
     public int IdleThresholdSeconds { get; init; } = 180;
+
+    [JsonPropertyName("theme")]
+    public string Theme { get; init; } = "moss";
 }

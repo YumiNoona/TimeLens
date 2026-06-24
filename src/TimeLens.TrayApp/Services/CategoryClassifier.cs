@@ -34,6 +34,10 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["vlc.exe"] = "media",
         ["mpc-hc.exe"] = "media",
         ["wmplayer.exe"] = "media",
+        ["TimeLens.TrayApp.exe"] = "system",
+        ["ShellExperienceHost.exe"] = "system",
+        ["explorer.exe"] = "system",
+        ["OpenCode.exe"] = "development",
     };
 
     private static readonly Dictionary<string, string> DomainRules = new(StringComparer.OrdinalIgnoreCase)

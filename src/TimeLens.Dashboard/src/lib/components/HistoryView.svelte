@@ -9,6 +9,7 @@
   let historyData = $state<DashboardData>(initial);
   let loadingHistory = $state(false);
   let historyError = $state<string | null>(null);
+  let historyEmpty = $state(false);
 
   let weekDays = $derived.by(() => {
     const days = [];
@@ -28,9 +29,12 @@
     selectedDate = date;
     loadingHistory = true;
     historyError = null;
+    historyEmpty = false;
     try {
       const d = await getDashboardData(date);
       historyData = d;
+      if (d.summary.activeSeconds === 0 && d.topApps.length === 0)
+        historyEmpty = true;
     } catch {
       historyError = 'Could not load data for this date.';
     }
@@ -71,59 +75,65 @@
   {:else}
     <p class="title-small" style="color:var(--md-on-surf-var);margin-bottom:calc(-1 * var(--sp-2))">{displayDate}</p>
 
-    <div class="summary-row">
-      <div class="stat-box">
-        <span class="stat-val">{historyData.summary.activeTime}</span>
-        <span class="stat-lbl">Active</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val">{historyData.summary.idleTime}</span>
-        <span class="stat-lbl">Idle</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val">{historyData.summary.focusScore}%</span>
-        <span class="stat-lbl">Focus</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-val" class:up={historyData.summary.vsYesterday > 0}>{historyData.summary.vsYesterday > 0 ? '+' : ''}{historyData.summary.vsYesterday}m</span>
-        <span class="stat-lbl">vs yesterday</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2 class="title-large">Top Apps</h2>
-      <div class="app-list">
-        {#each historyData.topApps as app}
-          <div class="app-row">
-            <div class="app-icon-box">
-              <i class="ti ti-apps" aria-hidden="true"></i>
-            </div>
-            <span class="app-name">{app.name}</span>
-            <span class="app-time">{Math.floor(app.minutes / 60)}h {app.minutes % 60}m</span>
+    {#if historyEmpty}
+      <div class="empty-notice">No activity recorded for this day.</div>
+    {:else}
+      <div class="summary-row">
+        <div class="stat-box">
+          <span class="stat-val">{historyData.summary.activeTime}</span>
+          <span class="stat-lbl">Active</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val">{historyData.summary.idleTime}</span>
+          <span class="stat-lbl">Idle</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val">{historyData.summary.focusScore}%</span>
+          <span class="stat-lbl">Focus</span>
+        </div>
+        {#if historyData.summary.vsYesterday !== null}
+          <div class="stat-box">
+            <span class="stat-val" class:up={historyData.summary.vsYesterday > 0}>{historyData.summary.vsYesterday > 0 ? '+' : ''}{historyData.summary.vsYesterday}m</span>
+            <span class="stat-lbl">vs yesterday</span>
           </div>
-        {:else}
-          <p class="empty">No apps tracked this day.</p>
-        {/each}
+        {/if}
       </div>
-    </div>
 
-    <div class="section">
-      <h2 class="title-large">Categories</h2>
-      <div class="cat-list">
-        {#each historyData.categories as cat}
-          <div class="cat-row">
-            <span class="cat-name">{cat.name}</span>
-            <div class="cat-bar-bg">
-              <div class="cat-bar" style="width: {cat.percentage}%"></div>
+      <div class="section">
+        <h2 class="title-large">Top Apps</h2>
+        <div class="app-list">
+          {#each historyData.topApps as app}
+            <div class="app-row">
+              <div class="app-icon-box">
+                <i class="ti ti-apps" aria-hidden="true"></i>
+              </div>
+              <span class="app-name">{app.name}</span>
+              <span class="app-time">{Math.floor(app.minutes / 60)}h {app.minutes % 60}m</span>
             </div>
-            <span class="cat-pct">{cat.percentage}%</span>
-            <span class="cat-time">{Math.floor(cat.minutes / 60)}h {cat.minutes % 60}m</span>
-          </div>
-        {:else}
-          <p class="empty">No categories this day.</p>
-        {/each}
+          {:else}
+            <p class="empty">No apps tracked this day.</p>
+          {/each}
+        </div>
       </div>
-    </div>
+
+      <div class="section">
+        <h2 class="title-large">Categories</h2>
+        <div class="cat-list">
+          {#each historyData.categories as cat}
+            <div class="cat-row">
+              <span class="cat-name">{cat.name}</span>
+              <div class="cat-bar-bg">
+                <div class="cat-bar" style="width: {cat.percentage}%"></div>
+              </div>
+              <span class="cat-pct">{cat.percentage}%</span>
+              <span class="cat-time">{Math.floor(cat.minutes / 60)}h {cat.minutes % 60}m</span>
+            </div>
+          {:else}
+            <p class="empty">No categories this day.</p>
+          {/each}
+        </div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -148,7 +158,7 @@
   .day-chip.today { border-color: var(--md-primary); color: var(--md-primary); }
   .day-chip.active {
     background: var(--md-primary);
-    color: var(--md-on-pri-cont);
+    color: #1a1a1a;
     border-color: var(--md-primary);
     font-weight: 600;
     box-shadow: 0 0 0 2px rgba(200, 232, 106, 0.3);
@@ -191,6 +201,14 @@
   .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
   .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
   .empty { font-size: 13px; color: var(--md-on-surf-dim); padding: var(--sp-2) 0; }
+  .empty-notice {
+    background: var(--md-surface-2);
+    color: var(--md-on-surf-dim);
+    padding: var(--sp-6);
+    border-radius: var(--shape-md);
+    text-align: center;
+    font-size: 13px;
+  }
   .error-banner {
     background: var(--md-err-cont);
     color: var(--md-error);

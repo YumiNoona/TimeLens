@@ -17,7 +17,7 @@ public sealed record SummaryDto(
     int FocusScore,
     string TopCategory,
     string TopCategoryTime,
-    int VsYesterday
+    int? VsYesterday
 );
 
 public sealed record TimelineBlockDto(

@@ -181,6 +181,11 @@ public sealed class NativeTrayIcon : IDisposable
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
 
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "TimeLens.ico");
+        var hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
+        if (hIcon == IntPtr.Zero)
+            hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION
+
         var nid = new NOTIFYICONDATAW
         {
             cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
@@ -188,7 +193,7 @@ public sealed class NativeTrayIcon : IDisposable
             uID = TrayIconId,
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage = WM_USER,
-            hIcon = LoadImageFromFile(IntPtr.Zero, "TimeLens.ico", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE),
+            hIcon = hIcon,
             szTip = "TimeLens",
         };
         if (!Shell_NotifyIconW(NIM_ADD, ref nid))
@@ -247,12 +252,8 @@ public sealed class NativeTrayIcon : IDisposable
     {
         SetForegroundWindow(_hWnd);
         GetCursorPos(out var pt);
-        var cmd = TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_RETURNCMD, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);
+        TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);
         PostMessageW(_hWnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
-        if (cmd == ID_OPEN_DASHBOARD)
-            OpenDashboardRequested?.Invoke();
-        else if (cmd == ID_EXIT)
-            ExitRequested?.Invoke();
     }
 
     [DllImport("user32.dll")]

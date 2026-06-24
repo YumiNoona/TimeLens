@@ -76,15 +76,20 @@ public static class ApiHost
 
             foreach (var prop in doc.RootElement.EnumerateObject())
             {
-                var value = prop.Value.ValueKind == System.Text.Json.JsonValueKind.True
-                    ? "true" : prop.Value.ValueKind == System.Text.Json.JsonValueKind.False
-                    ? "false" : prop.Value.GetRawText();
+                var value = prop.Value.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.True => "true",
+                    System.Text.Json.JsonValueKind.False => "false",
+                    System.Text.Json.JsonValueKind.String => prop.Value.GetString() ?? "",
+                    _ => prop.Value.GetRawText()
+                };
                 saveSetting?.Invoke(prop.Name switch
                 {
                     "trackAudio" => "track_audio",
                     "trackBrowser" => "track_browser",
                     "trackInput" => "track_input",
                     "idleThresholdSeconds" => "idle_threshold_seconds",
+                    "theme" => "theme",
                     _ => prop.Name
                 }, value);
 
@@ -109,6 +114,12 @@ public static class ApiHost
                             {
                                 IdleThresholdSeconds = secs
                             };
+                        break;
+                    case "theme":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with
+                        {
+                            Theme = value
+                        };
                         break;
                 }
             }

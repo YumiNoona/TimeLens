@@ -15,6 +15,7 @@
   import { data, loading, error, live, refresh } from './lib/stores/activity';
 
   let view = $state('today');
+  let currentTheme = $state('moss');
 
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-US', {
@@ -23,8 +24,19 @@
     day: 'numeric',
   });
 
-  onMount(() => {
+  function applyTheme(t: string) {
+    currentTheme = t;
+    document.documentElement.className = '';
+    document.documentElement.classList.add('theme-' + t);
+  }
+
+  onMount(async () => {
     refresh();
+    try {
+      const r = await fetch('http://127.0.0.1:47821/api/settings');
+      const s = await r.json();
+      if (s.theme) applyTheme(s.theme);
+    } catch { /* tray app not running, stay with default */ }
   });
 </script>
 
@@ -57,7 +69,7 @@
           <StatCard
             label="Active time"
             value={$data.summary.activeTime}
-            chip="↑ {$data.summary.vsYesterday}m vs yesterday"
+            chip={$data.summary.vsYesterday !== null ? `↑ ${$data.summary.vsYesterday}m vs yesterday` : ''}
             chipClass="chip-up"
           />
           <StatCard
@@ -72,9 +84,9 @@
           <StatCard
             label="Focus score"
             value={String($data.summary.focusScore)}
-            chip="↑ focused"
-            chipClass="chip-up"
-            accent
+            chip={$data.summary.focusScore >= 70 ? '↑ productive' : $data.summary.focusScore >= 40 ? '~ mixed' : '↓ distracting'}
+            chipClass={$data.summary.focusScore >= 70 ? 'chip-up' : $data.summary.focusScore >= 40 ? 'chip-neu' : 'chip-down'}
+            accent={$data.summary.focusScore >= 40}
           />
           <StatCard
             label="Top category"
@@ -103,7 +115,7 @@
     {:else if view === 'rules'}
       <RulesView />
     {:else if view === 'settings'}
-      <SettingsView />
+      <SettingsView ontheme={applyTheme} />
     {:else if !$data}
       <div class="placeholder-view">
         <i class="ti ti-loader" aria-hidden="true"></i>
@@ -119,7 +131,7 @@
     color: var(--md-on-surf);
     font-family: var(--font-display);
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
     overflow: hidden;
     font-size: 14px;
     line-height: 1.5;

@@ -6,7 +6,7 @@ export interface TodaySummary {
   focusScore: number;
   topCategory: string;
   topCategoryTime: string;
-  vsYesterday: number;
+  vsYesterday: number | null;
 }
 
 export interface TimelineBlock {

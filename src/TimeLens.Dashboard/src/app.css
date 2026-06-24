@@ -52,6 +52,76 @@ html, body, #app {
   --font-mono:    'JetBrains Mono', monospace;
 }
 
+/* Ember */
+.theme-ember {
+  --md-primary:       #FF8A65;
+  --md-on-primary:    #3B0D00;
+  --md-primary-cont:  #4A1504;
+  --md-on-pri-cont:   #FFB89A;
+  --md-secondary:     #FFAB40;
+  --md-on-secondary:  #2E1500;
+  --md-sec-cont:      #421F00;
+  --md-tertiary:      #F6A0A0;
+  --md-on-tertiary:   #401010;
+  --md-ter-cont:      #571C1C;
+}
+
+/* Rose */
+.theme-rose {
+  --md-primary:       #F48FB1;
+  --md-on-primary:    #3B0020;
+  --md-primary-cont:  #4E0A2D;
+  --md-on-pri-cont:   #FDB4CF;
+  --md-secondary:     #CE93D8;
+  --md-on-secondary:  #310033;
+  --md-sec-cont:      #45004A;
+  --md-tertiary:      #FFB4A2;
+  --md-on-tertiary:   #3D0D00;
+  --md-ter-cont:      #521800;
+}
+
+/* Moss */
+.theme-moss {
+  --md-primary:       #81C784;
+  --md-on-primary:    #002202;
+  --md-primary-cont:  #0A320B;
+  --md-on-pri-cont:   #A5D6A7;
+  --md-secondary:     #A5D6A7;
+  --md-on-secondary:  #002204;
+  --md-sec-cont:      #0A3215;
+  --md-tertiary:      #C5E1A5;
+  --md-on-tertiary:   #1A2E00;
+  --md-ter-cont:      #264200;
+}
+
+/* Clay */
+.theme-clay {
+  --md-primary:       #BCAAA4;
+  --md-on-primary:    #2E1510;
+  --md-primary-cont:  #3C221B;
+  --md-on-pri-cont:   #D7CCC8;
+  --md-secondary:     #A1887F;
+  --md-on-secondary:  #26130E;
+  --md-sec-cont:      #341E16;
+  --md-tertiary:      #F2B8A0;
+  --md-on-tertiary:   #3B1500;
+  --md-ter-cont:      #521F00;
+}
+
+/* Sunset */
+.theme-sunset {
+  --md-primary:       #FFD54F;
+  --md-on-primary:    #2E2000;
+  --md-primary-cont:  #402C00;
+  --md-on-pri-cont:   #FFE082;
+  --md-secondary:     #FFCA28;
+  --md-on-secondary:  #2E1F00;
+  --md-sec-cont:      #402B00;
+  --md-tertiary:      #FFB74D;
+  --md-on-tertiary:   #2E1500;
+  --md-ter-cont:      #3D1F00;
+}
+
 body {
   background: var(--md-surface);
   color: var(--md-on-surf);

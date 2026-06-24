@@ -4,7 +4,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({
   plugins: [svelte()],
   define: {
-    __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
+    __DEV__: 'false',
   },
   server: {
     port: 5173,

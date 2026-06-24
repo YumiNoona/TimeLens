@@ -18,6 +18,7 @@ export interface TimelineBlock {
   exeName: string;
   windowTitle: string | null;
   durationSeconds: number;
+  project?: string | null;
 }
 
 export interface AppEntry {

@@ -129,6 +129,7 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "app_events", "session_state", "TEXT NOT NULL DEFAULT 'active'");
         MigrateAddColumn(conn, "app_events", "idle_reason", "TEXT");
         MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
+        MigrateAddColumn(conn, "app_events", "project", "TEXT");
         MigrateAddColumn(conn, "browser_events", "tab_id", "INTEGER");
         MigrateAddColumn(conn, "custom_rules", "rule_type", "TEXT NOT NULL DEFAULT 'substring'");
         MigrateAddColumn(conn, "custom_rules", "target", "TEXT NOT NULL DEFAULT 'exe'");

@@ -222,7 +222,7 @@ public sealed class AnalyticsService
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT exe_name, window_title, category, start_time, end_time, was_idle, session_state
+            SELECT exe_name, window_title, category, start_time, end_time, was_idle, session_state, COALESCE(project,'')
             FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND COALESCE(category, '') != 'system'
@@ -250,6 +250,7 @@ public sealed class AnalyticsService
             // on current UTC time instead of the queried day.
             var end = endRaw > tomorrow ? tomorrow : endRaw;
             var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
+            var project = r.IsDBNull(7) ? null : r.GetString(7);
 
             var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, TimeZoneInfo.Local);
             var localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, TimeZoneInfo.Local);
@@ -272,7 +273,7 @@ public sealed class AnalyticsService
             }
             else
             {
-                blocks.Add(new TimelineBlockDto(startHour, endHour, type, exeName, windowTitle, durationSecs));
+                blocks.Add(new TimelineBlockDto(startHour, endHour, type, exeName, windowTitle, durationSecs, project));
             }
         }
 

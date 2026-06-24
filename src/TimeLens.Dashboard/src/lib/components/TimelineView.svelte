@@ -73,7 +73,7 @@
           startHour: b.startHour,
           endHour: b.endHour,
           type: b.type,
-          label: b.windowTitle || b.exeName,
+          label: b.project ? `${b.windowTitle || b.exeName} · ${b.project}` : (b.windowTitle || b.exeName),
           depth: 2,
           children: [],
           durationSeconds: b.durationSeconds,
@@ -207,7 +207,7 @@
           <div class="tl-bar-bg">
             <div class="tl-bar" style="width: {((block.endHour - block.startHour) / maxSpan) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
-          <span class="tl-type">{block.type}</span>
+          <span class="tl-type">{block.type}{#if block.project} · {block.project}{/if}</span>
           <span class="tl-dur">{fmtDuration(block.durationSeconds)}</span>
         </div>
       {/each}

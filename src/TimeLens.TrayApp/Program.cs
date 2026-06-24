@@ -91,7 +91,8 @@ internal static class Program
             var (exe, title, pid) = Win32.GetForegroundWindowInfo();
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();
-            writer.OpenAppEvent(exe, title, pid, state, cat);
+            var project = CategoryClassifier.ExtractProject(exe, title);
+            writer.OpenAppEvent(exe, title, pid, state, cat, project);
             LiveStatusStore.CurrentApp = exe;
             LiveStatusStore.IsIdle = state != "active";
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
@@ -289,8 +290,8 @@ internal static class Program
         {
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();
-            writer.OpenAppEvent(exe, title, pid, state, cat);
-            LiveStatusStore.CurrentApp = exe;
+            var project = CategoryClassifier.ExtractProject(exe, title);
+            writer.OpenAppEvent(exe, title, pid, state, cat, project);
             LiveStatusStore.IsIdle = state != "active";
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
             LiveStatusStore.SystemState = state;

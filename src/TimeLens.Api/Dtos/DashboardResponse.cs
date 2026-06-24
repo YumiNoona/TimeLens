@@ -48,7 +48,8 @@ public sealed record TimelineBlockDto(
     string Type,
     string ExeName,
     string? WindowTitle,
-    int DurationSeconds
+    int DurationSeconds,
+    string? Project = null
 );
 
 public sealed record TopAppDto(

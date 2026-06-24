@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TimeLens.Core.Interfaces;
@@ -133,5 +134,29 @@ public sealed class CategoryClassifier : ICategoryClassifier
     {
         try { return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase); }
         catch { return false; }
+    }
+
+    public static string? ExtractProject(string exeName, string? windowTitle)
+    {
+        if (string.IsNullOrWhiteSpace(windowTitle)) return null;
+        var exe = Path.GetFileName(exeName).ToLowerInvariant();
+        switch (exe)
+        {
+            case "code.exe":
+            case "code - insiders.exe":
+            case "cursor.exe":
+            case "windsurf.exe":
+                var parts = windowTitle.Split(" - ");
+                return parts.Length >= 3 ? parts[^2].Trim() : null;
+            case "rider64.exe":
+            case "rider.exe":
+                var riderParts = windowTitle.Split(" - ");
+                return riderParts.Length >= 2 ? riderParts.Last().Trim() : null;
+            case "devenv.exe":
+                var devParts = windowTitle.Split(" - ");
+                return devParts.Length >= 2 ? devParts[0].Trim() : null;
+            default:
+                return null;
+        }
     }
 }

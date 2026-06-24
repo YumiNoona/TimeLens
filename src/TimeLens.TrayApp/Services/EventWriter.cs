@@ -13,7 +13,7 @@ public sealed class EventWriter
         _queue = new WriterQueue(dbPath);
     }
 
-    public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category)
+    public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
         long? previousId;
         lock (_idLock)
@@ -38,8 +38,8 @@ public sealed class EventWriter
         {
             using var insert = conn.CreateCommand();
             insert.CommandText = """
-                INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date)
-                VALUES ($exe, $title, $pid, $cat, $start, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END, $localDate);
+                INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date, project)
+                VALUES ($exe, $title, $pid, $cat, $start, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END, $localDate, $project);
                 """;
             insert.Parameters.AddWithValue("$exe", exeName);
             insert.Parameters.AddWithValue("$title", windowTitle);
@@ -48,6 +48,7 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
             insert.Parameters.AddWithValue("$state", sessionState);
             insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
+            insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
             insert.ExecuteNonQuery();
         });
 

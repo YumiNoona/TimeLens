@@ -22,7 +22,7 @@
     const result: Group[] = [];
     for (const b of filtered) {
       const last = result[result.length - 1];
-      if (last && last.type === b.type && Math.abs(last.endHour - b.startHour) < 0.02) {
+      if (last && last.type === b.type && Math.abs(last.endHour - b.startHour) < 0.1) {
         last.endHour = b.endHour;
         last.count++;
         last.blocks.push(b);
@@ -58,8 +58,8 @@
   <div class="topbar">
     <h1 class="headline-small">Timeline</h1>
     <button class="mode-btn" onclick={() => groupedMode = !groupedMode}>
-      <i class="ti ti-{groupedMode ? 'folders' : 'list'}" aria-hidden="true"></i>
-      {groupedMode ? 'Grouped' : 'Flat'}
+      <i class="ti ti-{groupedMode ? 'list' : 'folders'}" aria-hidden="true"></i>
+      {groupedMode ? 'Flat' : 'Grouped'}
     </button>
   </div>
 

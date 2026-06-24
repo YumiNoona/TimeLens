@@ -17,6 +17,7 @@
   import { data, loading, error, live, refresh } from './lib/stores/activity';
 
   let browserSites = $state<BrowserEntry[]>([]);
+  let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
   let timelineGrouped = $state(false);
 
@@ -47,6 +48,10 @@
       try {
         const br = await fetch('http://127.0.0.1:47821/api/browser-summary');
         browserSites = await br.json();
+      } catch { }
+      try {
+        const bt = await fetch('http://127.0.0.1:47821/api/browser-time-summary');
+        browserTime = await bt.json();
       } catch { }
       try {
         const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
@@ -197,7 +202,27 @@
         <div class="topbar">
           <h1 class="headline-small">Browser</h1>
         </div>
-        <TopSites sites={browserSites} />
+        <div class="bottom-grid">
+          <TopSites sites={browserSites} />
+          {#if browserTime.length > 0}
+            <div class="card audio-card">
+              <div class="card-title">
+                <i class="ti ti-clock" aria-hidden="true"></i>
+                Time on sites
+              </div>
+              <div role="list" class="audio-list">
+                {#each browserTime as bt}
+                  <div class="audio-row" role="listitem">
+                    <span class="audio-exe">{bt.domain}</span>
+                    <span class="audio-count">{bt.totalMinutes}m</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {:else}
+            <div></div>
+          {/if}
+        </div>
       </div>
     {:else if view === 'apps' && $data}
       <AppsView data={$data} />

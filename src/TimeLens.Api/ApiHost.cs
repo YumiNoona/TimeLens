@@ -376,6 +376,61 @@ public static class ApiHost
             ctx.Response.ContentType = "application/json";
         });
 
+        app.MapGet("/api/browser-time-summary", async (HttpContext ctx) =>
+        {
+            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+            DateTime queryDate = DateTime.Now;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+            var localDate = queryDate.Date;
+            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            // Estimate time per domain by assuming each event covers until the next event (or end of day)
+            cmd.CommandText = """
+                SELECT domain, start_time,
+                       LEAD(start_time, 1, $eod) OVER (PARTITION BY DATE(start_time) ORDER BY start_time) AS next_time
+                FROM browser_events
+                WHERE start_time >= $t0 AND start_time < $t1
+                ORDER BY start_time
+                """;
+            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            cmd.Parameters.AddWithValue("$eod", today.AddDays(1).ToString("o"));
+
+            var domainSecs = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var domain = r.GetString(0);
+                var start = DateTime.Parse(r.GetString(1));
+                var next = DateTime.Parse(r.GetString(2));
+                var secs = (next - start).TotalSeconds;
+                if (secs > 0 && secs < 3600) // cap at 1 hour per event to avoid outliers
+                {
+                    domainSecs.TryGetValue(domain, out var cur);
+                    domainSecs[domain] = cur + secs;
+                }
+            }
+
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            foreach (var kv in domainSecs.OrderByDescending(kv => kv.Value).Take(20))
+            {
+                arr.WriteStartObject();
+                arr.WriteString("domain", kv.Key);
+                arr.WriteNumber("totalSeconds", (int)kv.Value);
+                arr.WriteNumber("totalMinutes", (int)Math.Round(kv.Value / 60));
+                arr.WriteEndObject();
+            }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
         app.MapGet("/api/running-processes", (HttpContext ctx) =>
         {
             var procs = System.Diagnostics.Process.GetProcesses()

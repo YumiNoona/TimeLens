@@ -1,23 +1,38 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  let items = $state<string[]>([]);
+  type BlockEntry = { i: string; m: 'u' | 't'; e?: string };
+
+  let items = $state<BlockEntry[]>([]);
   let newItem = $state('');
   let blockAction = $state('notify');
+  let focusMode = $state(false);
   let apiOk = $state(true);
   let showAddDropdown = $state(false);
   let runningProcs = $state<string[]>([]);
   let blockStats = $state<{ exe: string; action: string; count: number }[]>([]);
   let lastBlockToast = $state<string | null>(null);
+  let addingDuration = $state(0);
+  let confirmRemove = $state<number | null>(null);
 
   const API = 'http://127.0.0.1:47821';
+  const DURATIONS = [
+    { value: 0, label: 'Until unblocked' },
+    { value: 15, label: '15 min' },
+    { value: 30, label: '30 min' },
+    { value: 60, label: '1 hour' },
+    { value: 120, label: '2 hours' },
+    { value: 240, label: '4 hours' },
+  ];
 
   async function load() {
     try {
       const r = await fetch(`${API}/api/settings`);
       const s = await r.json();
       blockAction = s.blockAction || 'notify';
-      try { items = JSON.parse(s.focusBlocklist || '[]'); } catch { items = []; }
+      focusMode = s.focusMode ?? false;
+      const raw = s.focusBlocklist || '[]';
+      try { items = JSON.parse(raw); } catch { items = []; }
       apiOk = true;
     } catch { apiOk = false; }
     loadRunning();
@@ -38,12 +53,23 @@
     } catch { blockStats = []; }
   }
 
-  async function saveAll(list: string[]) {
+  async function saveAll(list: BlockEntry[]) {
     try {
       await fetch(`${API}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ focusBlocklist: JSON.stringify(list) }),
+      });
+    } catch { apiOk = false; }
+  }
+
+  async function saveFocus(val: boolean) {
+    focusMode = val;
+    try {
+      await fetch(`${API}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focusMode: val }),
       });
     } catch { apiOk = false; }
   }
@@ -61,18 +87,33 @@
 
   function add() {
     const val = newItem.trim().toLowerCase();
-    if (!val || items.includes(val)) return;
-    const next = [...items, val];
-    items = next;
+    if (!val || items.some(e => e.i === val)) return;
+    let entry: BlockEntry;
+    if (addingDuration > 0) {
+      const exp = new Date(Date.now() + addingDuration * 60_000).toISOString();
+      entry = { i: val, m: 't', e: exp };
+    } else {
+      entry = { i: val, m: 'u' };
+    }
+    items = [...items, entry];
     newItem = '';
+    addingDuration = 0;
     showAddDropdown = false;
-    saveAll(next);
+    saveAll(items);
   }
 
   function remove(i: number) {
-    const next = items.filter((_, idx) => idx !== i);
-    items = next;
-    saveAll(next);
+    items = items.filter((_, idx) => idx !== i);
+    confirmRemove = null;
+    saveAll(items);
+  }
+
+  function requestRemove(i: number) {
+    confirmRemove = i;
+  }
+
+  function cancelRemove() {
+    confirmRemove = null;
   }
 
   async function enforceNow(exe: string) {
@@ -89,35 +130,53 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') add();
-    if (e.key === 'Escape') showAddDropdown = false;
+    if (e.key === 'Escape') { showAddDropdown = false; confirmRemove = null; }
   }
 
   let filteredProcs = $derived.by(() => {
     const q = newItem.trim().toLowerCase();
-    if (!q) return runningProcs.filter(p => !items.some(i => i === p));
-    return runningProcs.filter(p => p.toLowerCase().includes(q) && !items.some(i => i === p));
+    const ids = new Set(items.map(e => e.i));
+    if (!q) return runningProcs.filter(p => !ids.has(p));
+    return runningProcs.filter(p => p.toLowerCase().includes(q) && !ids.has(p));
   });
 
   function selectProc(exe: string) {
-    if (!items.includes(exe)) {
-      const next = [...items, exe];
-      items = next;
-      saveAll(next);
+    if (items.some(e => e.i === exe)) { newItem = ''; showAddDropdown = false; return; }
+    let entry: BlockEntry;
+    if (addingDuration > 0) {
+      const exp = new Date(Date.now() + addingDuration * 60_000).toISOString();
+      entry = { i: exe, m: 't', e: exp };
+    } else {
+      entry = { i: exe, m: 'u' };
     }
+    items = [...items, entry];
     newItem = '';
+    addingDuration = 0;
     showAddDropdown = false;
+    saveAll(items);
   }
 
   function isBlocked(exe: string): boolean {
-    return items.some(i => exe.toLowerCase().includes(i.replace('.exe', '')));
+    return items.some(e => exe.toLowerCase().includes(e.i.replace('.exe', '')));
   }
 
-  function typeIcon(item: string): string {
-    return item.includes('.exe') ? 'ti-apps' : 'ti-world';
+  function typeIcon(id: string): string {
+    return id.includes('.exe') ? 'ti-apps' : 'ti-world';
   }
 
-  function typeLabel(item: string): string {
-    return item.includes('.exe') ? 'app' : 'site';
+  function typeLabel(id: string): string {
+    return id.includes('.exe') ? 'app' : 'site';
+  }
+
+  function modeLabel(entry: BlockEntry): string {
+    if (entry.m === 't' && entry.e) {
+      const rem = new Date(entry.e).getTime() - Date.now();
+      if (rem <= 0) return 'expired';
+      const m = Math.ceil(rem / 60_000);
+      if (m >= 60) return `${Math.round(m / 60)}h left`;
+      return `${m}m left`;
+    }
+    return 'always';
   }
 
   const modeOptions = [
@@ -144,13 +203,27 @@
     </div>
     <div class="mode-grid">
       {#each modeOptions as { id, icon, label, desc }}
-        <button class="mode-card" class:active={blockAction === id} onclick={() => setAction(id)}>
+        <button class="mode-card chip-button" class:active={blockAction === id} onclick={() => setAction(id)}>
           <div class="mode-icon"><i class="ti {icon}"></i></div>
           <div class="mode-label">{label}</div>
           <div class="mode-desc">{desc}</div>
         </button>
       {/each}
     </div>
+  </div>
+
+  <!-- Focus Mode -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="title-small">Focus Mode</h2>
+    </div>
+    <label class="focus-row">
+      <div class="focus-info">
+        <span class="focus-label">Enable Focus Mode</span>
+        <span class="focus-desc">Blocked apps are enforced — minimize, terminate, or strict lockdown</span>
+      </div>
+      <input type="checkbox" class="toggle" checked={focusMode} onchange={() => saveFocus(!focusMode)} />
+    </label>
   </div>
 
   <!-- Blocklist -->
@@ -164,11 +237,11 @@
       <div class="combo-wrapper">
         <input class="add-input" placeholder="exe name or domain, e.g. discord.exe or youtube.com"
           bind:value={newItem} onfocus={() => { loadRunning(); showAddDropdown = true; }} oninput={() => showAddDropdown = true}
-          onkeydown={onKeydown} onblur={() => setTimeout(() => showAddDropdown = false, 150)} autocomplete="off" />
+          onkeydown={onKeydown} onblur={() => showAddDropdown = false} autocomplete="off" />
         {#if showAddDropdown && filteredProcs.length > 0}
           <div class="suggestions">
             {#each filteredProcs as proc}
-              <button class="suggestion-item" onmousedown={() => selectProc(proc)} type="button">
+              <button class="suggestion-item" onmousedown={(e) => { e.preventDefault(); selectProc(proc); }} type="button">
                 <span class="live-dot" class:blocked={isBlocked(proc)}></span>
                 <code>{proc}</code>
                 {#if isBlocked(proc)}<span class="bl-tag-sm">blocked</span>{/if}
@@ -176,6 +249,13 @@
             {/each}
           </div>
         {/if}
+      </div>
+      <div class="duration-picker">
+        {#each DURATIONS as d}
+          <button class="dur-btn chip-button" class:active={addingDuration === d.value} onclick={() => addingDuration = d.value} type="button">
+            {d.label}
+          </button>
+        {/each}
       </div>
       <button class="add-btn" onclick={add} disabled={!newItem.trim()}>
         <i class="ti ti-plus"></i> Block
@@ -190,17 +270,29 @@
       </div>
     {:else}
       <div class="bl-list">
-        {#each items as item, i}
+        {#each items as entry, i}
           <div class="bl-row">
-            <div class="bl-icon"><i class="ti {typeIcon(item)}"></i></div>
-            <code class="bl-name">{item}</code>
-            <span class="bl-tag">{typeLabel(item)}</span>
-            <button class="bl-enforce" onclick={() => enforceNow(item)} title="Enforce now" disabled={blockAction === 'notify'}>
+            <div class="bl-icon"><i class="ti {typeIcon(entry.i)}"></i></div>
+            <code class="bl-name">{entry.i}</code>
+            <span class="bl-tag">{typeLabel(entry.i)}</span>
+            <span class="bl-mode">{modeLabel(entry)}</span>
+            <button class="bl-enforce" onclick={() => enforceNow(entry.i)} title="Enforce now" disabled={blockAction === 'notify'}>
               <i class="ti ti-player-play"></i>
             </button>
-            <button class="bl-remove" onclick={() => remove(i)} aria-label="Remove {item}">
-              <i class="ti ti-trash"></i>
-            </button>
+            {#if confirmRemove === i}
+              <div class="confirm-group">
+                <button class="bl-confirm-yes" onclick={() => remove(i)} aria-label="Confirm remove {entry.i}">
+                  <i class="ti ti-check"></i>
+                </button>
+                <button class="bl-confirm-no" onclick={cancelRemove} aria-label="Cancel">
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
+            {:else}
+              <button class="bl-remove" onclick={() => requestRemove(i)} aria-label="Remove {entry.i}">
+                <i class="ti ti-trash"></i>
+              </button>
+            {/if}
           </div>
         {/each}
       </div>
@@ -263,24 +355,45 @@
   }
   .scanner-btn:hover { color: var(--md-primary); border-color: var(--md-primary); }
 
+  .focus-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .focus-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .focus-label { font-size: 13px; font-weight: 500; color: var(--md-on-surf); }
+  .focus-desc { font-size: 12px; color: var(--md-on-surf-var); }
+  .toggle {
+    appearance: none; width: 40px; height: 22px;
+    background: var(--md-outline); border-radius: 99px;
+    position: relative; cursor: pointer; flex-shrink: 0; margin: 0;
+    transition: background 0.2s ease;
+  }
+  .toggle::after {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    background: #fff; border-radius: 50%; top: 2px; left: 2px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle:checked { background: var(--md-primary); }
+  .toggle:checked::after { transform: translateX(18px); }
+
   .mode-grid {
     display: grid; grid-template-columns: repeat(4, 1fr);
     gap: var(--sp-2); padding: var(--sp-3);
   }
   .mode-card {
-    display: flex; flex-direction: column; align-items: center; gap: var(--sp-1);
-    padding: var(--sp-3); border-radius: var(--shape-md);
-    border: 1px solid var(--md-outline); background: transparent;
-    color: var(--md-on-surf-var); cursor: pointer;
-    transition: all 0.15s; font-family: inherit;
+    flex-direction: column;
+    padding: var(--sp-3);
+    border-radius: var(--shape-md);
   }
-  .mode-card:hover { background: var(--md-surface-2); }
-  .mode-card.active { border-color: var(--md-primary); background: var(--md-primary-cont); color: var(--md-on-pri-cont); }
   .mode-icon i { font-size: 22px; }
   .mode-label { font-size: 13px; font-weight: 600; }
   .mode-desc { font-size: 10px; text-align: center; line-height: 1.3; opacity: 0.7; }
 
-  .add-row { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
+  .add-row { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); flex-wrap: wrap; }
+  .duration-picker { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+  .dur-btn { font-size: 11px; padding: 2px 8px; }
+  .dur-btn.active { border-color: var(--md-primary); background: var(--md-primary-cont); color: var(--md-on-pri-cont); }
   .combo-wrapper { flex: 1; position: relative; }
   .add-input {
     width: 100%; background: var(--md-surface-2); border: 1px solid var(--md-outline);
@@ -343,6 +456,17 @@
     text-transform: uppercase; letter-spacing: 0.05em;
   }
   .bl-tag-sm { font-size: 10px; margin-left: auto; color: var(--md-error); font-style: italic; }
+  .bl-mode { font-size: 11px; color: var(--md-on-surf-dim); font-family: var(--font-mono); flex-shrink: 0; min-width: 48px; text-align: right; }
+  .confirm-group { display: flex; gap: 4px; }
+  .bl-confirm-yes, .bl-confirm-no {
+    background: none; border: 1px solid var(--md-outline); border-radius: var(--shape-sm);
+    cursor: pointer; padding: var(--sp-1); font-size: 14px; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bl-confirm-yes { color: var(--md-error); border-color: var(--md-error); }
+  .bl-confirm-yes:hover { background: var(--md-err-cont); }
+  .bl-confirm-no { color: var(--md-on-surf-var); }
+  .bl-confirm-no:hover { background: var(--md-surface-2); }
   .bl-enforce {
     background: none; border: 1px solid var(--md-outline); color: var(--md-on-surf-dim);
     cursor: pointer; padding: var(--sp-1); border-radius: var(--shape-sm);

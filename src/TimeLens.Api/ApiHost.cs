@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -352,14 +353,17 @@ public static class ApiHost
                 {
                     try
                     {
-                        var items = System.Text.Json.JsonSerializer.Deserialize<string[]>(blocklist);
+                        var items = BlockEntryHelper.TryParseBlockEntries(blocklist);
                         if (items is not null)
                         {
                             var host = evt.Domain.ToLowerInvariant();
                             var url = (evt.Url ?? "").ToLowerInvariant();
-                            foreach (var item in items)
+                            foreach (var be in items)
                             {
-                                var pattern = item.ToLowerInvariant();
+                                if (be.M == "t" && be.E is not null &&
+                                    DateTime.TryParse(be.E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
+                                    DateTime.UtcNow >= exp) continue;
+                                var pattern = be.I.ToLowerInvariant();
                                 if (host.Contains(pattern) || host.EndsWith("." + pattern) || url.Contains(pattern))
                                 {
                                     LiveStatusStore.PendingFocusBlock = evt.Domain;
@@ -388,6 +392,13 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapPost("/api/extension-heartbeat", (HttpContext ctx) =>
+        {
+            LiveStatusStore.LastExtensionHeartbeat = DateTime.UtcNow;
+            ctx.Response.StatusCode = 200;
+            return Task.CompletedTask;
         });
 
         app.MapGet("/api/input-summary", async (HttpContext ctx) =>
@@ -949,4 +960,30 @@ body{
 [JsonSerializable(typeof(AudioSessionDto))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(BlockEntry[]))]
 internal partial class AppJsonContext : JsonSerializerContext { }
+
+internal sealed record BlockEntry(string I, string M, string? E);
+
+internal static class BlockEntryHelper
+{
+    public static BlockEntry[]? TryParseBlockEntries(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json == "[]") return null;
+        try
+        {
+            var entries = System.Text.Json.JsonSerializer.Deserialize<BlockEntry[]>(json);
+            if (entries is not null) return entries;
+        }
+        catch { }
+        // Fallback: legacy string[] format
+        try
+        {
+            var legacy = System.Text.Json.JsonSerializer.Deserialize<string[]>(json);
+            if (legacy is null) return null;
+            return legacy.Select(s => new BlockEntry(s, "u", null)).ToArray();
+        }
+        catch { }
+        return null;
+    }
+}

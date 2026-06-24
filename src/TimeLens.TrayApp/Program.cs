@@ -5,6 +5,13 @@ using TimeLens.TrayApp.Watchers;
 
 namespace TimeLens.TrayApp;
 
+internal sealed record BlockEntry(string I, string M, string? E)
+{
+    public bool IsExpired() => M == "t" && E is not null &&
+        DateTime.TryParse(E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
+        DateTime.UtcNow >= exp;
+}
+
 internal static class Program
 {
     private const string MutexName = "TimeLens-TrayApp-Instance";
@@ -91,34 +98,61 @@ internal static class Program
             LiveStatusStore.SystemState = state;
         }
 
-        // Blocklist enforcement
-        var focusBlocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            var list = System.Text.Json.JsonSerializer.Deserialize<string[]>(settings.FocusBlocklist);
-            if (list is not null)
-                foreach (var item in list)
-                    focusBlocked.Add(item);
-        }
-        catch { }
+        // Blocklist enforcement — entries: {i: identifier, m: 'u'|'t', e?: expiresAt}
+        var focusBlocked = new List<BlockEntry>();
         DateTime lastFocusToast = DateTime.MinValue;
         NativeTrayIcon? tray = null;
 
-        // Reload the blocklist when settings change via API
         void ReloadBlocklist()
         {
             focusBlocked.Clear();
             try
             {
-                var list = System.Text.Json.JsonSerializer.Deserialize<string[]>(LiveStatusStore.Settings.FocusBlocklist);
-                if (list is not null)
-                    foreach (var item in list)
-                        focusBlocked.Add(item);
+                var raw = LiveStatusStore.Settings.FocusBlocklist;
+                if (string.IsNullOrWhiteSpace(raw) || raw == "[]") return;
+                // Try the new object format first
+                var entries = System.Text.Json.JsonSerializer.Deserialize<BlockEntry[]>(raw);
+                if (entries is not null) { focusBlocked.AddRange(entries); return; }
+            }
+            catch { }
+            // Fallback: old string[] format — migrate on read
+            try
+            {
+                var legacy = System.Text.Json.JsonSerializer.Deserialize<string[]>(LiveStatusStore.Settings.FocusBlocklist);
+                if (legacy is null) return;
+                var migrated = legacy.Select(s => new BlockEntry(s, "u", null)).ToArray();
+                focusBlocked.AddRange(migrated);
+                // Persist migrated format
+                var json = System.Text.Json.JsonSerializer.Serialize(migrated);
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = json };
             }
             catch { }
         }
 
+        // Initial load with migration
+        ReloadBlocklist();
+
+        bool IsBlocked(string exeOrDomain)
+        {
+            var lower = exeOrDomain.Replace(".exe", "").ToLowerInvariant();
+            foreach (var be in focusBlocked)
+            {
+                var id = be.I.Replace(".exe", "").ToLowerInvariant();
+                if (lower.Contains(id) || id.Contains(lower)) return true;
+            }
+            return false;
+        }
+
         string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
+
+        void PersistBlocklist()
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(focusBlocked.ToArray());
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = json };
+            var dbDir = Path.GetDirectoryName(dbPath)!;
+            var svc = new SettingsService(dbPath);
+            svc.Save("focus_blocklist", json);
+        }
 
         void EnforceBlock(string exeName)
         {
@@ -170,18 +204,21 @@ internal static class Program
             catch { }
         }
 
-        // Timer to periodically enforce blocks on running processes
+        // Timer to periodically enforce blocks + auto-remove expired
         var blockTimer = new Timer(_ =>
         {
             if (!LiveStatusStore.Settings.FocusMode) return;
             var action = GetBlockAction();
             if (action == "notify") return;
 
+            // Check for expired entries and remove them
+            var removed = focusBlocked.RemoveAll(be => be.IsExpired());
+            if (removed > 0) PersistBlocklist();
+
             foreach (var blocked in focusBlocked)
             {
-                // Only enforce exe blocks (domain blocks handled via browser extension notification)
-                if (!blocked.Contains(".exe")) continue;
-                EnforceBlock(blocked);
+                if (!blocked.I.Contains(".exe")) continue;
+                EnforceBlock(blocked.I);
             }
         }, null, 5_000, 5_000);
 
@@ -198,7 +235,7 @@ internal static class Program
             // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && state == "active")
             {
-                var blocked = focusBlocked.Contains(exe);
+                var blocked = IsBlocked(exe);
                 if (blocked)
                 {
                     EnforceBlock(exe);

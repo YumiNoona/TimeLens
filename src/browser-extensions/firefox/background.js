@@ -1,4 +1,4 @@
-// Generated from src/browser-extensions/shared/background.js — do not edit directly
+// Single source of truth for both Chrome MV3 and Firefox MV2.
 const BROWSER = typeof browser !== 'undefined' && browser.runtime?.id ? 'firefox' : 'chrome';
 const api = BROWSER === 'firefox' ? browser : chrome;
 const actionApi = api.action || api.browserAction;
@@ -6,44 +6,134 @@ const actionApi = api.action || api.browserAction;
 const API = 'http://127.0.0.1:47821/api/browser-event';
 const AUDIBLE_API = 'http://127.0.0.1:47821/api/audible-status';
 const SETTINGS_API = 'http://127.0.0.1:47821/api/settings';
+const HEARTBEAT_API = 'http://127.0.0.1:47821/api/extension-heartbeat';
 const DASHBOARD = 'http://127.0.0.1:47821/';
+const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
 const QUEUE_KEY = 'timelens_queue';
 
+// --- Block state ---
 let trackingEnabled = true;
+let blockedDomains = [];
+var ACTIVE_RULE_IDS = [];
 
-function refreshTrackingFlag() {
-  fetch(SETTINGS_API)
-    .then(r => r.json())
-    .then(s => { trackingEnabled = s.trackBrowser !== false; })
-    .catch(() => {});
+// --- Heartbeat ---
+function sendHeartbeat() {
+  fetch(HEARTBEAT_API + '?ts=' + Date.now(), { method: 'POST' }).catch(function() {});
 }
-refreshTrackingFlag();
-setInterval(refreshTrackingFlag, 300_000);
+setInterval(sendHeartbeat, 30_000);
+sendHeartbeat();
 
-// --- Dedup ---
-const lastUrl = {};
-const debounceTimers = {};
+// --- Block rule application ---
+function applyBlockRules(domains) {
+  blockedDomains = domains;
+  if (BROWSER === 'chrome') {
+    var oldIds = ACTIVE_RULE_IDS.slice();
+    var newRules = [];
+    var nextId = 1;
+    for (var i = 0; i < domains.length; i++) {
+      var d = domains[i];
+      newRules.push({
+        id: nextId++,
+        priority: 1,
+        action: { type: 'redirect', redirect: { extensionPath: '/blocked.html' } },
+        condition: {
+          urlFilter: '||' + d.domain + '^',
+          resourceTypes: ['main_frame', 'sub_frame']
+        }
+      });
+    }
+    ACTIVE_RULE_IDS = newRules.map(function(r) { return r.id; });
+    chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: oldIds,
+      addRules: newRules
+    }).catch(function() {
+      if (newRules.length > 5000) {
+        chrome.declarativeNetRequest.updateDynamicRules({
+          removeRuleIds: oldIds,
+          addRules: newRules.slice(0, 5000)
+        }).catch(function() {});
+      }
+    });
+  }
+}
 
-// --- Offline queue ---
+// --- Firefox: webRequest blocking listener ---
+if (BROWSER === 'firefox') {
+  browser.webRequest.onBeforeRequest.addListener(
+    function(details) {
+      if (!trackingEnabled) return;
+      try {
+        var url = new URL(details.url);
+        var host = url.hostname.toLowerCase();
+        for (var i = 0; i < blockedDomains.length; i++) {
+          var b = blockedDomains[i];
+          var bd = b.domain.toLowerCase().replace(/^\./, '');
+          if (host === bd || host.endsWith('.' + bd)) {
+            if (b.until && Date.now() >= b.until) continue;
+            return { redirectUrl: BLOCKED_PAGE };
+          }
+        }
+      } catch(e) {}
+      return;
+    },
+    { urls: ['<all_urls>'], types: ['main_frame', 'sub_frame'] },
+    ['blocking']
+  );
+}
+
+// --- Settings + Blocklist polling ---
+function fetchSettings() {
+  fetch(SETTINGS_API)
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      trackingEnabled = s.trackBrowser !== false;
+      var raw = s.focusBlocklist || '[]';
+      try { raw = JSON.parse(raw); } catch { raw = []; }
+      if (!Array.isArray(raw)) raw = [];
+      var newDomains = [];
+      for (var i = 0; i < raw.length; i++) {
+        var entry = raw[i];
+        var id = (entry && entry.i) || entry;
+        if (typeof id !== 'string') continue;
+        if (id.indexOf('.exe') !== -1) continue;
+        if (entry && entry.m === 't' && entry.e) {
+          if (Date.now() >= new Date(entry.e).getTime()) continue;
+        }
+        newDomains.push({ domain: id, until: (entry && entry.m === 't') ? new Date(entry.e).getTime() : null });
+      }
+      applyBlockRules(newDomains);
+    })
+    .catch(function() {});
+}
+fetchSettings();
+setInterval(fetchSettings, 15_000);
+
+// --- Tracking ---
+var lastUrl = {};
+var debounceTimers = {};
+
 function enqueue(event) {
-  api.storage.local.get(QUEUE_KEY, (result) => {
-    const queue = result[QUEUE_KEY] || [];
+  api.storage.local.get(QUEUE_KEY, function(result) {
+    var queue = result[QUEUE_KEY] || [];
     queue.push(event);
-    api.storage.local.set({ [QUEUE_KEY]: queue });
+    var obj = {};
+    obj[QUEUE_KEY] = queue;
+    api.storage.local.set(obj);
   });
 }
 
 function flushQueue() {
-  api.storage.local.get(QUEUE_KEY, (result) => {
-    const queue = result[QUEUE_KEY];
+  api.storage.local.get(QUEUE_KEY, function(result) {
+    var queue = result[QUEUE_KEY];
     if (!queue || queue.length === 0) return;
     api.storage.local.remove(QUEUE_KEY);
-    for (const evt of queue) {
+    for (var i = 0; i < queue.length; i++) {
+      var evt = queue[i];
       fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evt),
-      }).catch(() => enqueue(evt));
+      }).catch(function() { enqueue(evt); });
     }
   });
 }
@@ -51,22 +141,22 @@ function flushQueue() {
 function doSendTab(url, title, audible) {
   if (!trackingEnabled) return;
   try {
-    const u = new URL(url);
-    const body = { domain: u.hostname, url, title: title || '', browser: BROWSER, audible: !!audible };
+    var u = new URL(url);
+    var body = { domain: u.hostname, url: url, title: title || '', browser: BROWSER, audible: !!audible };
     fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-      .then(() => flushQueue())
-      .catch(() => enqueue(body));
-  } catch {}
+      .then(function() { flushQueue(); })
+      .catch(function() { enqueue(body); });
+  } catch(e) {}
 }
 
 function sendTab(tabId, url, title, audible) {
   if (!trackingEnabled) return;
   if (debounceTimers[tabId]) clearTimeout(debounceTimers[tabId]);
-  debounceTimers[tabId] = setTimeout(() => {
+  debounceTimers[tabId] = setTimeout(function() {
     delete debounceTimers[tabId];
     doSendTab(url, title, audible);
   }, 1000);
@@ -77,35 +167,35 @@ function reportAudible(audible) {
   fetch(AUDIBLE_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audible, browser: BROWSER }),
-  }).catch(() => {});
+    body: JSON.stringify({ audible: audible, browser: BROWSER }),
+  }).catch(function() {});
 }
 
 // --- Event listeners ---
-actionApi.onClicked.addListener(() => {
+actionApi.onClicked.addListener(function() {
   api.tabs.create({ url: DASHBOARD });
 });
 
-api.tabs.onActivated.addListener(({ tabId }) => {
-  api.tabs.get(tabId, (tab) => {
-    if (tab?.url && tab.url.startsWith('http')) {
-      lastUrl[tabId] = tab.url;
-      sendTab(tabId, tab.url, tab.title, tab.audible);
+api.tabs.onActivated.addListener(function(info) {
+  api.tabs.get(info.tabId, function(tab) {
+    if (tab && tab.url && tab.url.indexOf('http') === 0) {
+      lastUrl[info.tabId] = tab.url;
+      sendTab(info.tabId, tab.url, tab.title, tab.audible);
     }
   });
 });
 
-api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
   if (changeInfo.audible !== undefined) {
     reportAudible(!!changeInfo.audible);
   }
-  if (changeInfo.status === 'complete' && tab?.url && tab.url.startsWith('http') && lastUrl[tabId] !== tab.url) {
+  if (changeInfo.status === 'complete' && tab && tab.url && tab.url.indexOf('http') === 0 && lastUrl[tabId] !== tab.url) {
     lastUrl[tabId] = tab.url;
     sendTab(tabId, tab.url, tab.title, tab.audible);
   }
 });
 
-api.tabs.onRemoved.addListener((tabId) => {
+api.tabs.onRemoved.addListener(function(tabId) {
   delete lastUrl[tabId];
   if (debounceTimers[tabId]) {
     clearTimeout(debounceTimers[tabId]);
@@ -113,5 +203,4 @@ api.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// Retry queued events on startup
 flushQueue();

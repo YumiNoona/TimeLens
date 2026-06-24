@@ -31,7 +31,7 @@
   const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
   const showNow = blocks.length > 0 && nowHour > 0 && nowHour < 24;
 
-  const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
+  const legendTypes = $derived([...new Set(blocks.map(b => b.type.toLowerCase()).filter(t => t !== 'gap'))]);
 </script>
 
 <div class="card">
@@ -64,7 +64,7 @@
             class="tl-block"
             class:gap={block.type === 'gap'}
             data-tooltip={block.type === 'gap' ? undefined : `${block.type} · ${block.exeName} · ${fmtDuration(block.durationSeconds)}`}
-            style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'transparent' : colorForCategory(block.type)}"
+            style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'var(--md-surface)' : colorForCategory(block.type)}"
           ></div>
         {/each}
         {#if showNow}
@@ -81,7 +81,7 @@
     {#each legendTypes as type}
       <div class="leg-item" role="listitem">
         <div class="leg-dot" style="background: {colorForCategory(type)}"></div>
-        {type === 'dev' ? 'Dev' : type === 'browse' ? 'Browse' : type.charAt(0).toUpperCase() + type.slice(1)}
+        {type.charAt(0).toUpperCase() + type.slice(1)}
       </div>
     {/each}
   </div>
@@ -127,7 +127,7 @@
     height: 28px;
     border-radius: var(--shape-sm);
     background: var(--md-surface);
-    overflow: visible;
+    overflow: hidden;
   }
 
   .tl-block {
@@ -135,7 +135,6 @@
     top: 0;
     height: 100%;
     min-width: 2px;
-    border-radius: var(--shape-full);
     overflow: hidden;
   }
 
@@ -161,7 +160,7 @@
 
   .tl-now {
     position: absolute;
-    top: -4px;
+    top: 0;
     bottom: 0;
     width: 0;
     z-index: 2;
@@ -171,11 +170,12 @@
     border-radius: 50%;
     background: var(--md-primary);
     margin-left: -4px;
+    margin-top: -4px;
     box-shadow: 0 0 6px var(--md-primary);
   }
   .tl-now-line {
     position: absolute;
-    top: 10px;
+    top: 4px;
     left: -0.5px;
     width: 1px;
     bottom: 0;

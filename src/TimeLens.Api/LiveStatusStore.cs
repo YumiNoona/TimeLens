@@ -10,5 +10,6 @@ public static class LiveStatusStore
     public static string SystemState { get; set; } = "active";
     public static bool PendingIdleReturn { get; set; }
     public static string? PendingFocusBlock { get; set; }
+    public static DateTime LastExtensionHeartbeat { get; set; } = DateTime.MinValue;
     public static AppSettings Settings { get; set; } = new();
 }

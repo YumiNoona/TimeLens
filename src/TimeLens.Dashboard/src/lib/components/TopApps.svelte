@@ -58,7 +58,7 @@
   }
 
   .bar-app {
-    width: 88px;
+    flex: 1; min-width: 0;
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-var);

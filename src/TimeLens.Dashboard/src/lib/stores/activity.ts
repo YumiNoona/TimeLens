@@ -20,8 +20,8 @@ export const timeStr = derived(data, ($data) => {
   return `${h}h ${pad(m)}m`;
 });
 
-export async function refresh(): Promise<void> {
-  loading.set(true);
+export async function refresh(isBackground = false): Promise<void> {
+  if (!isBackground) loading.set(true);
   error.set(null);
   try {
     const d = await getDashboardData();

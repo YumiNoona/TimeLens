@@ -45,7 +45,7 @@
   function startPoll() {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
-      await refresh();
+        await refresh(true);
       try {
         const br = await fetch('http://127.0.0.1:47821/api/browser-summary');
         browserSites = await br.json();
@@ -289,7 +289,7 @@
 
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--sp-3);
   }
 
@@ -297,6 +297,9 @@
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: var(--sp-4);
+  }
+  @media (max-width: 900px) {
+    .bottom-grid { grid-template-columns: 1fr; }
   }
 
   .error-banner {

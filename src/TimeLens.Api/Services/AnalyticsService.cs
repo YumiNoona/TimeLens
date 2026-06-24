@@ -200,12 +200,10 @@ public sealed class AnalyticsService
             FROM app_events
             WHERE start_time >= $today AND start_time < $tomorrow
               AND COALESCE(category, '') != 'system'
-              AND (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400 >= 5
             ORDER BY start_time
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
-        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
         var blocks = new List<TimelineBlockDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -217,9 +215,14 @@ public sealed class AnalyticsService
             var cat = r.IsDBNull(2) ? null : r.GetString(2);
             var start = DateTime.Parse(r.GetString(3), null, DateTimeStyles.RoundtripKind);
             var endStr = r.IsDBNull(4) ? null : r.GetString(4);
-            var end = endStr is not null
-                ? DateTime.Parse(endStr, null, DateTimeStyles.RoundtripKind)
-                : DateTime.UtcNow;
+            var isOngoing = endStr is null;
+            var endRaw = isOngoing
+                ? DateTime.UtcNow
+                : DateTime.Parse(endStr!, null, DateTimeStyles.RoundtripKind);
+            // Cap ongoing sessions to the query boundary so cross-midnight
+            // sessions don't create a block that stretches to the edge based
+            // on current UTC time instead of the queried day.
+            var end = endRaw > tomorrow ? tomorrow : endRaw;
             var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
 
             var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, TimeZoneInfo.Local);
@@ -233,8 +236,10 @@ public sealed class AnalyticsService
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 
-            // Merge adjacent blocks of same type
-            if (blocks.Count > 0 && blocks[^1].Type == type &&
+            // Don't merge ongoing sessions (no end_time) with preceding blocks —
+            // their endHour is an approximation and would create a giant merged
+            // block that silently fills the timeline edge.
+            if (!isOngoing && blocks.Count > 0 && blocks[^1].Type == type &&
                 Math.Abs(blocks[^1].EndHour - startHour) < 0.01)
             {
                 blocks[^1] = blocks[^1] with { EndHour = endHour, DurationSeconds = blocks[^1].DurationSeconds + durationSecs };

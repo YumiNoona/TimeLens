@@ -29,10 +29,10 @@
   </div>
 
   <div class="toolbar">
-    <button class="sort-btn" class:active={sortKey === 'time'} onclick={() => sortKey = 'time'}>
+    <button class="sort-btn chip-button" class:active={sortKey === 'time'} onclick={() => sortKey = 'time'}>
       <i class="ti ti-clock" aria-hidden="true"></i> Time
     </button>
-    <button class="sort-btn" class:active={sortKey === 'name'} onclick={() => sortKey = 'name'}>
+    <button class="sort-btn chip-button" class:active={sortKey === 'name'} onclick={() => sortKey = 'name'}>
       <i class="ti ti-sort-alpha" aria-hidden="true"></i> Name
     </button>
     <span class="count">{allApps.length} apps</span>
@@ -99,18 +99,6 @@
   }
   .search:focus { border-color: var(--md-primary); }
   .toolbar { display: flex; align-items: center; gap: var(--sp-2); }
-  .sort-btn {
-    display: flex; align-items: center; gap: var(--sp-1);
-    padding: var(--sp-1) var(--sp-2);
-    border-radius: var(--shape-sm);
-    border: 1px solid var(--md-outline);
-    background: transparent;
-    color: var(--md-on-surf-var);
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .sort-btn.active { background: var(--md-primary-cont); color: var(--md-on-pri-cont); border-color: var(--md-primary); }
   .sort-btn i { font-size: 14px; }
   .count { font-size: 12px; color: var(--md-on-surf-dim); margin-left: auto; }
   .table { display: flex; flex-direction: column; border: 1px solid var(--md-outline); border-radius: var(--shape-md); overflow: hidden; }
@@ -130,9 +118,9 @@
     border-top: 1px solid var(--md-outline);
   }
   .tr.alt { background: var(--md-surface-1); }
-  .td-name { flex: 1; display: flex; align-items: center; gap: var(--sp-2); }
+  .td-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .td-name i { color: var(--md-primary); font-size: 16px; }
-  .td-time { width: 80px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; }
+  .td-time { width: 80px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; margin-left: var(--sp-4); }
 
   .section { margin-top: var(--sp-4); }
   .section-title {
@@ -147,5 +135,5 @@
   .section-title i { color: var(--md-on-surf-var); font-size: 16px; }
   .th span:nth-child(2),
   .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
-  .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; }
+  .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; margin-left: var(--sp-3); }
 </style>

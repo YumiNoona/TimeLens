@@ -7,13 +7,14 @@ export const categoryColors: Record<string, string> = {
   communication: '#7ECFA8',
   documents: '#7ECFA8',
   media: '#7ECFA8',
-  entertainment: '#A78BFA',
+  entertainment: '#F59E0B',
   design: '#F472B6',
   social: '#E07070',
   system: '#6B7280',
   other: '#4A5145',
   idle: '#1C2118',
   away: '#0C0E08',
+  gap: 'var(--md-surface)',
 };
 
 export function colorForCategory(name: string): string {

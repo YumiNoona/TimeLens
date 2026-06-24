@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "TimeLens Tracker",
-  "version": "5.0.0",
-  "description": "Sends browser activity to TimeLens",
-  "permissions": ["tabs", "storage"],
-  "host_permissions": ["http://127.0.0.1:47821/*"],
+  "version": "5.1.0",
+  "description": "Tracks and blocks distracting websites — part of the TimeLens activity tracker",
+  "permissions": ["tabs", "storage", "declarativeNetRequest"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },

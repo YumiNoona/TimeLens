@@ -240,3 +240,27 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+
+.chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--md-outline);
+  border-radius: var(--shape-sm);
+  background: transparent;
+  color: var(--md-on-surf-var);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip-button:hover {
+  background: var(--md-surface-1);
+  color: var(--md-on-surf);
+}
+.chip-button.active {
+  border-color: var(--md-primary);
+  background: var(--md-primary-cont);
+  color: var(--md-on-pri-cont);
+}

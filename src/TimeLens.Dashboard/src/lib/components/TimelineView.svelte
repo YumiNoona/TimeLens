@@ -127,7 +127,7 @@
 <div class="tlv">
   <div class="topbar">
     <h1 class="headline-small">Timeline</h1>
-    <button class="mode-btn" onclick={() => groupedMode = !groupedMode}>
+    <button class="mode-btn chip-button" onclick={() => groupedMode = !groupedMode}>
       <i class="ti ti-{groupedMode ? 'list' : 'folders'}" aria-hidden="true"></i>
       {groupedMode ? 'Flat' : 'Grouped'}
     </button>
@@ -135,7 +135,10 @@
 
   <div class="filter-row">
     {#each types as t}
-      <button class="type-chip" class:active={selectedTypes.includes(t)} onclick={() => toggleType(t)}>{t}</button>
+      <button class="type-chip chip-button" class:active={selectedTypes.includes(t)} onclick={() => toggleType(t)}>
+        <span class="chip-dot" style="background: {colorForCategory(t)}"></span>
+        {t}
+      </button>
     {/each}
     {#if selectedTypes.length > 0}
       <button class="type-chip clear" onclick={() => selectedTypes = []}>Clear</button>
@@ -213,32 +216,14 @@
   .tlv { display: flex; flex-direction: column; gap: var(--sp-4); }
   .topbar { display: flex; align-items: center; justify-content: space-between; }
 
-  .mode-btn {
-    display: flex; align-items: center; gap: var(--sp-1);
-    padding: var(--sp-1) var(--sp-2);
-    border-radius: var(--shape-sm);
-    border: 1px solid var(--md-outline);
-    background: transparent;
-    color: var(--md-on-surf-var);
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .mode-btn:hover { background: var(--md-surface-1); color: var(--md-on-surf); }
   .mode-btn i { font-size: 14px; }
 
   .filter-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
   .type-chip {
-    padding: var(--sp-1) var(--sp-2);
-    border-radius: var(--shape-sm);
-    border: 1px solid var(--md-outline);
-    background: transparent;
-    color: var(--md-on-surf-var);
-    font-family: inherit;
     font-size: 11px; font-weight: 500;
-    cursor: pointer; text-transform: capitalize;
+    text-transform: capitalize;
   }
-  .type-chip.active { background: var(--md-primary-cont); color: var(--md-on-pri-cont); border-color: var(--md-primary); }
+  .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .type-chip.clear { color: var(--md-error); border-color: rgba(224,112,112,0.3); }
 
   .timeline-blocks { display: flex; flex-direction: column; gap: 1px; }
@@ -282,13 +267,14 @@
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--md-on-surf-var);
-    width: 100px; flex-shrink: 0;
+    width: 110px; flex-shrink: 0;
+    margin-right: var(--sp-4);
   }
   .tl-arrow { color: var(--md-primary); font-size: 10px; }
   .tl-bar-bg { flex: 1; height: 10px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
   .tl-bar { height: 100%; border-radius: 99px; min-width: 4px; }
   .tl-type {
-    width: 100px; flex-shrink: 0;
+    flex: 1; min-width: 0;
     font-size: 12px; text-transform: capitalize;
     color: var(--md-on-surf);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -301,6 +287,7 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--md-on-surf-dim);
+    margin-left: var(--sp-4);
   }
   .empty { font-size: 13px; color: var(--md-on-surf-dim); text-align: center; padding: var(--sp-6); }
 </style>

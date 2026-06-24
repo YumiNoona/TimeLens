@@ -62,7 +62,10 @@ public sealed class InputMonitor : IDisposable
         var c = Interlocked.Exchange(ref _clickCount, 0);
 
         if (k > 0 || c > 0)
-            InputActivityTick?.Invoke(k, c, null, null);
+        {
+            var (exe, _, pid) = Win32.GetForegroundWindowInfo();
+            InputActivityTick?.Invoke(k, c, pid, exe);
+        }
     }
 
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)

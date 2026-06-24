@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using TimeLens.Api.Dtos;
 
@@ -7,8 +8,8 @@ namespace TimeLens.Api.Services;
 public sealed class AnalyticsService
 {
     private readonly string _connString;
-    private readonly Dictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = [];
-    private readonly object _cacheLock = new();
+    private readonly ConcurrentDictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
     private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CacheTtlHistory = TimeSpan.FromSeconds(300);
@@ -25,42 +26,48 @@ public sealed class AnalyticsService
         var isToday = localDate == DateTime.Now.Date;
         var ttl = isToday ? CacheTtlToday : CacheTtlHistory;
 
-        lock (_cacheLock)
+        if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < ttl)
+            return entry.data;
+
+        var sem = _locks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
         {
-            if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < ttl)
+            if (_cache.TryGetValue(cacheKey, out entry) && DateTime.UtcNow - entry.cachedAt < ttl)
                 return entry.data;
-        }
 
-        using var conn = new SqliteConnection(_connString);
-        await conn.OpenAsync();
+            using var conn = new SqliteConnection(_connString);
+            await conn.OpenAsync();
 
-        var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
-        var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
-        var yesterday = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(-1));
+            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            var yesterday = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(-1));
 
-        var summary = await GetSummaryAsync(conn, today, tomorrow, yesterday);
-        var timeline = await GetTimelineAsync(conn, today, tomorrow);
-        var topApps = await GetTopAppsAsync(conn, today, tomorrow);
-        var heatmap = await GetHeatmapAsync(conn, today);
-        var categories = await GetCategoriesAsync(conn, today, tomorrow);
-        var live = new LiveStatusDto(
-            LiveStatusStore.CurrentApp,
-            LiveStatusStore.IdleSeconds / 60,
-            LiveStatusStore.IsIdle,
-            LiveStatusStore.AudibleTab,
-            LiveStatusStore.AudioActive,
-            LiveStatusStore.SystemState,
-            LiveStatusStore.PendingIdleReturn
-        );
+            var summary = await GetSummaryAsync(conn, today, tomorrow, yesterday);
+            var timeline = await GetTimelineAsync(conn, today, tomorrow);
+            var topApps = await GetTopAppsAsync(conn, today, tomorrow);
+            var heatmap = await GetHeatmapAsync(conn, today);
+            var categories = await GetCategoriesAsync(conn, today, tomorrow);
+            var live = new LiveStatusDto(
+                LiveStatusStore.CurrentApp,
+                LiveStatusStore.IdleSeconds / 60,
+                LiveStatusStore.IsIdle,
+                LiveStatusStore.AudibleTab,
+                LiveStatusStore.AudioActive,
+                LiveStatusStore.SystemState,
+                LiveStatusStore.PendingIdleReturn
+            );
 
-        var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live);
+            var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live);
 
-        lock (_cacheLock)
-        {
             _cache[cacheKey] = (result, DateTime.UtcNow);
-        }
 
-        return result;
+            return result;
+        }
+        finally
+        {
+            sem.Release();
+        }
     }
 
     private static async Task<SummaryDto> GetSummaryAsync(

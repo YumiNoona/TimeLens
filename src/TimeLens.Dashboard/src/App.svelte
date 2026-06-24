@@ -38,6 +38,27 @@
     }
   }
 
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startPoll() {
+    if (pollTimer) return;
+    pollTimer = setInterval(async () => {
+      await refresh();
+      try {
+        const br = await fetch('http://127.0.0.1:47821/api/browser-summary');
+        browserSites = await br.json();
+      } catch { }
+      try {
+        const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
+        audioSessions = await ar.json();
+      } catch { }
+    }, 30_000);
+  }
+
+  function stopPoll() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
   onMount(async () => {
     refresh();
     try {
@@ -55,7 +76,19 @@
       const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
       audioSessions = await ar.json();
     } catch { audioSessions = []; }
+
+    document.addEventListener('visibilitychange', onVisibility);
+    if (!document.hidden) startPoll();
+
+    return () => {
+      stopPoll();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   });
+
+  function onVisibility() {
+    document.hidden ? stopPoll() : startPoll();
+  }
 </script>
 
 <div class="tl">

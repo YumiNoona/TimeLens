@@ -9,6 +9,7 @@ public sealed class WriterQueue : IDisposable
     private readonly System.Threading.Tasks.Task _drainTask;
     private readonly CancellationTokenSource _cts = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<Action<SqliteCommand>> _queue = new();
+    private Timer? _checkpointTimer;
 
     public WriterQueue(string dbPath)
     {
@@ -18,6 +19,21 @@ public sealed class WriterQueue : IDisposable
         wal.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;";
         wal.ExecuteNonQuery();
         _drainTask = DrainLoopAsync(_cts.Token);
+
+        _checkpointTimer = new Timer(_ =>
+        {
+            try
+            {
+                lock (_syncLock)
+                {
+                    DrainAll();
+                    using var cmd = _conn.CreateCommand();
+                    cmd.CommandText = "PRAGMA wal_checkpoint(PASSIVE);";
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30));
     }
 
     public void Enqueue(Action<SqliteCommand> op)
@@ -95,6 +111,7 @@ public sealed class WriterQueue : IDisposable
 
     public void Dispose()
     {
+        _checkpointTimer?.Dispose();
         _cts.Cancel();
         try { _drainTask.GetAwaiter().GetResult(); } catch { }
         DrainAll();

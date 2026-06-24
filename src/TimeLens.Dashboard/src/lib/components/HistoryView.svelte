@@ -29,7 +29,8 @@
       const val = heatmapLookup.get(dateStr) ?? 0;
       days.push({
         date: dateStr,
-        label: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        weekday: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        dayNum: d.getDate(),
         isToday: i === 0,
         level: val > 0 ? Math.ceil(val / maxVal * 3) : 0,
       });
@@ -88,7 +89,8 @@
         role="tab"
         aria-selected={selectedDate === day.date}
       >
-        {day.label}
+        <span class="day-weekday">{day.weekday}</span>
+        <span class="day-num">{day.dayNum}</span>
         <span class="day-dot" class:l1={day.level >= 1} class:l2={day.level >= 2} class:l3={day.level >= 3} class:hidden={day.level === 0}></span>
       </button>
     {/each}
@@ -219,20 +221,34 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--sp-2) var(--sp-3) var(--sp-1);
-    text-align: center;
-    border-radius: 999px;
+    justify-content: center;
+    width: 44px;
+    padding: var(--sp-1) 0 var(--sp-1);
+    border-radius: var(--shape-md);
     border: 1px solid var(--md-outline);
     background: var(--md-surface-2);
     color: var(--md-on-surf-var);
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
     cursor: pointer;
-    white-space: nowrap;
     transition: all 0.15s;
+    gap: 1px;
   }
-  .day-chip:hover { background: var(--md-surface-3); color: var(--md-on-surf); }
+  .day-weekday {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--md-on-surf-dim);
+  }
+  .day-num {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--md-on-surf);
+    line-height: 1;
+  }
+  .day-chip.active .day-weekday,
+  .day-chip.active .day-num { color: #1a1a1a; }
+  .day-chip:hover { background: var(--md-surface-3); }
   .day-chip.today { border-color: var(--md-primary); color: var(--md-primary); }
   .day-chip.active {
     background: var(--md-primary);

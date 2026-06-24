@@ -220,6 +220,7 @@
     flex-direction: column;
     align-items: center;
     padding: var(--sp-2) var(--sp-3) var(--sp-1);
+    text-align: center;
     border-radius: 999px;
     border: 1px solid var(--md-outline);
     background: var(--md-surface-2);

@@ -17,13 +17,36 @@ public sealed record SummaryDto(
     int FocusScore,
     string TopCategory,
     string TopCategoryTime,
-    int VsYesterday
+    int? VsYesterday,
+    int TotalKeystrokes,
+    int TotalClicks
+);
+
+public sealed record InputSummaryDto(
+    string ExeName,
+    int Keystrokes,
+    int Clicks
+);
+
+public sealed record BrowserEntryDto(
+    string Domain,
+    int Visits,
+    string LastVisit
+);
+
+public sealed record AudioSessionDto(
+    string ExeName,
+    int Sessions,
+    string FirstSeen
 );
 
 public sealed record TimelineBlockDto(
     double StartHour,
     double EndHour,
-    string Type
+    string Type,
+    string ExeName,
+    string? WindowTitle,
+    int DurationSeconds
 );
 
 public sealed record TopAppDto(
@@ -47,5 +70,7 @@ public sealed record LiveStatusDto(
     int IdleMinutes,
     bool IsIdle,
     string? AudibleTab,
-    bool AudioActive
+    bool AudioActive,
+    string SystemState,
+    bool PendingIdleReturn
 );

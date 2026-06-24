@@ -21,7 +21,9 @@ public static class DatabaseInitializer
                 category TEXT,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
-                was_idle INTEGER NOT NULL DEFAULT 0
+                was_idle INTEGER NOT NULL DEFAULT 0,
+                session_state TEXT NOT NULL DEFAULT 'active',
+                idle_reason TEXT
             );
 
             CREATE TABLE IF NOT EXISTS browser_events (
@@ -66,60 +68,94 @@ public static class DatabaseInitializer
                 is_user_defined INTEGER NOT NULL DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS custom_rules (
+                exe_pattern TEXT PRIMARY KEY,
+                category TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('track_audio', 'true');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('idle_threshold_seconds', '180');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'moss');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'false');
+
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
+            CREATE INDEX IF NOT EXISTS idx_input_activity_ts ON input_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_audio_activity_ts ON audio_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_session_events_ts ON session_events(timestamp);
             """;
         cmd.ExecuteNonQuery();
 
-        SeedBuiltInRules(conn);
+        // Migrate existing databases — add new columns if missing
+        MigrateAddColumn(conn, "app_events", "session_state", "TEXT NOT NULL DEFAULT 'active'");
+        MigrateAddColumn(conn, "app_events", "idle_reason", "TEXT");
+        MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
+
+        // Fix any broken rows where end_time < start_time (timezone/timer bug)
+        using var fixNeg = conn.CreateCommand();
+        fixNeg.CommandText = """
+            UPDATE app_events SET end_time = start_time
+            WHERE end_time IS NOT NULL AND end_time < start_time
+            """;
+        fixNeg.ExecuteNonQuery();
+
+        // Backfill session_state for rows that still have NULL
+        using var backfill = conn.CreateCommand();
+        backfill.CommandText = """
+            UPDATE app_events SET session_state = 'idle' WHERE session_state IS NULL AND was_idle = 1;
+            """;
+        backfill.ExecuteNonQuery();
+        using var backfill2 = conn.CreateCommand();
+        backfill2.CommandText = """
+            UPDATE app_events SET session_state = 'active' WHERE session_state IS NULL;
+            """;
+        backfill2.ExecuteNonQuery();
+
+        // Retention: purge rows older than 90 days
+        var cutoff = DateTime.UtcNow.AddDays(-90).ToString("o");
+        using var purge = conn.CreateCommand();
+        purge.CommandText = $"""
+            DELETE FROM app_events WHERE start_time < $cutoff;
+            DELETE FROM browser_events WHERE start_time < $cutoff;
+            DELETE FROM session_events WHERE timestamp < $cutoff;
+            DELETE FROM input_activity WHERE timestamp < $cutoff;
+            DELETE FROM audio_activity WHERE timestamp < $cutoff;
+            """;
+        purge.Parameters.AddWithValue("$cutoff", cutoff);
+        var deleted = purge.ExecuteNonQuery();
+
+        // Enable incremental auto_vacuum so free pages are reused
+        using var av = conn.CreateCommand();
+        av.CommandText = "PRAGMA auto_vacuum = INCREMENTAL;";
+        av.ExecuteNonQuery();
+
+        // Vacuum if we deleted anything meaningful
+        if (deleted > 100)
+        {
+            using var v1 = conn.CreateCommand();
+            v1.CommandText = "PRAGMA incremental_vacuum;";
+            v1.ExecuteNonQuery();
+        }
     }
 
-    private static void SeedBuiltInRules(SqliteConnection conn)
+    private static void MigrateAddColumn(SqliteConnection conn, string table, string column, string def)
     {
-        var rules = new (string exe, string cat)[]
+        try
         {
-            ("code.exe", "development"),
-            ("devenv.exe", "development"),
-            ("cursor.exe", "development"),
-            ("windsurf.exe", "development"),
-            ("notepad++.exe", "development"),
-            ("git-bash.exe", "development"),
-            ("powershell.exe", "development"),
-            ("cmd.exe", "development"),
-            ("windowsTerminal.exe", "development"),
-            ("slack.exe", "communication"),
-            ("discord.exe", "communication"),
-            ("teams.exe", "communication"),
-            ("zoom.exe", "communication"),
-            ("outlook.exe", "communication"),
-            ("chrome.exe", "browsing"),
-            ("msedge.exe", "browsing"),
-            ("firefox.exe", "browsing"),
-            ("zen.exe", "browsing"),
-            ("brave.exe", "browsing"),
-            ("winword.exe", "documents"),
-            ("excel.exe", "documents"),
-            ("powerpnt.exe", "documents"),
-            ("notion.exe", "documents"),
-            ("obsidian.exe", "documents"),
-            ("spotify.exe", "media"),
-            ("vlc.exe", "media"),
-            ("mpc-hc.exe", "media"),
-            ("wmplayer.exe", "media"),
-        };
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM app_categories";
-        var count = (long)cmd.ExecuteScalar()!;
-        if (count > 0) return;
-
-        foreach (var (exe, cat) in rules)
-        {
-            cmd.CommandText = "INSERT INTO app_categories (exe_name, category, is_user_defined) VALUES ($exe, $cat, 0)";
-            cmd.Parameters.Clear();
-            cmd.Parameters.AddWithValue("$exe", exe);
-            cmd.Parameters.AddWithValue("$cat", cat);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {def};";
             cmd.ExecuteNonQuery();
+        }
+        catch
+        {
+            // Column already exists — ignore
         }
     }
 }

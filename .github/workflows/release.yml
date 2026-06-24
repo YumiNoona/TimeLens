@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: src/TimeLens.Dashboard/package-lock.json
+
+      - name: Build dashboard
+        working-directory: src/TimeLens.Dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish TrayApp (Native AOT)
+        run: |
+          dotnet publish src\TimeLens.TrayApp -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
+
+      - name: Bundle dashboard with publish output
+        shell: pwsh
+        run: |
+          $dist = "src\TimeLens.Dashboard\dist"
+          $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
+          if (Test-Path "$publish\dashboard") { Remove-Item -Recurse -Force "$publish\dashboard" }
+          Copy-Item -Recurse "$dist" "$publish\dashboard"
+
+      - name: Extract version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
+          Copy-Item "docs\how-to-install-extension.md" "$publish\"
+          $zip = "TimeLens-portable-v${{ env.VERSION }}-win-x64.zip"
+          Compress-Archive -Path "$publish\*" -DestinationPath "$zip"
+
+      - name: Create extension zips
+        shell: pwsh
+        run: |
+          Copy-Item "docs\how-to-install-extension.md" "src\browser-extensions\chrome\"
+          Copy-Item "docs\how-to-install-extension.md" "src\browser-extensions\firefox\"
+          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-extension-chrome.zip"
+          Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-extension-firefox.zip"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\TimeLens.iss /DAppVersion=${{ env.VERSION }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            TimeLens-portable-*.zip
+            TimeLens-extension-*.zip
+            dist/TimeLens-Setup-*.exe

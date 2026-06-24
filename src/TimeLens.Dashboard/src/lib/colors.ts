@@ -10,8 +10,10 @@ export const categoryColors: Record<string, string> = {
   entertainment: '#A78BFA',
   design: '#F472B6',
   social: '#E07070',
+  system: '#6B7280',
   other: '#4A5145',
   idle: '#1C2118',
+  away: '#0C0E08',
 };
 
 export function colorForCategory(name: string): string {

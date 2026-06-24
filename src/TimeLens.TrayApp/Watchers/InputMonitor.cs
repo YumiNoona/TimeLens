@@ -38,6 +38,10 @@ public sealed class InputMonitor : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WH_MOUSE_LL = 14;
 
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_RBUTTONDOWN = 0x0204;
+    private const int WM_MBUTTONDOWN = 0x0207;
+
     public void Start()
     {
         using var curProc = System.Diagnostics.Process.GetCurrentProcess();
@@ -58,7 +62,10 @@ public sealed class InputMonitor : IDisposable
         var c = Interlocked.Exchange(ref _clickCount, 0);
 
         if (k > 0 || c > 0)
-            InputActivityTick?.Invoke(k, c, null, null);
+        {
+            var (exe, _, pid) = Win32.GetForegroundWindowInfo();
+            InputActivityTick?.Invoke(k, c, pid, exe);
+        }
     }
 
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -71,8 +78,22 @@ public sealed class InputMonitor : IDisposable
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
-            Interlocked.Increment(ref _clickCount);
+        {
+            var msg = wParam.ToInt32();
+            if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
+                Interlocked.Increment(ref _clickCount);
+        }
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+    }
+
+    public void Stop()
+    {
+        _flushTimer?.Dispose();
+        _flushTimer = null;
+        if (_keyboardHook != IntPtr.Zero) { UnhookWindowsHookEx(_keyboardHook); _keyboardHook = IntPtr.Zero; }
+        if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
+        _keyCount = 0;
+        _clickCount = 0;
     }
 
     public void Dispose()

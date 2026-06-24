@@ -16,13 +16,21 @@ public sealed class IdleMonitor
 
     public AudioMonitor? AudioMonitorRef;
 
-    public const int IdleThresholdSeconds = 180;
+    public int IdleThresholdSeconds { get; set; } = 180;
 
     private bool IsAudioActive()
     {
         if (AudioMonitorRef is not null && AudioMonitorRef.AnyAudioPlaying) return true;
         if (!string.IsNullOrEmpty(TimeLens.Api.LiveStatusStore.AudibleTab)) return true;
         return false;
+    }
+
+    private static long ElapsedSince(uint dwTime)
+    {
+        long now = Environment.TickCount64;
+        long then = (now & ~0xFFFFFFFFL) | dwTime;
+        if (then > now) then -= 0x100000000L;
+        return now - then;
     }
 
     public bool IsIdle()
@@ -32,8 +40,7 @@ public sealed class IdleMonitor
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return false;
 
-        var idleMs = (uint)Environment.TickCount - lii.dwTime;
-        return idleMs >= IdleThresholdSeconds * 1000;
+        return ElapsedSince(lii.dwTime) >= IdleThresholdSeconds * 1000;
     }
 
     public int IdleSeconds()
@@ -43,6 +50,14 @@ public sealed class IdleMonitor
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return 0;
 
-        return ((int)Environment.TickCount - (int)lii.dwTime) / 1000;
+        return (int)(ElapsedSince(lii.dwTime) / 1000);
+    }
+
+    public string GetState()
+    {
+        var sysState = TimeLens.Api.LiveStatusStore.SystemState;
+        if (sysState == "away") return "away";
+        if (IsIdle()) return "idle";
+        return "active";
     }
 }

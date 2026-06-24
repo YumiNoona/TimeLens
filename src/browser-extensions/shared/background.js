@@ -1,4 +1,5 @@
-// Generated from src/browser-extensions/shared/background.js — do not edit directly
+// Single source of truth for both Chrome MV3 and Firefox MV2.
+// Browser auto-detection: Firefox exposes `browser` globally; Chrome does not.
 const BROWSER = typeof browser !== 'undefined' && browser.runtime?.id ? 'firefox' : 'chrome';
 const api = BROWSER === 'firefox' ? browser : chrome;
 const actionApi = api.action || api.browserAction;

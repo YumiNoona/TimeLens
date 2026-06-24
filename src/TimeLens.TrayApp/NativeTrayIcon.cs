@@ -17,7 +17,13 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint NIF_MESSAGE = 1;
     private const uint NIF_ICON = 2;
     private const uint NIF_TIP = 4;
+    private const uint NIF_INFO = 0x10;
+    private const uint NIIF_INFO = 0x01;
+    private const uint NIIF_WARNING = 0x02;
     private const uint NIS_HIDDEN = 8;
+
+    private const uint WS_EX_TOOLWINDOW = 0x00000080;
+    private static readonly IntPtr HWND_MESSAGE = new(-3);
 
     private const uint MF_STRING = 0;
     private const uint TPM_LEFTALIGN = 0;
@@ -26,14 +32,19 @@ public sealed class NativeTrayIcon : IDisposable
 
     // Custom message IDs for menu items
     private const uint ID_OPEN_DASHBOARD = WM_APP + 1;
-    private const uint ID_EXIT = WM_APP + 2;
+    private const uint ID_INSTALL_EXTENSION = WM_APP + 2;
+    private const uint ID_EXIT = WM_APP + 3;
+
+    private const uint WM_STARTUP = WM_APP + 100;
 
     private IntPtr _hWnd;
     private IntPtr _hMenu;
     private bool _disposed;
 
     public event Action? OpenDashboardRequested;
+    public event Action? InstallExtensionRequested;
     public event Action? ExitRequested;
+    public event Action? StartupRequested;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATAW
@@ -176,10 +187,15 @@ public sealed class NativeTrayIcon : IDisposable
             throw new InvalidOperationException("Failed to register window class.");
 
         _hWnd = CreateWindowExW(
-            0, WindowClass, "TimeLens",
-            0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
+            WS_EX_TOOLWINDOW, WindowClass, "TimeLens",
+            0, 0, 0, 0, 0, HWND_MESSAGE, IntPtr.Zero, hInstance, IntPtr.Zero);
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "TimeLens.ico");
+        var hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
+        if (hIcon == IntPtr.Zero)
+            hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION
 
         var nid = new NOTIFYICONDATAW
         {
@@ -188,7 +204,7 @@ public sealed class NativeTrayIcon : IDisposable
             uID = TrayIconId,
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage = WM_USER,
-            hIcon = LoadImageFromFile(IntPtr.Zero, "TimeLens.ico", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE),
+            hIcon = hIcon,
             szTip = "TimeLens",
         };
         if (!Shell_NotifyIconW(NIM_ADD, ref nid))
@@ -196,7 +212,12 @@ public sealed class NativeTrayIcon : IDisposable
 
         _hMenu = CreatePopupMenu();
         AppendMenuW(_hMenu, MF_STRING, ID_OPEN_DASHBOARD, "Open Dashboard");
+        AppendMenuW(_hMenu, MF_STRING, ID_INSTALL_EXTENSION, "Install Browser Extension");
         AppendMenuW(_hMenu, MF_STRING, ID_EXIT, "Exit");
+
+        // Post startup message — processed inside the message loop so watchers
+        // start after the message pump is running (required for WinEvent hooks).
+        PostMessageW(_hWnd, WM_STARTUP, IntPtr.Zero, IntPtr.Zero);
 
         // Message loop
         while (GetMessageW(out var msg, IntPtr.Zero, 0, 0))
@@ -204,6 +225,22 @@ public sealed class NativeTrayIcon : IDisposable
             TranslateMessage(ref msg);
             DispatchMessageW(ref msg);
         }
+    }
+
+    public void ShowBalloon(string title, string text, bool warning = false)
+    {
+        if (_hWnd == IntPtr.Zero) return;
+        var nid = new NOTIFYICONDATAW
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
+            hWnd = _hWnd,
+            uID = TrayIconId,
+            uFlags = NIF_INFO,
+            szInfoTitle = title,
+            szInfo = text,
+            dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO,
+        };
+        Shell_NotifyIconW(NIM_MODIFY, ref nid);
     }
 
     private IntPtr WindowProcedure(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -231,12 +268,18 @@ public sealed class NativeTrayIcon : IDisposable
                 var cmdId = (uint)wParam;
                 if (cmdId == ID_OPEN_DASHBOARD)
                     OpenDashboardRequested?.Invoke();
+                else if (cmdId == ID_INSTALL_EXTENSION)
+                    InstallExtensionRequested?.Invoke();
                 else if (cmdId == ID_EXIT)
                     ExitRequested?.Invoke();
                 return IntPtr.Zero;
 
             case WM_DESTROY:
                 PostQuitMessage(0);
+                return IntPtr.Zero;
+
+            case WM_STARTUP:
+                StartupRequested?.Invoke();
                 return IntPtr.Zero;
         }
 
@@ -247,12 +290,8 @@ public sealed class NativeTrayIcon : IDisposable
     {
         SetForegroundWindow(_hWnd);
         GetCursorPos(out var pt);
-        var cmd = TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_RETURNCMD, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);
+        TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);
         PostMessageW(_hWnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
-        if (cmd == ID_OPEN_DASHBOARD)
-            OpenDashboardRequested?.Invoke();
-        else if (cmd == ID_EXIT)
-            ExitRequested?.Invoke();
     }
 
     [DllImport("user32.dll")]

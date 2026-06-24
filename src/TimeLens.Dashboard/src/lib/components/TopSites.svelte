@@ -1,33 +1,36 @@
 <script lang="ts">
-  import type { AppEntry } from '../types';
+  import type { BrowserEntry } from '../types';
   import { colorForApp } from '../colors';
-  import { fmtTime } from '../utils';
 
-  let { apps }: { apps: AppEntry[] } = $props();
+  let { sites }: { sites: BrowserEntry[] } = $props();
 
-  const maxMins = $derived(apps.length > 0 ? apps[0].minutes : 1);
+  const maxVisits = $derived(sites.length > 0 ? sites[0].visits : 1);
 </script>
 
 <div class="card">
   <div class="card-title">
-    <i class="ti ti-apps" aria-hidden="true"></i>
-    Top apps
+    <i class="ti ti-world" aria-hidden="true"></i>
+    Top sites
   </div>
 
-  <div role="list">
-    {#each apps as app, i}
-      <div class="bar-row" role="listitem">
-        <div class="bar-app">{app.name}</div>
-        <div class="bar-track">
-          <div
-            class="bar-fill"
-            style="width: {Math.round(app.minutes / maxMins * 100)}%; background: {colorForApp(i)}"
-          ></div>
+  {#if sites.length === 0}
+    <p class="empty">No browsing activity today.</p>
+  {:else}
+    <div role="list">
+      {#each sites as site, i}
+        <div class="bar-row" role="listitem">
+          <div class="bar-domain" title={site.domain}>{site.domain}</div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              style="width: {Math.round(site.visits / maxVisits * 100)}%; background: {colorForApp(i)}"
+            ></div>
+          </div>
+          <div class="bar-count">{site.visits}</div>
         </div>
-        <div class="bar-time">{fmtTime(app.minutes)}</div>
-      </div>
-    {/each}
-  </div>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -57,8 +60,10 @@
     margin-bottom: var(--sp-3);
   }
 
-  .bar-app {
-    width: 88px;
+  .bar-row:last-child { margin-bottom: 0; }
+
+  .bar-domain {
+    width: 100px;
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-var);
@@ -80,11 +85,17 @@
     border-radius: var(--shape-full);
   }
 
-  .bar-time {
-    width: 40px;
+  .bar-count {
+    width: 32px;
     text-align: right;
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-dim);
+  }
+
+  .empty {
+    font-size: 12px;
+    color: var(--md-on-surf-dim);
+    padding: var(--sp-3) 0;
   }
 </style>

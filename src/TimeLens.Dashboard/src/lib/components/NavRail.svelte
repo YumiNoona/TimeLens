@@ -5,10 +5,12 @@
     { id: 'today', icon: 'ti-layout-dashboard', label: 'Today' },
     { id: 'history', icon: 'ti-calendar-week', label: 'History' },
     { id: 'apps', icon: 'ti-chart-donut', label: 'Apps' },
+    { id: 'browser', icon: 'ti-world', label: 'Browser' },
     { id: 'timeline', icon: 'ti-timeline', label: 'Timeline' },
   ];
 
   const bottom = [
+    { id: 'block', icon: 'ti-shield', label: 'Block' },
     { id: 'rules', icon: 'ti-tag', label: 'Rules' },
     { id: 'settings', icon: 'ti-settings-2', label: 'Settings' },
   ];

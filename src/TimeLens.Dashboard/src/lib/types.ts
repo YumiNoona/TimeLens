@@ -6,18 +6,41 @@ export interface TodaySummary {
   focusScore: number;
   topCategory: string;
   topCategoryTime: string;
-  vsYesterday: number;
+  vsYesterday: number | null;
+  totalKeystrokes: number;
+  totalClicks: number;
 }
 
 export interface TimelineBlock {
   startHour: number;
   endHour: number;
   type: string;
+  exeName: string;
+  windowTitle: string | null;
+  durationSeconds: number;
 }
 
 export interface AppEntry {
   name: string;
   minutes: number;
+}
+
+export interface InputEntry {
+  exeName: string;
+  keystrokes: number;
+  clicks: number;
+}
+
+export interface BrowserEntry {
+  domain: string;
+  visits: number;
+  lastVisit: string;
+}
+
+export interface AudioEntry {
+  exeName: string;
+  sessions: number;
+  firstSeen: string;
 }
 
 export interface HeatmapEntry {
@@ -37,6 +60,8 @@ export interface LiveStatus {
   isIdle: boolean;
   audibleTab: string | null;
   audioActive: boolean;
+  systemState: string;
+  pendingIdleReturn: boolean;
 }
 
 export interface DashboardData {

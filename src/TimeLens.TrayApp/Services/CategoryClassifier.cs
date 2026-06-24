@@ -1,12 +1,9 @@
-using Microsoft.Data.Sqlite;
 using TimeLens.Core.Interfaces;
 
 namespace TimeLens.TrayApp.Services;
 
 public sealed class CategoryClassifier : ICategoryClassifier
 {
-    private readonly string? _dbPath;
-
     private static readonly Dictionary<string, string> BuiltInExeRules = new(StringComparer.OrdinalIgnoreCase)
     {
         ["code.exe"] = "development",
@@ -37,6 +34,10 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["vlc.exe"] = "media",
         ["mpc-hc.exe"] = "media",
         ["wmplayer.exe"] = "media",
+        ["TimeLens.TrayApp.exe"] = "system",
+        ["ShellExperienceHost.exe"] = "system",
+        ["explorer.exe"] = "system",
+        ["OpenCode.exe"] = "development",
     };
 
     private static readonly Dictionary<string, string> DomainRules = new(StringComparer.OrdinalIgnoreCase)
@@ -64,30 +65,28 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["facebook.com"] = "social",
     };
 
-    public CategoryClassifier(string? dbPath = null)
+    public Dictionary<string, string> CustomRules { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public void AddCustomRule(string pattern, string category)
     {
-        _dbPath = dbPath;
+        CustomRules[pattern] = category;
+    }
+
+    public void RemoveCustomRule(string pattern)
+    {
+        CustomRules.Remove(pattern);
     }
 
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
-        if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
-            return domainCat;
+        if (CustomRules.TryGetValue(exeName, out var customCat))
+            return customCat.ToLowerInvariant();
 
-        if (_dbPath is not null)
-        {
-            using var conn = new SqliteConnection($"Data Source={_dbPath}");
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT category FROM app_categories WHERE exe_name = $exe";
-            cmd.Parameters.AddWithValue("$exe", exeName.ToLowerInvariant());
-            var result = cmd.ExecuteScalar();
-            if (result is not null)
-                return (string)result;
-        }
+        if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
+            return domainCat.ToLowerInvariant();
 
         if (BuiltInExeRules.TryGetValue(exeName, out var exeCat))
-            return exeCat;
+            return exeCat.ToLowerInvariant();
 
         return "other";
     }

@@ -7,9 +7,12 @@
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SelfContained>true</SelfContained>
+    <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
+    <UseWindowsForms>false</UseWindowsForms>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>TimeLens.ico</ApplicationIcon>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <DebugType>none</DebugType>
     <NoWarn>CA1416</NoWarn>
     <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
@@ -24,6 +27,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.11" />
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
 
   </ItemGroup>
@@ -31,6 +35,12 @@
   <ItemGroup>
     <ProjectReference Include="..\TimeLens.Core\TimeLens.Core.csproj" />
     <ProjectReference Include="..\TimeLens.Api\TimeLens.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\TimeLens.Dashboard\dist\**\*">
+      <LogicalName>dashboard\%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

@@ -451,20 +451,23 @@ public static class ApiHost
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TimeLens · Browser Extensions</title>
+<title>TimeLens · Extensions</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
-:root {
+:root{
   --md-surface:#0D0F0A;--md-surface-1:#141810;--md-surface-2:#1C2118;--md-surface-3:#222819;
   --md-outline:rgba(255,255,255,.07);--md-outline-var:rgba(255,255,255,.14);
   --md-primary:#C8E86A;--md-on-primary:#151E00;--md-primary-cont:#1E2E00;--md-on-pri-cont:#D6F572;
-  --md-secondary:#E8A23A;--md-on-secondary:#211500;--md-sec-cont:#2C1E00;
-  --md-tertiary:#7ECFA8;--md-on-tertiary:#00331F;--md-ter-cont:#00472B;
+  --md-secondary:#E8A23A;--md-sec-cont:#2C1E00;
+  --md-tertiary:#7ECFA8;--md-ter-cont:#00472B;
+  --md-error:#E07070;--md-err-cont:#3B1212;
   --md-on-surf:#E4E8DC;--md-on-surf-var:#8A9283;--md-on-surf-dim:#4A5145;
-  --font-display:Inter,system-ui,-apple-system,sans-serif;--font-mono:'JetBrains Mono',monospace;
-  --shape-sm:8px;--shape-md:12px;--shape-lg:16px;--shape-full:9999px;
-  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
+  --font-display:'Inter',sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --shape-sm:8px;--shape-md:12px;--shape-lg:16px;--shape-xl:28px;
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px
 }
-.theme-ember{--md-surface:#0F0A08;--md-surface-1:#1A1008;--md-surface-2:#23180E;--md-surface-3:#2C1E12;--md-primary:#FF8A65;--md-on-primary:#3B0D00;--md-primary-cont:#4A1504;--md-on-pri-cont:#FFB89A;--md-secondary:#FFAB40;--md-on-secondary:#2E1500;--md-sec-cont:#421F00;--md-tertiary:#F6A0A0;--md-on-tertiary:#401010;--md-ter-cont:#571C1C}
+.theme-ember{--md-surface:#0F0A08;--md-surface-1:#1A1008;--md-surface-2:#23180E;--md-surface-3:#2C1E12;--md-primary:#FF8A65;--md-on-primary:#3B0D00;--md-primary-cont:#4A1504;--md-on-pri-cont:#FFB89A;--md-secondary:#FFAB40;--md-sec-cont:#421F00;--md-tertiary:#F6A0A0;--md-ter-cont:#571C1C}
 .theme-rose{--md-surface:#0F080C;--md-surface-1:#1A0D14;--md-surface-2:#26141C;--md-surface-3:#301A24;--md-primary:#F48FB1;--md-on-primary:#3B0020;--md-primary-cont:#4E0A2D;--md-on-pri-cont:#FDB4CF}
 .theme-moss{--md-surface:#0A0F0A;--md-surface-1:#101810;--md-surface-2:#162116;--md-surface-3:#1C291C;--md-primary:#81C784;--md-on-primary:#002202;--md-primary-cont:#0A320B;--md-on-pri-cont:#A5D6A7}
 .theme-clay{--md-surface:#0E0C0B;--md-surface-1:#19140F;--md-surface-2:#221C15;--md-surface-3:#2B241B;--md-primary:#BCAAA4;--md-on-primary:#2E1510;--md-primary-cont:#3C221B;--md-on-pri-cont:#D7CCC8}
@@ -478,207 +481,213 @@ public static class ApiHost
 body{
   background:var(--md-surface);color:var(--md-on-surf);
   font-family:var(--font-display);font-size:14px;line-height:1.5;
-  min-height:100vh;padding:24px;
-  display:flex;flex-direction:column;align-items:center;
+  min-height:100vh;display:flex;
   -webkit-font-smoothing:antialiased
 }
-.logo{display:flex;align-items:center;gap:10px;margin-bottom:4px}
-.logo-icon{
-  width:36px;height:36px;border-radius:10px;
-  background:linear-gradient(135deg,var(--md-primary),var(--md-tertiary));
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;color:#1A1A1A;font-weight:700
+.rail{
+  width:80px;background:var(--md-surface-1);
+  border-right:1px solid var(--md-outline);
+  display:flex;flex-direction:column;align-items:center;
+  padding:var(--sp-3) 0;gap:var(--sp-1);flex-shrink:0
 }
-.logo-text{font-size:20px;font-weight:700;letter-spacing:-.02em}
-.subtitle{font-size:13px;color:var(--md-on-surf-var);margin-bottom:8px;max-width:420px;text-align:center;line-height:1.5}
-.steps{display:flex;gap:var(--sp-2);margin-bottom:28px}
-.step{
-  display:flex;align-items:center;gap:6px;
-  font-size:11px;color:var(--md-on-surf-dim);
+.rail-logo{
+  width:40px;height:40px;background:var(--md-primary-cont);
+  border-radius:var(--shape-md);display:flex;align-items:center;justify-content:center;
+  margin-bottom:var(--sp-4)
+}
+.rail-logo i{color:var(--md-primary);font-size:20px}
+.main{
+  flex:1;overflow-y:auto;padding:var(--sp-6);
+  display:flex;flex-direction:column;gap:var(--sp-4)
+}
+.page-header{margin-bottom:4px}
+.page-header h1{font-size:24px;font-weight:600;letter-spacing:-.01em;line-height:1.2}
+.page-header p{font-size:13px;color:var(--md-on-surf-var);margin-top:2px}
+.card{
   background:var(--md-surface-1);border:1px solid var(--md-outline);
-  border-radius:var(--shape-full);padding:4px 12px
+  border-radius:var(--shape-lg);padding:var(--sp-5)
+}
+.card-title{
+  font-size:14px;font-weight:500;color:var(--md-on-surf);
+  margin-bottom:var(--sp-4);display:flex;align-items:center;gap:var(--sp-2)
+}
+.card-title i{color:var(--md-on-surf-var);font-size:16px}
+.steps-row{
+  display:flex;gap:var(--sp-3);margin-bottom:var(--sp-4);flex-wrap:wrap
+}
+.step-chip{
+  display:flex;align-items:center;gap:var(--sp-2);
+  background:var(--md-surface-2);border:1px solid var(--md-outline);
+  border-radius:var(--shape-xl);padding:var(--sp-2) var(--sp-4);
+  font-size:13px;font-weight:500;color:var(--md-on-surf-var)
 }
 .step-num{
-  width:18px;height:18px;border-radius:50%;
+  width:24px;height:24px;border-radius:50%;
   background:var(--md-primary-cont);color:var(--md-on-pri-cont);
   display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:700
+  font-size:12px;font-weight:700;flex-shrink:0
 }
-.module{
-  background:var(--md-surface-1);border:1px solid var(--md-outline);
-  border-radius:var(--shape-lg);padding:28px;width:100%;max-width:620px;
-  display:flex;flex-direction:column;gap:16px
+.browser-row{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:var(--sp-3);border-radius:var(--shape-md);
+  background:var(--md-surface-2);border:1px solid transparent;
+  text-decoration:none;color:inherit;
+  transition:all .15s;margin-bottom:var(--sp-2)
 }
-.module-header{
-  display:flex;align-items:flex-start;gap:16px;
-  padding-bottom:16px;border-bottom:1px solid var(--md-outline)
+.browser-row:last-child{margin-bottom:0}
+.browser-row:hover{
+  background:var(--md-surface-3);border-color:var(--md-primary);
+  transform:translateY(-1px)
 }
-.module-icon{
-  width:52px;height:52px;border-radius:14px;flex-shrink:0;
+.br-icon{
+  width:42px;height:42px;border-radius:var(--shape-md);flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:22px;font-weight:700
+  font-size:16px;font-weight:700;color:#fff
 }
-.ic-chrome{background:#1a2e0a;color:var(--md-primary)}
-.ic-firefox{background:#2e1a00;color:var(--md-secondary)}
-.module-title{font-size:16px;font-weight:600;letter-spacing:-.01em}
-.module-desc{font-size:12px;color:var(--md-on-surf-var);margin-top:2px}
-.browser-card{
-  background:var(--md-surface-2);border:1px solid rgba(255,255,255,.05);
-  border-radius:12px;padding:14px 16px;display:flex;
-  align-items:center;gap:14px;transition:all .15s;
-  text-decoration:none;color:inherit
+.br-chrome{background:linear-gradient(135deg,#4285F4,#34A853)}
+.br-edge{background:linear-gradient(135deg,#0078D4,#00BCF2)}
+.br-brave{background:linear-gradient(135deg,#FB542B,#FF5500)}
+.br-firefox{background:linear-gradient(135deg,#FF7139,#FFA436)}
+.br-zen{background:linear-gradient(135deg,#7B68EE,#9370DB)}
+.br-info{flex:1;min-width:0}
+.br-name{font-size:13px;font-weight:600}
+.br-hint{
+  font-size:11px;color:var(--md-on-surf-dim);margin-top:2px;
+  font-family:var(--font-mono)
 }
-.browser-card:hover{background:var(--md-surface-3);border-color:var(--md-primary);transform:translateY(-1px)}
-.browser-card+.browser-card{margin-top:8px}
-.bc-icon{
-  width:44px;height:44px;border-radius:12px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-size:18px;font-weight:700
+.br-dl{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:500;color:var(--md-primary);
+  flex-shrink:0;opacity:0;transition:opacity .15s
 }
-.bc-chrome{background:linear-gradient(135deg,#4285F4,#34A853);color:#fff}
-.bc-edge{background:linear-gradient(135deg,#0078D4,#00BCF2);color:#fff}
-.bc-brave{background:linear-gradient(135deg,#FB542B,#FF5500);color:#fff}
-.bc-firefox{background:linear-gradient(135deg,#FF7139,#FFA436);color:#fff}
-.bc-zen{background:linear-gradient(135deg,#7B68EE,#9370DB);color:#fff}
-.bc-info{flex:1;min-width:0}
-.bc-name{font-size:13px;font-weight:600}
-.bc-detail{font-size:11px;color:var(--md-on-surf-dim);margin-top:1px}
-.bc-detail code{
-  font-family:var(--font-mono);font-size:10px;
-  background:rgba(255,255,255,.04);padding:1px 6px;border-radius:4px
+.browser-row:hover .br-dl{opacity:1}
+.section-divider{
+  display:flex;align-items:center;gap:var(--sp-3);
+  margin:var(--sp-4) 0 var(--sp-3)
 }
-.bc-dl{
-  display:flex;align-items:center;gap:4px;
-  font-size:11px;color:var(--md-on-surf-dim);flex-shrink:0;
-  transition:color .15s,transform .15s
+.section-divider::after{
+  content:'';flex:1;height:1px;background:var(--md-outline)
 }
-.bc-dl i{font-size:14px}
-.browser-card:hover .bc-dl{color:var(--md-primary);transform:translateX(3px)}
-.status-bar{
-  display:flex;align-items:center;gap:8px;
-  padding-top:16px;border-top:1px solid var(--md-outline);
-  font-size:11px;color:var(--md-on-surf-dim)
+.section-label{
+  font-size:12px;font-weight:500;color:var(--md-on-surf-var);
+  text-transform:uppercase;letter-spacing:.05em;flex-shrink:0
+}
+.status-row{
+  display:flex;align-items:center;gap:var(--sp-2);
+  padding-top:var(--sp-4);border-top:1px solid var(--md-outline);
+  font-size:12px;color:var(--md-on-surf-dim)
 }
 .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .status-dot.online{background:var(--md-tertiary);box-shadow:0 0 6px var(--md-tertiary)}
-.status-dot.offline{background:#E07070}
+.status-dot.offline{background:var(--md-error)}
 .status-dot.checking{background:var(--md-secondary);animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.footer{
-  margin-top:24px;font-size:11px;color:var(--md-on-surf-dim);
-  max-width:620px;width:100%;text-align:center
-}
-.footer a{color:var(--md-on-surf-var);text-decoration:underline}
-.footer a:hover{color:var(--md-primary)}
-@media(max-width:500px){
-  .module{padding:20px;gap:12px}
-  .steps{flex-wrap:wrap}
-}
+.footer-note{margin-top:var(--sp-4);font-size:11px;color:var(--md-on-surf-dim);line-height:1.6}
+.footer-note a{color:var(--md-on-surf-var)}
+@media(max-width:600px){body{flex-direction:column}.rail{width:100%;flex-direction:row;padding:var(--sp-2);gap:var(--sp-2)}.main{padding:var(--sp-3)}.rail-logo{margin-bottom:0;margin-right:auto}}
 </style>
 </head>
 <body>
 
-<div class="logo">
-  <div class="logo-icon">T</div>
-  <span class="logo-text">TimeLens</span>
-</div>
-<p class="subtitle">Install the browser extension to track tabs, domains, and audible media in your activity timeline.</p>
-
-<div class="steps">
-  <div class="step"><span class="step-num">1</span> Download</div>
-  <div class="step"><span class="step-num">2</span> Extract</div>
-  <div class="step"><span class="step-num">3</span> Load unpacked</div>
+<div class="rail">
+  <div class="rail-logo">
+    <i class="ti ti-clock-hour-4"></i>
+  </div>
 </div>
 
-<div class="module">
+<main class="main">
 
-  <div class="module-header">
-    <div class="module-icon ic-chrome">C</div>
-    <div>
-      <div class="module-title">Chromium Browsers</div>
-      <div class="module-desc">Same extension works across all Chromium-based browsers. Download the zip, extract, then load it unpacked in 3 clicks.</div>
+  <div class="page-header">
+    <h1>Browser Extensions</h1>
+    <p>Install the extension to track tabs, domains, and audible media in your activity timeline.</p>
+  </div>
+
+  <div class="steps-row">
+    <div class="step-chip"><span class="step-num">1</span> Download the zip</div>
+    <div class="step-chip"><span class="step-num">2</span> Extract to a folder</div>
+    <div class="step-chip"><span class="step-num">3</span> Load unpacked in browser</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <i class="ti ti-brand-chrome"></i>
+      Chromium Browsers
+    </div>
+
+    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+      <div class="br-icon br-chrome">C</div>
+      <div class="br-info">
+        <div class="br-name">Google Chrome</div>
+        <div class="br-hint">chrome://extensions</div>
+      </div>
+      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+    </a>
+
+    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+      <div class="br-icon br-edge">E</div>
+      <div class="br-info">
+        <div class="br-name">Microsoft Edge</div>
+        <div class="br-hint">edge://extensions</div>
+      </div>
+      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+    </a>
+
+    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+      <div class="br-icon br-brave">B</div>
+      <div class="br-info">
+        <div class="br-name">Brave / Arc / Opera / Vivaldi</div>
+        <div class="br-hint">Any Chromium extensions page</div>
+      </div>
+      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+    </a>
+
+    <div class="section-divider">
+      <span class="section-label">Firefox Family</span>
+    </div>
+
+    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+      <div class="br-icon br-firefox">F</div>
+      <div class="br-info">
+        <div class="br-name">Mozilla Firefox</div>
+        <div class="br-hint">about:debugging</div>
+      </div>
+      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+    </a>
+
+    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+      <div class="br-icon br-zen">Z</div>
+      <div class="br-info">
+        <div class="br-name">Zen Browser</div>
+        <div class="br-hint">about:debugging</div>
+      </div>
+      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+    </a>
+
+    <div class="status-row">
+      <div class="status-dot checking" id="sd"></div>
+      <span id="st">Checking tray app...</span>
     </div>
   </div>
 
-  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
-    <div class="bc-icon bc-chrome">C</div>
-    <div class="bc-info">
-      <div class="bc-name">Google Chrome</div>
-      <div class="bc-detail">Load at <code>chrome://extensions</code> → Developer mode → Load unpacked</div>
-    </div>
-    <div class="bc-dl"><i class="ti ti-download"></i> Download</div>
-  </a>
-
-  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
-    <div class="bc-icon bc-edge">E</div>
-    <div class="bc-info">
-      <div class="bc-name">Microsoft Edge</div>
-      <div class="bc-detail">Load at <code>edge://extensions</code> → Developer mode → Load unpacked</div>
-    </div>
-    <div class="bc-dl"><i class="ti ti-download"></i> Download</div>
-  </a>
-
-  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
-    <div class="bc-icon bc-brave">B</div>
-    <div class="bc-info">
-      <div class="bc-name">Brave / Arc / Opera / Vivaldi</div>
-      <div class="bc-detail">All Chromium-based — same zip, same <code>extensions</code> page flow</div>
-    </div>
-    <div class="bc-dl"><i class="ti ti-download"></i> Download</div>
-  </a>
-
-  <div class="module-header" style="margin-top:8px;padding-top:16px;border-top:1px solid var(--md-outline)">
-    <div class="module-icon ic-firefox">FF</div>
-    <div>
-      <div class="module-title">Firefox Family</div>
-      <div class="module-desc">Manifest V2 extension. Firefox requires temporary loading through the debug page or AMO signing.</div>
-    </div>
+  <div class="footer-note">
+    After extracting the zip, go to your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the extracted folder.
+    <a href="https://github.com/YumiNoona/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">Full installation guide</a>.
   </div>
 
-  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
-    <div class="bc-icon bc-firefox">F</div>
-    <div class="bc-info">
-      <div class="bc-name">Mozilla Firefox</div>
-      <div class="bc-detail">Load at <code>about:debugging</code> → This Firefox → Load Temporary Add-on</div>
-    </div>
-    <div class="bc-dl"><i class="ti ti-download"></i> Download</div>
-  </a>
-
-  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
-    <div class="bc-icon bc-zen">Z</div>
-    <div class="bc-info">
-      <div class="bc-name">Zen Browser</div>
-      <div class="bc-detail">Load at <code>about:debugging</code> → This Firefox → Load Temporary Add-on</div>
-    </div>
-    <div class="bc-dl"><i class="ti ti-download"></i> Download</div>
-  </a>
-
-  <div class="status-bar" id="status-bar">
-    <div class="status-dot checking" id="status-dot"></div>
-    <span id="status-text">Checking tray app connection...</span>
-  </div>
-
-</div>
-
-<div class="footer">
-  Extracted the zip? Open your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the folder. For full instructions see the <a href="https://github.com/YumiNoona/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.
-</div>
+</main>
 
 <script>
-  // Apply saved theme
   fetch('http://127.0.0.1:47821/api/settings')
-    .then(r => r.ok ? r.json() : null)
-    .then(s => {
-      if (s && s.theme && s.theme !== 'default') {
+    .then(function(r){ return r.ok ? r.json() : null })
+    .then(function(s){
+      if(s && s.theme && s.theme !== 'default')
         document.documentElement.className = 'theme-' + s.theme;
-      }
-      // Check tray connection
-      document.getElementById('status-dot').className = 'status-dot online';
-      document.getElementById('status-text').textContent = 'TimeLens tray app is running — extension will connect on install';
+      document.getElementById('sd').className = 'status-dot online';
+      document.getElementById('st').textContent = 'Tray app running — extension will connect on install';
     })
-    .catch(() => {
-      document.getElementById('status-dot').className = 'status-dot offline';
-      document.getElementById('status-text').textContent = 'Tray app not detected — start TimeLens.TrayApp.exe first';
+    .catch(function(){
+      document.getElementById('sd').className = 'status-dot offline';
+      document.getElementById('st').textContent = 'Tray app not detected — start TimeLens.TrayApp.exe first';
     });
 </script>
 

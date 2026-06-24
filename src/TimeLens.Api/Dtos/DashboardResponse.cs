@@ -43,7 +43,10 @@ public sealed record AudioSessionDto(
 public sealed record TimelineBlockDto(
     double StartHour,
     double EndHour,
-    string Type
+    string Type,
+    string ExeName,
+    string? WindowTitle,
+    int DurationSeconds
 );
 
 public sealed record TopAppDto(

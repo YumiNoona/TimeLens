@@ -211,19 +211,22 @@ public sealed class AnalyticsService
 
         while (await r.ReadAsync())
         {
+            var exeName = r.IsDBNull(0) ? "" : r.GetString(0);
+            var windowTitle = r.IsDBNull(1) ? null : r.GetString(1);
+            var cat = r.IsDBNull(2) ? null : r.GetString(2);
             var start = DateTime.SpecifyKind(DateTime.Parse(r.GetString(3)), DateTimeKind.Utc);
             var endStr = r.IsDBNull(4) ? null : r.GetString(4);
             var end = endStr is not null
                 ? DateTime.SpecifyKind(DateTime.Parse(endStr), DateTimeKind.Utc)
                 : DateTime.UtcNow;
             var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
-            var cat = r.IsDBNull(2) ? null : r.GetString(2);
 
             var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, TimeZoneInfo.Local);
             var localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, TimeZoneInfo.Local);
 
             var startHour = localStart.TimeOfDay.TotalHours;
             var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
+            var durationSecs = (int)(end - start).TotalSeconds;
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 
@@ -231,11 +234,11 @@ public sealed class AnalyticsService
             if (blocks.Count > 0 && blocks[^1].Type == type &&
                 Math.Abs(blocks[^1].EndHour - startHour) < 0.01)
             {
-                blocks[^1] = blocks[^1] with { EndHour = endHour };
+                blocks[^1] = blocks[^1] with { EndHour = endHour, DurationSeconds = blocks[^1].DurationSeconds + durationSecs };
             }
             else
             {
-                blocks.Add(new TimelineBlockDto(startHour, endHour, type));
+                blocks.Add(new TimelineBlockDto(startHour, endHour, type, exeName, windowTitle, durationSecs));
             }
         }
 

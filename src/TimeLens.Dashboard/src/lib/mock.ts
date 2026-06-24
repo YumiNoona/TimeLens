@@ -36,7 +36,7 @@ export const mockData: DashboardData = {
     totalKeystrokes: 2847,
     totalClicks: 512,
   },
-  timeline: tlBlocks.map(b => ({ startHour: b.s, endHour: b.e, type: b.type })),
+  timeline: tlBlocks.map(b => ({ startHour: b.s, endHour: b.e, type: b.type, exeName: 'mock.exe', windowTitle: null, durationSeconds: Math.round((b.e - b.s) * 3600) })),
   topApps: [
     { name: 'code.exe', minutes: 142 },
     { name: 'chrome.exe', minutes: 98 },

@@ -21,13 +21,13 @@
 
     for (const b of sorted) {
       if (b.startHour > cursor) {
-        result.push({ startHour: cursor, endHour: b.startHour, type: 'gap' });
+        result.push({ startHour: cursor, endHour: b.startHour, type: 'gap', exeName: '', windowTitle: null, durationSeconds: 0 });
       }
       result.push(b);
       cursor = b.endHour;
     }
     if (cursor < 24) {
-      result.push({ startHour: cursor, endHour: 24, type: 'gap' });
+      result.push({ startHour: cursor, endHour: 24, type: 'gap', exeName: '', windowTitle: null, durationSeconds: 0 });
     }
     return result;
   });
@@ -36,6 +36,13 @@
   const showNow = blocks.length > 0 && nowHour > 0 && nowHour < 24;
 
   const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
+
+  function fmtDuration(secs: number): string {
+    const m = Math.floor(secs / 60);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+  }
 </script>
 
 <div class="card">
@@ -67,6 +74,7 @@
           <div
             class="tl-block"
             class:gap={block.type === 'gap'}
+            data-tooltip={block.type === 'gap' ? undefined : `${block.type} · ${block.exeName} · ${fmtDuration(block.durationSeconds)}`}
             style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'transparent' : colorForCategory(block.type)}"
           ></div>
         {/each}
@@ -130,7 +138,7 @@
     height: 28px;
     border-radius: var(--shape-sm);
     background: var(--md-surface);
-    overflow: hidden;
+    overflow: visible;
   }
 
   .tl-block {
@@ -139,9 +147,28 @@
     height: 100%;
     min-width: 2px;
     border-radius: var(--shape-full);
+    overflow: hidden;
   }
 
   .tl-block.gap { background: transparent !important; }
+
+  .tl-block[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--md-surface-3);
+    border: 1px solid var(--md-outline-var);
+    color: var(--md-on-surf);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 4px 8px;
+    border-radius: var(--shape-sm);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+  }
 
   .tl-now {
     position: absolute;

@@ -15,6 +15,9 @@ export interface TimelineBlock {
   startHour: number;
   endHour: number;
   type: string;
+  exeName: string;
+  windowTitle: string | null;
+  durationSeconds: number;
 }
 
 export interface AppEntry {

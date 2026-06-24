@@ -18,6 +18,10 @@ public sealed class IdleMonitor
 
     public int IdleThresholdSeconds { get; set; } = 180;
 
+    public event Action<string, string>? StateChanged;
+
+    private string _lastState = "active";
+
     private bool IsAudioActive()
     {
         if (AudioMonitorRef is not null && AudioMonitorRef.AnyAudioPlaying) return true;
@@ -53,11 +57,28 @@ public sealed class IdleMonitor
         return (int)(ElapsedSince(lii.dwTime) / 1000);
     }
 
+    internal void ResetLastState()
+    {
+        _lastState = "active";
+    }
+
     public string GetState()
     {
         var sysState = TimeLens.Api.LiveStatusStore.SystemState;
-        if (sysState == "away") return "away";
-        if (IsIdle()) return "idle";
-        return "active";
+        string newState;
+        if (sysState == "away")
+            newState = "away";
+        else if (IsIdle())
+            newState = "idle";
+        else
+            newState = "active";
+
+        if (newState != _lastState)
+        {
+            var from = _lastState;
+            _lastState = newState;
+            StateChanged?.Invoke(from, newState);
+        }
+        return newState;
     }
 }

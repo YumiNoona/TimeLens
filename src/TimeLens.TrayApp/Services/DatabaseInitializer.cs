@@ -90,6 +90,14 @@ public static class DatabaseInitializer
                 timestamp TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS idle_spans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                exe_at_start TEXT,
+                idle_reason TEXT
+            );
+
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_audio', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
@@ -146,6 +154,7 @@ public static class DatabaseInitializer
         purge.CommandText = $"""
             DELETE FROM app_events WHERE start_time < $cutoff;
             DELETE FROM browser_events WHERE start_time < $cutoff;
+            DELETE FROM idle_spans WHERE start_time < $cutoff;
             DELETE FROM session_events WHERE timestamp < $cutoff;
             DELETE FROM input_activity WHERE timestamp < $cutoff;
             DELETE FROM audio_activity WHERE timestamp < $cutoff;

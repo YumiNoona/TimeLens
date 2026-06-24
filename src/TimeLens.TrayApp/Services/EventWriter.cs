@@ -100,7 +100,49 @@ public sealed class EventWriter
                 VALUES ($type, $ts)
                 """;
             cmd.Parameters.AddWithValue("$type", eventType);
-            cmd.Parameters.AddWithValue("$ts", ts);
-        });
+                cmd.Parameters.AddWithValue("$ts", ts);
+            });
+    }
+
+    private long? _idleSpanId;
+    private readonly object _idleSpanLock = new();
+
+    public bool StartIdleSpan(string exeName, string reason)
+    {
+        lock (_idleSpanLock)
+        {
+            if (_idleSpanId is not null) return false;
+            _idleSpanId = _queue.ExecuteSyncWithRowId(conn =>
+            {
+                using var insert = conn.CreateCommand();
+                insert.CommandText = """
+                    INSERT INTO idle_spans (start_time, exe_at_start, idle_reason)
+                    VALUES ($start, $exe, $reason)
+                    """;
+                insert.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
+                insert.Parameters.AddWithValue("$exe", exeName);
+                insert.Parameters.AddWithValue("$reason", reason);
+                insert.ExecuteNonQuery();
+            });
+            return true;
+        }
+    }
+
+    public bool EndIdleSpan()
+    {
+        lock (_idleSpanLock)
+        {
+            if (_idleSpanId is not (long id)) return false;
+            _idleSpanId = null;
+            _queue.ExecuteSync(conn =>
+            {
+                using var update = conn.CreateCommand();
+                update.CommandText = "UPDATE idle_spans SET end_time = $now WHERE id = $id";
+                update.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                update.Parameters.AddWithValue("$id", id);
+                update.ExecuteNonQuery();
+            });
+            return true;
+        }
     }
 }

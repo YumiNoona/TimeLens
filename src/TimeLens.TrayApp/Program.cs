@@ -262,8 +262,22 @@ internal static class Program
                 case "unlocked":
                 case "wake":
                     LiveStatusStore.SystemState = "active";
+                    idleMonitor.ResetLastState();
                     WriteAppEvent();
                     break;
+            }
+        };
+
+        idleMonitor.StateChanged += (from, to) =>
+        {
+            if (from == "active" && (to == "idle" || to == "away"))
+            {
+                var (exe, _, _) = Win32.GetForegroundWindowInfo();
+                writer.StartIdleSpan(exe, to == "away" ? "away" : "input_idle");
+            }
+            else if ((from == "idle" || from == "away") && to == "active")
+            {
+                writer.EndIdleSpan();
             }
         };
 

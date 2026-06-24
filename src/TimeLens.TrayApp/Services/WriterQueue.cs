@@ -15,7 +15,7 @@ public sealed class WriterQueue : IDisposable
         _conn = new SqliteConnection($"Data Source={dbPath}");
         _conn.Open();
         using var wal = _conn.CreateCommand();
-        wal.CommandText = "PRAGMA journal_mode=WAL;";
+        wal.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;";
         wal.ExecuteNonQuery();
         _drainTask = DrainLoopAsync(_cts.Token);
     }

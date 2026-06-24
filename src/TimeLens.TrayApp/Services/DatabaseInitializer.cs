@@ -87,6 +87,9 @@ public static class DatabaseInitializer
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
+            CREATE INDEX IF NOT EXISTS idx_input_activity_ts ON input_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_audio_activity_ts ON audio_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_session_events_ts ON session_events(timestamp);
             """;
         cmd.ExecuteNonQuery();
 

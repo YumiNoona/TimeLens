@@ -5,5 +5,6 @@ public sealed record BrowserEventDto(
     string Url,
     string Title,
     string Browser,
-    bool Audible
+    bool Audible,
+    int TabId = 0
 );

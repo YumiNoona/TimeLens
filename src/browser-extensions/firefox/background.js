@@ -15,6 +15,7 @@ const QUEUE_KEY = 'timelens_queue';
 let trackingEnabled = true;
 let blockedDomains = [];
 var ACTIVE_RULE_IDS = [];
+var _scheduledRefresh = null;
 
 // --- Heartbeat ---
 function sendHeartbeat() {
@@ -83,6 +84,7 @@ if (BROWSER === 'firefox') {
 
 // --- Settings + Blocklist polling ---
 function fetchSettings() {
+  if (_scheduledRefresh) { clearTimeout(_scheduledRefresh); _scheduledRefresh = null; }
   fetch(SETTINGS_API)
     .then(function(r) { return r.json(); })
     .then(function(s) {
@@ -91,17 +93,24 @@ function fetchSettings() {
       try { raw = JSON.parse(raw); } catch { raw = []; }
       if (!Array.isArray(raw)) raw = [];
       var newDomains = [];
+      var earliestExpiry = Infinity;
       for (var i = 0; i < raw.length; i++) {
         var entry = raw[i];
         var id = (entry && entry.i) || entry;
         if (typeof id !== 'string') continue;
         if (id.indexOf('.exe') !== -1) continue;
         if (entry && entry.m === 't' && entry.e) {
-          if (Date.now() >= new Date(entry.e).getTime()) continue;
+          var exp = new Date(entry.e).getTime();
+          if (Date.now() >= exp) continue;
+          if (exp < earliestExpiry) earliestExpiry = exp;
         }
         newDomains.push({ domain: id, until: (entry && entry.m === 't') ? new Date(entry.e).getTime() : null });
       }
       applyBlockRules(newDomains);
+      if (earliestExpiry < Infinity) {
+        var delay = Math.max(0, earliestExpiry - Date.now()) + 100;
+        _scheduledRefresh = setTimeout(fetchSettings, delay);
+      }
     })
     .catch(function() {});
 }
@@ -109,6 +118,7 @@ fetchSettings();
 setInterval(fetchSettings, 15_000);
 
 // --- Tracking ---
+const LEAVE_API = 'http://127.0.0.1:47821/api/browser-leave';
 var lastUrl = {};
 var debounceTimers = {};
 
@@ -129,7 +139,8 @@ function flushQueue() {
     api.storage.local.remove(QUEUE_KEY);
     for (var i = 0; i < queue.length; i++) {
       var evt = queue[i];
-      fetch(API, {
+      var target = evt._leave ? LEAVE_API : API;
+      fetch(target, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evt),
@@ -138,11 +149,11 @@ function flushQueue() {
   });
 }
 
-function doSendTab(url, title, audible) {
+function doSendTab(tabId, url, title, audible) {
   if (!trackingEnabled) return;
   try {
     var u = new URL(url);
-    var body = { domain: u.hostname, url: url, title: title || '', browser: BROWSER, audible: !!audible };
+    var body = { tabId: tabId, domain: u.hostname, url: url, title: title || '', browser: BROWSER, audible: !!audible };
     fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -158,7 +169,7 @@ function sendTab(tabId, url, title, audible) {
   if (debounceTimers[tabId]) clearTimeout(debounceTimers[tabId]);
   debounceTimers[tabId] = setTimeout(function() {
     delete debounceTimers[tabId];
-    doSendTab(url, title, audible);
+    doSendTab(tabId, url, title, audible);
   }, 1000);
 }
 
@@ -196,6 +207,14 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
 });
 
 api.tabs.onRemoved.addListener(function(tabId) {
+  if (lastUrl[tabId]) {
+    var body = { tabId: tabId, _leave: true };
+    fetch(LEAVE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(function() { enqueue(body); });
+  }
   delete lastUrl[tabId];
   if (debounceTimers[tabId]) {
     clearTimeout(debounceTimers[tabId]);

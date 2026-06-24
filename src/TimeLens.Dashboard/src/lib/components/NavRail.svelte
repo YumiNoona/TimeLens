@@ -54,6 +54,7 @@
     padding: var(--sp-3) 0;
     gap: var(--sp-1);
     flex-shrink: 0;
+    overflow-y: auto;
   }
 
   .rail-logo {

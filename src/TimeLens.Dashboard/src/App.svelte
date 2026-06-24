@@ -16,6 +16,7 @@
   import TopSites from './lib/components/TopSites.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { data, loading, error, live, refresh } from './lib/stores/activity';
+  import { timeFormat as timeFormatStore } from './lib/stores/settings';
 
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
@@ -24,6 +25,7 @@
 
   let view = $state('today');
   let currentTheme = $state('moss');
+  let pollInterval = $state(30);
 
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-US', {
@@ -44,6 +46,7 @@
 
   function startPoll() {
     if (pollTimer) return;
+    const interval = Math.max(5000, pollInterval) * 1000;
     pollTimer = setInterval(async () => {
         await refresh(true);
       try {
@@ -58,7 +61,7 @@
         const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
         audioSessions = await ar.json();
       } catch { }
-    }, 30_000);
+    }, interval);
   }
 
   function stopPoll() {
@@ -72,6 +75,8 @@
       const s = await r.json();
       if (s.theme) applyTheme(s.theme);
       if (s.timelineGrouped !== undefined) timelineGrouped = s.timelineGrouped;
+      if (s.timeFormat) timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
+      if (s.pollIntervalSeconds) pollInterval = s.pollIntervalSeconds;
     } catch { /* tray app not running, stay with default */ }
     // Fetch browser and audio data
     try {
@@ -126,8 +131,10 @@
           <StatCard
             label="Active time"
             value={$data.summary.activeTime}
-            chip={$data.summary.vsYesterday !== null ? `↑ ${$data.summary.vsYesterday}m vs yesterday` : ''}
-            chipClass="chip-up"
+            chip={$data.summary.vsYesterday !== null
+              ? `${$data.summary.vsYesterday >= 0 ? '↑' : '↓'} ${Math.abs($data.summary.vsYesterday)}m vs yesterday`
+              : ''}
+            chipClass={$data.summary.vsYesterday !== null && $data.summary.vsYesterday >= 0 ? 'chip-up' : 'chip-down'}
           />
           <StatCard
             label="Idle time"

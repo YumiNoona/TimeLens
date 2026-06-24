@@ -45,4 +45,10 @@ public record AppSettings
 
     [JsonPropertyName("blockAction")]
     public string BlockAction { get; init; } = "notify";
+
+    [JsonPropertyName("timeFormat")]
+    public string TimeFormat { get; init; } = "12h";
+
+    [JsonPropertyName("pollIntervalSeconds")]
+    public int PollIntervalSeconds { get; init; } = 30;
 }

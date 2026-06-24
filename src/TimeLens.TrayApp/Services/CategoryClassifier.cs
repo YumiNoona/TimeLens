@@ -1,6 +1,10 @@
+using System.Linq;
+using System.Text.RegularExpressions;
 using TimeLens.Core.Interfaces;
 
 namespace TimeLens.TrayApp.Services;
+
+public sealed record CustomRule(string Pattern, string Category, string RuleType, string Target, int Priority);
 
 public sealed class CategoryClassifier : ICategoryClassifier
 {
@@ -65,22 +69,47 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["facebook.com"] = "social",
     };
 
-    public Dictionary<string, string> CustomRules { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<CustomRule> CustomRules { get; } = new();
 
-    public void AddCustomRule(string pattern, string category)
+    public void AddCustomRule(string pattern, string category, string ruleType = "substring", string target = "exe", int priority = 0)
     {
-        CustomRules[pattern] = category;
+        var existing = CustomRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
+        var rule = new CustomRule(pattern, category, ruleType, target, priority);
+        if (existing >= 0)
+            CustomRules[existing] = rule;
+        else
+            CustomRules.Add(rule);
     }
 
-    public void RemoveCustomRule(string pattern)
+    public bool RemoveCustomRule(string pattern)
     {
-        CustomRules.Remove(pattern);
+        var idx = CustomRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) return false;
+        CustomRules.RemoveAt(idx);
+        return true;
     }
 
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
-        if (CustomRules.TryGetValue(exeName, out var customCat))
-            return customCat.ToLowerInvariant();
+        // Custom rules first, ordered by priority (lower = higher priority)
+        foreach (var rule in CustomRules.OrderBy(r => r.Priority))
+        {
+            var text = rule.Target switch
+            {
+                "title" => windowTitle ?? "",
+                "domain" => domain ?? "",
+                _ => exeName
+            };
+            if (string.IsNullOrEmpty(text)) continue;
+
+            bool match = rule.RuleType switch
+            {
+                "glob" => GlobMatch(rule.Pattern, text),
+                "regex" => RegexMatch(rule.Pattern, text),
+                _ => text.Contains(rule.Pattern, StringComparison.OrdinalIgnoreCase)
+            };
+            if (match) return rule.Category.ToLowerInvariant();
+        }
 
         if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
             return domainCat.ToLowerInvariant();
@@ -89,5 +118,20 @@ public sealed class CategoryClassifier : ICategoryClassifier
             return exeCat.ToLowerInvariant();
 
         return "other";
+    }
+
+    private static bool GlobMatch(string pattern, string text)
+    {
+        // Convert glob pattern to regex — * matches any, ? matches single char
+        var escaped = Regex.Escape(pattern)
+            .Replace("\\*", ".*")
+            .Replace("\\?", ".");
+        return Regex.IsMatch(text, $"^{escaped}$", RegexOptions.IgnoreCase);
+    }
+
+    private static bool RegexMatch(string pattern, string text)
+    {
+        try { return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase); }
+        catch { return false; }
     }
 }

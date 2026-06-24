@@ -11,6 +11,7 @@ public sealed class WinEventWatcher : IDisposable
     private IntPtr _fgHook;
     private IntPtr _nameHook;
     private readonly Dictionary<int, string> _pidCache = new(200);
+    private readonly Queue<int> _pidCacheOrder = new();
     private const int MaxCacheSize = 200;
 
     public event Action<string, string, int>? ForegroundChanged;
@@ -83,9 +84,13 @@ public sealed class WinEventWatcher : IDisposable
         }
 
         if (_pidCache.Count >= MaxCacheSize)
-            _pidCache.Clear();
+        {
+            var oldest = _pidCacheOrder.Dequeue();
+            _pidCache.Remove(oldest);
+        }
 
         _pidCache[pid] = name;
+        _pidCacheOrder.Enqueue(pid);
         return name;
     }
 

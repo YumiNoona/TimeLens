@@ -3,17 +3,21 @@
   import { colorForCategory } from '../colors';
   import { live } from '../stores/activity';
 
-  let rules: { pattern: string; category: string }[] = $state([]);
+  type Rule = { pattern: string; category: string; ruleType: string; target: string; priority: number; id: number };
+
+  let rules: Rule[] = $state([]);
   let builtinExe: Record<string, string> = $state({});
   let builtinDomains: Record<string, string> = $state({});
   let runningProcs: string[] = $state([]);
   let newPattern = $state('');
   let newCat = $state('other');
-  let patternType = $state('exe');
+  let newRuleType = $state('substring');
+  let newTarget = $state('exe');
   let apiOk = $state(true);
   let suggestions = $state<string[]>([]);
   let showDropdown = $state(false);
   let highlightIdx = $state(-1);
+  let dragIdx: number | null = $state(null);
 
   const categories = [
     { value: 'work', label: 'Work' },
@@ -29,11 +33,23 @@
     { value: 'other', label: 'Other' },
   ];
 
+  const ruleTypes = [
+    { value: 'substring', label: 'Contains' },
+    { value: 'glob', label: 'Glob (*)' },
+    { value: 'regex', label: 'Regex' },
+  ];
+
+  const targets = [
+    { value: 'exe', label: 'Exe name' },
+    { value: 'title', label: 'Window title' },
+    { value: 'domain', label: 'Domain' },
+  ];
+
+  const API = '/api/rules';
+
   function catLabel(value: string): string {
     return categories.find(c => c.value === value)?.label ?? value;
   }
-
-  const API = '/api/rules';
 
   async function load() {
     try {
@@ -57,12 +73,13 @@
     const p = (pattern || newPattern.trim().toLowerCase());
     if (!p) return;
     try {
+      const body = { pattern: p, category: newCat, ruleType: newRuleType, target: newTarget, priority: rules.length };
       await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pattern: p, category: newCat }),
+        body: JSON.stringify(body),
       });
-      rules = [...rules, { pattern: p, category: newCat }];
+      await load();
       newPattern = '';
       showDropdown = false;
     } catch { apiOk = false; }
@@ -71,8 +88,37 @@
   async function removeRule(pattern: string) {
     try {
       await fetch(`${API}/${encodeURIComponent(pattern)}`, { method: 'DELETE' });
-      rules = rules.filter(r => r.pattern !== pattern);
+      await load();
     } catch { apiOk = false; }
+  }
+
+  async function reorder() {
+    const ids = rules.map(r => r.id);
+    try {
+      await fetch('/api/rules/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+    } catch { }
+  }
+
+  function handleDragStart(e: DragEvent, idx: number) {
+    dragIdx = idx;
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e: DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    const item = rules.splice(dragIdx, 1)[0];
+    rules.splice(idx, 0, item);
+    dragIdx = idx;
+  }
+
+  function handleDragEnd() {
+    dragIdx = null;
+    reorder();
   }
 
   async function loadSuggestions() {
@@ -134,7 +180,7 @@
 
   <div class="add-bar">
     <div class="combo-wrapper">
-      <input class="input" placeholder="pattern, e.g. code.exe or github.com" bind:value={newPattern}
+      <input class="input" placeholder="pattern, e.g. notion or *notion*" bind:value={newPattern}
         onfocus={onFocus} oninput={onInput} onkeydown={onKeydown} onblur={onBlur} autocomplete="off" />
       {#if showDropdown && filtered.length > 0}
         <div class="suggestions" onmousedown={clearFocusTimeout}>
@@ -148,6 +194,12 @@
         </div>
       {/if}
     </div>
+    <select class="select" bind:value={newRuleType}>
+      {#each ruleTypes as rt}<option value={rt.value}>{rt.label}</option>{/each}
+    </select>
+    <select class="select" bind:value={newTarget}>
+      {#each targets as t}<option value={t.value}>{t.label}</option>{/each}
+    </select>
     <select class="select" bind:value={newCat}>
       {#each categories as c}<option value={c.value}>{c.label}</option>{/each}
     </select>
@@ -158,14 +210,22 @@
 
   <!-- Custom Rules -->
   <div class="card">
-    <div class="card-header">Custom Rules</div>
+    <div class="card-header">Custom Rules (drag to reorder)</div>
     {#if rules.length === 0}
       <div class="empty-state"><span class="empty-text">No custom rules. Add one above.</span></div>
     {:else}
       {#each rules as rule, i}
-        <div class="rule-row" class:last={i === rules.length - 1}>
+        <div class="rule-row" class:last={i === rules.length - 1}
+          draggable="true"
+          ondragstart={(e) => handleDragStart(e, i)}
+          ondragover={(e) => handleDragOver(e, i)}
+          ondragend={handleDragEnd}
+        >
+          <i class="ti ti-grip-vertical drag-handle" aria-hidden="true"></i>
           <span class="color-dot" style="background:{colorForCategory(rule.category)}"></span>
           <code class="rule-pattern">{rule.pattern}</code>
+          <span class="rule-meta">{ruleTypes.find(r => r.value === rule.ruleType)?.label ?? rule.ruleType}</span>
+          <span class="rule-meta target">{targets.find(t => t.value === rule.target)?.label ?? rule.target}</span>
           <span class="rule-arrow">→</span>
           <span class="rule-cat">{catLabel(rule.category)}</span>
           <button class="del-btn" onclick={() => removeRule(rule.pattern)} aria-label="Remove"><i class="ti ti-x"></i></button>
@@ -185,7 +245,7 @@
           <code class="rule-pattern">{exe}</code>
           <span class="rule-arrow">→</span>
           <span class="rule-cat">{catLabel(cat)}</span>
-          <button class="override-btn" onclick={() => { newPattern = exe; newCat = cat }} title="Override">
+          <button class="override-btn" onclick={() => { newPattern = exe; newCat = cat; newRuleType = 'substring'; newTarget = 'exe'; }} title="Override">
             <i class="ti ti-pencil"></i>
           </button>
         </div>
@@ -199,7 +259,7 @@
           <code class="rule-pattern">{domain}</code>
           <span class="rule-arrow">→</span>
           <span class="rule-cat">{catLabel(cat)}</span>
-          <button class="override-btn" onclick={() => { newPattern = domain; newCat = cat }} title="Override">
+          <button class="override-btn" onclick={() => { newPattern = domain; newCat = cat; newRuleType = 'substring'; newTarget = 'domain'; }} title="Override">
             <i class="ti ti-pencil"></i>
           </button>
         </div>
@@ -213,7 +273,7 @@
       <div class="card-header">Running Apps</div>
       <div class="running-grid">
         {#each runningProcs.filter(p => !rules.some(r => r.pattern === p) && !builtinExe[p]) as proc}
-          <button class="running-chip" onclick={() => { newPattern = proc; newCat = 'other' }}>
+          <button class="running-chip" onclick={() => { newPattern = proc; newCat = 'other'; newRuleType = 'substring'; newTarget = 'exe'; }}>
             <code>{proc}</code>
             <span class="chip-hint">assign</span>
           </button>
@@ -232,8 +292,8 @@
     background: color-mix(in srgb, var(--md-error) 10%, transparent);
     border-radius: var(--shape-sm);
   }
-  .add-bar { display: flex; gap: var(--sp-2); align-items: center; }
-  .combo-wrapper { flex: 1; position: relative; }
+  .add-bar { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+  .combo-wrapper { flex: 1; min-width: 180px; position: relative; }
   .input {
     width: 100%; background: var(--md-surface-1); border: 1px solid var(--md-outline);
     border-radius: var(--shape-sm); padding: var(--sp-2); color: var(--md-on-surf);
@@ -278,11 +338,21 @@
   .rule-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--md-outline); font-size: 13px;
+    cursor: default;
   }
+  .rule-row:active { background: var(--md-surface-2); }
   .rule-row.last { border-bottom: none; }
   .rule-row.builtin { opacity: 0.75; font-size: 12px; }
+  .drag-handle { color: var(--md-on-surf-dim); font-size: 14px; cursor: grab; flex-shrink: 0; }
+  .drag-handle:active { cursor: grabbing; }
   .color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .rule-pattern { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf); min-width: 140px; }
+  .rule-pattern { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf); min-width: 100px; }
+  .rule-meta {
+    font-size: 10px; color: var(--md-on-surf-dim); background: var(--md-surface-2);
+    padding: 1px 5px; border-radius: var(--shape-sm); font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+  .rule-meta.target { background: color-mix(in srgb, var(--md-primary) 10%, transparent); color: var(--md-primary); }
   .rule-arrow { color: var(--md-primary); font-size: 12px; flex-shrink: 0; }
   .rule-cat { color: var(--md-on-surf-var); font-weight: 500; flex: 1; }
   .del-btn {

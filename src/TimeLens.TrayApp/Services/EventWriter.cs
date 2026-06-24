@@ -6,6 +6,7 @@ public sealed class EventWriter
 {
     private readonly WriterQueue _queue;
     private long? _openAppEventId;
+    private readonly object _idLock = new();
 
     public EventWriter(string dbPath)
     {
@@ -14,7 +15,14 @@ public sealed class EventWriter
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category)
     {
-        if (_openAppEventId is long openId)
+        long? previousId;
+        lock (_idLock)
+        {
+            previousId = _openAppEventId;
+            _openAppEventId = null;
+        }
+
+        if (previousId is long openId)
         {
             _queue.ExecuteSync(conn =>
             {
@@ -26,7 +34,7 @@ public sealed class EventWriter
             });
         }
 
-        _openAppEventId = _queue.ExecuteSyncWithRowId(conn =>
+        var newId = _queue.ExecuteSyncWithRowId(conn =>
         {
             using var insert = conn.CreateCommand();
             insert.CommandText = """
@@ -42,6 +50,11 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             insert.ExecuteNonQuery();
         });
+
+        lock (_idLock)
+        {
+            _openAppEventId = newId;
+        }
     }
 
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)

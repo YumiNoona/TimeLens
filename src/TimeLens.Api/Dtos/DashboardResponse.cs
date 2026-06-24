@@ -6,7 +6,9 @@ public sealed record DashboardResponse(
     TopAppDto[] TopApps,
     HeatmapEntryDto[] Heatmap,
     CategoryEntryDto[] Categories,
-    LiveStatusDto Live
+    LiveStatusDto Live,
+    BrowserEntryDto[] BrowserSites = null,
+    AudioSessionDto[] AudioSessions = null
 );
 
 public sealed record SummaryDto(

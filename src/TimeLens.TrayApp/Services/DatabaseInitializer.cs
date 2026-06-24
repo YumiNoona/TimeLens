@@ -69,9 +69,14 @@ public static class DatabaseInitializer
             );
 
             CREATE TABLE IF NOT EXISTS custom_rules (
-                exe_pattern TEXT PRIMARY KEY,
-                category TEXT NOT NULL
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exe_pattern TEXT NOT NULL,
+                category TEXT NOT NULL,
+                rule_type TEXT NOT NULL DEFAULT 'substring',
+                target TEXT NOT NULL DEFAULT 'exe',
+                priority INTEGER NOT NULL DEFAULT 0
             );
+            CREATE INDEX IF NOT EXISTS idx_custom_rules_priority ON custom_rules(priority);
 
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -91,6 +96,8 @@ public static class DatabaseInitializer
             INSERT OR IGNORE INTO settings (key, value) VALUES ('idle_threshold_seconds', '180');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'moss');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'false');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('time_format', '12h');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_seconds', '30');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
@@ -104,6 +111,14 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "app_events", "session_state", "TEXT NOT NULL DEFAULT 'active'");
         MigrateAddColumn(conn, "app_events", "idle_reason", "TEXT");
         MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
+        MigrateAddColumn(conn, "browser_events", "tab_id", "INTEGER");
+        MigrateAddColumn(conn, "custom_rules", "rule_type", "TEXT NOT NULL DEFAULT 'substring'");
+        MigrateAddColumn(conn, "custom_rules", "target", "TEXT NOT NULL DEFAULT 'exe'");
+        MigrateAddColumn(conn, "custom_rules", "priority", "INTEGER NOT NULL DEFAULT 0");
+        // Migrate old primary-key-based rows to new auto-increment schema
+        using var migRules = conn.CreateCommand();
+        migRules.CommandText = "UPDATE custom_rules SET rule_type='substring', target='exe' WHERE rule_type IS NULL";
+        migRules.ExecuteNonQuery();
 
         // Fix any broken rows where end_time < start_time (timezone/timer bug)
         using var fixNeg = conn.CreateCommand();

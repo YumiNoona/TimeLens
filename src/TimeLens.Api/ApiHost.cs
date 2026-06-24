@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -13,6 +14,8 @@ public static class ApiHost
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    private static readonly ConcurrentDictionary<int, long> OpenBrowserEvents = new();
 
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -144,6 +147,8 @@ public static class ApiHost
                     "focusMode" => "focus_mode",
                     "focusBlocklist" => "focus_blocklist",
                     "blockAction" => "block_action",
+                    "pollIntervalSeconds" => "poll_interval_seconds",
+                    "timeFormat" => "time_format",
                     _ => prop.Name
                 }, value);
 
@@ -207,6 +212,13 @@ public static class ApiHost
                     case "blockAction":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockAction = value };
                         break;
+                    case "timeFormat":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { TimeFormat = value };
+                        break;
+                    case "pollIntervalSeconds":
+                        if (int.TryParse(value, out var pis))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with { PollIntervalSeconds = pis };
+                        break;
                 }
             }
 
@@ -220,7 +232,7 @@ public static class ApiHost
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT exe_pattern, category FROM custom_rules ORDER BY exe_pattern";
+            cmd.CommandText = "SELECT exe_pattern, category, rule_type, target, priority, id FROM custom_rules ORDER BY priority, id";
             using var reader = await cmd.ExecuteReaderAsync();
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             arr.WriteStartArray();
@@ -229,6 +241,10 @@ public static class ApiHost
                 arr.WriteStartObject();
                 arr.WriteString("pattern", reader.GetString(0));
                 arr.WriteString("category", reader.GetString(1));
+                arr.WriteString("ruleType", reader.IsDBNull(2) ? "substring" : reader.GetString(2));
+                arr.WriteString("target", reader.IsDBNull(3) ? "exe" : reader.GetString(3));
+                arr.WriteNumber("priority", reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+                arr.WriteNumber("id", reader.GetInt32(5));
                 arr.WriteEndObject();
             }
             arr.WriteEndArray();
@@ -244,14 +260,45 @@ public static class ApiHost
             var doc = System.Text.Json.JsonDocument.Parse(body);
             var pattern = doc.RootElement.GetProperty("pattern").GetString() ?? "";
             var category = doc.RootElement.GetProperty("category").GetString() ?? "other";
+            var ruleType = doc.RootElement.TryGetProperty("ruleType", out var rt) ? rt.GetString() ?? "substring" : "substring";
+            var target = doc.RootElement.TryGetProperty("target", out var tg) ? tg.GetString() ?? "exe" : "exe";
+            var priority = doc.RootElement.TryGetProperty("priority", out var pr) && pr.TryGetInt32(out var pv) ? pv : 0;
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT OR REPLACE INTO custom_rules (exe_pattern, category) VALUES ($pattern, $category)";
-            cmd.Parameters.AddWithValue("$pattern", pattern);
-            cmd.Parameters.AddWithValue("$category", category);
-            await cmd.ExecuteNonQueryAsync();
+
+            // If updating an existing rule, preserve its id
+            var existingId = 0;
+            using (var findCmd = conn.CreateCommand())
+            {
+                findCmd.CommandText = "SELECT id FROM custom_rules WHERE exe_pattern = $pattern";
+                findCmd.Parameters.AddWithValue("$pattern", pattern);
+                var res = await findCmd.ExecuteScalarAsync();
+                if (res is not null) existingId = (int)(long)res;
+            }
+
+            if (existingId > 0)
+            {
+                using var updCmd = conn.CreateCommand();
+                updCmd.CommandText = "UPDATE custom_rules SET category=$cat, rule_type=$rt, target=$tg, priority=$pri WHERE id=$id";
+                updCmd.Parameters.AddWithValue("$cat", category);
+                updCmd.Parameters.AddWithValue("$rt", ruleType);
+                updCmd.Parameters.AddWithValue("$tg", target);
+                updCmd.Parameters.AddWithValue("$pri", priority);
+                updCmd.Parameters.AddWithValue("$id", existingId);
+                await updCmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                using var insCmd = conn.CreateCommand();
+                insCmd.CommandText = "INSERT INTO custom_rules (exe_pattern, category, rule_type, target, priority) VALUES ($pattern, $cat, $rt, $tg, $pri)";
+                insCmd.Parameters.AddWithValue("$pattern", pattern);
+                insCmd.Parameters.AddWithValue("$cat", category);
+                insCmd.Parameters.AddWithValue("$rt", ruleType);
+                insCmd.Parameters.AddWithValue("$tg", target);
+                insCmd.Parameters.AddWithValue("$pri", priority);
+                await insCmd.ExecuteNonQueryAsync();
+            }
 
             upsertRule?.Invoke(pattern, category);
 
@@ -273,6 +320,34 @@ public static class ApiHost
 
             deleteRule?.Invoke(pattern);
 
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapPut("/api/rules/reorder", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("ids", out var arr))
+            {
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                await conn.OpenAsync();
+                var idx = 0;
+                foreach (var el in arr.EnumerateArray())
+                {
+                    if (el.TryGetInt32(out var id))
+                    {
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = "UPDATE custom_rules SET priority = $pri WHERE id = $id";
+                        cmd.Parameters.AddWithValue("$pri", idx++);
+                        cmd.Parameters.AddWithValue("$id", id);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -333,17 +408,38 @@ public static class ApiHost
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
+
+            // Close previous event for this tab (if any)
+            if (evt.TabId > 0 && OpenBrowserEvents.TryRemove(evt.TabId, out var prevEventId))
+            {
+                using var closeCmd = conn.CreateCommand();
+                closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
+                closeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                closeCmd.Parameters.AddWithValue("$id", prevEventId);
+                await closeCmd.ExecuteNonQueryAsync();
+            }
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO browser_events (domain, url, title, start_time, browser)
-                VALUES ($domain, $url, $title, $start, $browser)
+                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id)
+                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId)
                 """;
             cmd.Parameters.AddWithValue("$domain", evt.Domain);
             cmd.Parameters.AddWithValue("$url", evt.Url);
             cmd.Parameters.AddWithValue("$title", evt.Title);
             cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
             cmd.Parameters.AddWithValue("$browser", evt.Browser);
+            cmd.Parameters.AddWithValue("$tabId", evt.TabId);
             await cmd.ExecuteNonQueryAsync();
+
+            // Track the new event ID for this tab for duration tracking
+            if (evt.TabId > 0)
+            {
+                using var getIdCmd = conn.CreateCommand();
+                getIdCmd.CommandText = "SELECT last_insert_rowid()";
+                var newEventId = (long)(await getIdCmd.ExecuteScalarAsync())!;
+                OpenBrowserEvents[evt.TabId] = newEventId;
+            }
 
             // Focus mode check — blocklist match against domain or URL
             if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
@@ -376,6 +472,28 @@ public static class ApiHost
                 }
             }
 
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("tabId", out var tabProp) && tabProp.TryGetInt32(out var tabId) && tabId > 0)
+            {
+                if (OpenBrowserEvents.TryRemove(tabId, out var eventId))
+                {
+                    using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                    await conn.OpenAsync();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
+                    cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                    cmd.Parameters.AddWithValue("$id", eventId);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -488,7 +606,7 @@ public static class ApiHost
             // Estimate time per domain by assuming each event covers until the next event (or end of day)
             cmd.CommandText = """
                 SELECT domain, start_time,
-                       LEAD(start_time, 1, $eod) OVER (PARTITION BY DATE(start_time) ORDER BY start_time) AS next_time
+                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (PARTITION BY DATE(start_time) ORDER BY start_time)) AS next_time
                 FROM browser_events
                 WHERE start_time >= $t0 AND start_time < $t1
                 ORDER BY start_time

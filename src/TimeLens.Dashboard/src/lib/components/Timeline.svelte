@@ -2,12 +2,13 @@
   import type { TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
   import { fmtHourShort, fmtDuration } from '../utils';
+  import { timeFormat } from '../stores/settings';
 
   let { blocks }: { blocks: TimelineBlock[] } = $props();
 
   const HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
-  function fmtHour(h: number): string { return fmtHourShort(h); }
+  function fmtHour(h: number): string { return fmtHourShort(h, $timeFormat); }
 
   const filled = $derived.by(() => {
     if (blocks.length === 0) return [];
@@ -51,7 +52,7 @@
       {#each HOURS as h}
         <div
           class="tl-hour-mark"
-          style="left: {h / 24 * 100}%"
+          style="left: {h / 24 * 100}%; transform: translateX({h === 0 ? '0' : h === 24 ? '-100%' : '-50%'})"
           aria-hidden="true"
         >
           {fmtHour(h)}
@@ -109,14 +110,13 @@
 
   .tl-container {
     position: relative;
-    padding-top: var(--sp-4);
+    padding: 22px 4px 6px 4px;
     margin-bottom: var(--sp-3);
   }
 
   .tl-hour-mark {
     position: absolute;
     top: 0;
-    transform: translateX(-50%);
     font-size: 10px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-dim);
@@ -124,8 +124,8 @@
 
   .tl-track {
     position: relative;
-    height: 28px;
-    border-radius: var(--shape-sm);
+    height: 36px;
+    border-radius: var(--shape-md);
     background: var(--md-surface);
     overflow: hidden;
   }

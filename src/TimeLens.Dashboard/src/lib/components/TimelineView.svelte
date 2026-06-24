@@ -2,6 +2,7 @@
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
   import { fmtHourFull, fmtDuration } from '../utils';
+  import { timeFormat } from '../stores/settings';
 
   let { data, timelineGrouped = false }: { data: DashboardData; timelineGrouped?: boolean } = $props();
 
@@ -16,6 +17,8 @@
       ? data.timeline
       : data.timeline.filter(b => selectedTypes.includes(b.type.toLowerCase()))
   );
+
+  let maxSpan = $derived(Math.max(...filtered.map(b => b.endHour - b.startHour), 0.01));
 
   type TreeNode = {
     id: string;
@@ -107,7 +110,7 @@
     return result;
   });
 
-  function fmtHour(n: number): string { return fmtHourFull(n); }
+  function fmtHour(n: number): string { return fmtHourFull(n, $timeFormat); }
 
   function toggleType(t: string) {
     if (selectedTypes.includes(t)) {
@@ -160,7 +163,7 @@
             class:d1={n.depth === 1}
             class:d2={n.depth === 2}
             class:has-kids={hasKids}
-            style="padding-left: {12 + n.depth * 22}px"
+            style="padding-left: {12 + n.depth * 16}px"
             onclick={() => hasKids && toggleNode(n.id)}
             role="listitem"
           >
@@ -175,7 +178,7 @@
               <span>{fmtHour(n.endHour)}</span>
             </div>
             <div class="tl-bar-bg">
-              <div class="tl-bar" style="width: {((n.endHour - n.startHour) / 24) * 100}%; background: {colorForCategory(n.type)}"></div>
+              <div class="tl-bar" style="width: {((n.endHour - n.startHour) / maxSpan) * 100}%; background: {colorForCategory(n.type)}"></div>
             </div>
             <span class="tl-type" class:cat={n.depth === 0} class:exe={n.depth === 1} class:title={n.depth === 2}>
               {n.label}
@@ -202,7 +205,7 @@
             <span>{fmtHour(block.endHour)}</span>
           </div>
           <div class="tl-bar-bg">
-            <div class="tl-bar" style="width: {((block.endHour - block.startHour) / 24) * 100}%; background: {colorForCategory(block.type)}"></div>
+            <div class="tl-bar" style="width: {((block.endHour - block.startHour) / maxSpan) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
           <span class="tl-type">{block.type}</span>
           <span class="tl-dur">{fmtDuration(block.durationSeconds)}</span>
@@ -226,11 +229,12 @@
   .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .type-chip.clear { color: var(--md-error); border-color: rgba(224,112,112,0.3); }
 
-  .timeline-blocks { display: flex; flex-direction: column; gap: 1px; }
+  .timeline-blocks { display: flex; flex-direction: column; gap: 2px; }
 
   .tl-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
+    margin: 1px 0;
     cursor: default;
     position: relative;
   }
@@ -258,6 +262,7 @@
   .tl-flat {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
+    margin: 1px 0;
     background: var(--md-surface-1);
     border-radius: var(--shape-sm);
   }
@@ -267,12 +272,12 @@
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--md-on-surf-var);
-    width: 110px; flex-shrink: 0;
+    width: 130px; flex-shrink: 0;
     margin-right: var(--sp-4);
   }
   .tl-arrow { color: var(--md-primary); font-size: 10px; }
-  .tl-bar-bg { flex: 1; height: 10px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
-  .tl-bar { height: 100%; border-radius: 99px; min-width: 4px; }
+  .tl-bar-bg { flex: 1; min-width: 60px; height: 10px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
+  .tl-bar { height: 100%; border-radius: 99px; min-width: 8px; }
   .tl-type {
     flex: 1; min-width: 0;
     font-size: 12px; text-transform: capitalize;

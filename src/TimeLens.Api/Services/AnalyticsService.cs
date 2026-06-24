@@ -10,10 +10,13 @@ public sealed class AnalyticsService
 {
     private readonly string _connString;
     private readonly ConcurrentDictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = new();
+    private readonly List<string> _cacheOrder = new();
+    private readonly object _cacheOrderLock = new();
+    private const int MaxCacheEntries = 7;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
     private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan CacheTtlHistory = TimeSpan.FromSeconds(300);
+    private static readonly TimeSpan LockPruneAge = TimeSpan.FromDays(2);
 
     public AnalyticsService(string dbPath)
     {
@@ -25,16 +28,21 @@ public sealed class AnalyticsService
         var localDate = DateTime.SpecifyKind((queryDate ?? DateTime.Now).Date, DateTimeKind.Local);
         var cacheKey = localDate.ToString("yyyy-MM-dd");
         var isToday = localDate == DateTime.Now.Date;
-        var ttl = isToday ? CacheTtlToday : CacheTtlHistory;
+        var isYesterday = localDate == DateTime.Now.Date.AddDays(-1);
 
-        if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < ttl)
-            return entry.data;
+        // Only cache today and yesterday — skip cache for older dates entirely
+        if (isToday || isYesterday)
+        {
+            if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < CacheTtlToday)
+                return entry.data;
+        }
 
         var sem = _locks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
         await sem.WaitAsync();
         try
         {
-            if (_cache.TryGetValue(cacheKey, out entry) && DateTime.UtcNow - entry.cachedAt < ttl)
+            if ((isToday || isYesterday) &&
+                _cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < CacheTtlToday)
                 return entry.data;
 
             using var conn = new SqliteConnection(_connString);
@@ -59,15 +67,33 @@ public sealed class AnalyticsService
                 LiveStatusStore.PendingIdleReturn
             );
 
-            var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live);
+            var browserSites = isToday ? await GetBrowserSummaryAsync(conn, today, tomorrow) : [];
+            var audioSessions = isToday ? await GetAudioSummaryAsync(conn, today, tomorrow) : [];
 
-            _cache[cacheKey] = (result, DateTime.UtcNow);
+            var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live, browserSites, audioSessions);
+
+            if (isToday || isYesterday)
+            {
+                _cache[cacheKey] = (result, DateTime.UtcNow);
+                lock (_cacheOrderLock)
+                {
+                    _cacheOrder.Remove(cacheKey);
+                    _cacheOrder.Add(cacheKey);
+                    while (_cacheOrder.Count > MaxCacheEntries)
+                    {
+                        var oldest = _cacheOrder[0];
+                        _cacheOrder.RemoveAt(0);
+                        _cache.TryRemove(oldest, out _);
+                    }
+                }
+            }
 
             return result;
         }
         finally
         {
             sem.Release();
+            PruneLocks();
         }
     }
 
@@ -431,6 +457,16 @@ public sealed class AnalyticsService
                 r.IsDBNull(2) ? "" : r.GetString(2)));
         }
         return list.ToArray();
+    }
+
+    private void PruneLocks()
+    {
+        var cutoff = DateTime.UtcNow.Subtract(LockPruneAge).ToString("yyyy-MM-dd");
+        foreach (var key in _locks.Keys)
+        {
+            if (string.CompareOrdinal(key, cutoff) < 0)
+                _locks.TryRemove(key, out _);
+        }
     }
 
     private static string FormatDuration(int totalSecs)

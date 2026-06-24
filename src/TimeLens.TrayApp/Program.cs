@@ -72,10 +72,10 @@ internal static class Program
         {
             loadConn.Open();
             using var loadCmd = loadConn.CreateCommand();
-            loadCmd.CommandText = "SELECT exe_pattern, category FROM custom_rules";
+            loadCmd.CommandText = "SELECT exe_pattern, category, COALESCE(rule_type,'substring'), COALESCE(target,'exe'), COALESCE(priority,0) FROM custom_rules";
             using var reader = loadCmd.ExecuteReader();
             while (reader.Read())
-                classifier.AddCustomRule(reader.GetString(0), reader.GetString(1));
+                classifier.AddCustomRule(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4));
         }
         var winWatcher = new WinEventWatcher();
         var idleMonitor = new IdleMonitor { IdleThresholdSeconds = settings.IdleThresholdSeconds };
@@ -411,7 +411,7 @@ internal static class Program
             }
         }
 
-        void UpsertRule(string pattern, string category) => classifier.AddCustomRule(pattern, category);
+        void UpsertRule(string pattern, string category) => classifier.AddCustomRule(pattern, category, "substring", "exe", 0);
         void DeleteRule(string pattern) => classifier.RemoveCustomRule(pattern);
 
         int consecutiveActiveMinutes = 0;

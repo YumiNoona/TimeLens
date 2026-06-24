@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { timeFormat as timeFormatStore } from '../stores/settings';
   let trackAudio = $state(true);
   let trackBrowser = $state(true);
   let trackInput = $state(true);
@@ -12,6 +13,8 @@
   let breakReminder = $state(false);
   let breakInterval = $state(50);
   let focusMode = $state(false);
+  let timeFormat = $state('12h');
+  let pollInterval = $state(30);
   let apiReachable = $state(true);
 
   let { ontheme }: { ontheme?: (t: string) => void } = $props();
@@ -56,6 +59,9 @@
       breakReminder = s.breakReminder ?? false;
       breakInterval = s.breakIntervalMinutes ?? 50;
       focusMode = s.focusMode ?? false;
+      timeFormat = s.timeFormat ?? '12h';
+      timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
+      pollInterval = s.pollIntervalSeconds ?? 30;
       apiReachable = true;
     } catch {
       if (attempt < 3) {
@@ -202,6 +208,37 @@
             onchange={() => save('showTitles', showTitles)} />
         </div>
       </label>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2 class="title-small">Format</h2>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">Time Format</span>
+          <span class="setting-desc">Show timestamps in 12-hour or 24-hour notation</span>
+        </div>
+        <div class="control">
+          <select class="select" style="width:90px" bind:value={timeFormat} onchange={() => { save('timeFormat', timeFormat); timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h'); }}>
+            <option value="12h">12h</option>
+            <option value="24h">24h</option>
+          </select>
+        </div>
+      </div>
+      <div class="setting-row last">
+        <div class="setting-info">
+          <span class="setting-label">Poll Interval</span>
+          <span class="setting-desc">How often the dashboard refreshes data</span>
+        </div>
+        <div class="control">
+          <select class="select" style="width:110px" bind:value={pollInterval} onchange={() => save('pollIntervalSeconds', pollInterval)}>
+            {#each [5, 10, 30, 60] as n}
+              <option value={n}>{n} seconds</option>
+            {/each}
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="card">

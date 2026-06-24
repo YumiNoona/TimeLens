@@ -13,7 +13,6 @@
   let breakInterval = $state(50);
   let focusMode = $state(false);
   let apiReachable = $state(true);
-  let savedKey = $state<string | null>(null);
 
   let { ontheme }: { ontheme?: (t: string) => void } = $props();
 
@@ -79,10 +78,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: value }),
-      });
-      savedKey = key;
-      setTimeout(() => { savedKey = null; }, 1500);
-    } catch {
+      });} catch {
       apiReachable = false;
     }
   }
@@ -113,8 +109,7 @@
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={trackAudio} onchange={() => save('trackAudio', trackAudio)} />
-          {#if savedKey === 'trackAudio'}<i class="ti ti-check saved-icon"></i>{/if}
-        </div>
+                  </div>
       </label>
       <label class="setting-row">
         <div class="setting-info">
@@ -123,7 +118,6 @@
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={trackBrowser} onchange={() => save('trackBrowser', trackBrowser)} />
-          {#if savedKey === 'trackBrowser'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
       <label class="setting-row last">
@@ -133,7 +127,6 @@
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={trackInput} onchange={() => save('trackInput', trackInput)} />
-          {#if savedKey === 'trackInput'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
     </div>
@@ -149,7 +142,6 @@
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={autoStart} onchange={() => save('autoStart', autoStart)} />
-          {#if savedKey === 'autoStart'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
       <div class="setting-row last">
@@ -163,7 +155,6 @@
               <option value={n}>{n} min</option>
             {/each}
           </select>
-          {#if savedKey === 'idleThresholdSeconds'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </div>
     </div>
@@ -185,7 +176,6 @@
           </button>
         {/each}
       </div>
-      {#if savedKey === 'theme'}<i class="ti ti-check saved-icon" style="padding: var(--sp-3) var(--sp-4)"></i>{/if}
     </div>
 
     <div class="card">
@@ -200,7 +190,6 @@
         <div class="control">
           <input type="checkbox" class="toggle" checked={timelineGrouped}
             onchange={() => save('timelineGrouped', timelineGrouped)} />
-          {#if savedKey === 'timelineGrouped'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
       <label class="setting-row last">
@@ -211,7 +200,6 @@
         <div class="control">
           <input type="checkbox" class="toggle" checked={showTitles}
             onchange={() => save('showTitles', showTitles)} />
-          {#if savedKey === 'showTitles'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
     </div>
@@ -228,7 +216,6 @@
         <div class="control">
           <input type="checkbox" class="toggle" checked={breakReminder}
             onchange={() => save('breakReminder', breakReminder)} />
-          {#if savedKey === 'breakReminder'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
       <div class="setting-row last">
@@ -242,7 +229,6 @@
               <option value={n}>{n} min</option>
             {/each}
           </select>
-          {#if savedKey === 'breakIntervalMinutes'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </div>
     </div>
@@ -259,7 +245,6 @@
         <div class="control">
           <input type="checkbox" class="toggle" checked={focusMode}
             onchange={() => save('focusMode', focusMode)} />
-          {#if savedKey === 'focusMode'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </label>
     </div>
@@ -279,7 +264,6 @@
               <option value={n}>{n} days</option>
             {/each}
           </select>
-          {#if savedKey === 'retentionDays'}<i class="ti ti-check saved-icon"></i>{/if}
         </div>
       </div>
       <div class="setting-row last">
@@ -402,11 +386,6 @@
     align-items: center;
     gap: var(--sp-1);
     flex-shrink: 0;
-  }
-
-  .saved-icon {
-    font-size: 14px;
-    color: var(--md-primary);
   }
 
   .toggle {

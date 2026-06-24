@@ -115,7 +115,7 @@ public sealed class AnalyticsService
 
         cmd.CommandText = """
             SELECT COUNT(*) FROM app_events
-            WHERE start_time >= $yday AND start_time < $today
+            WHERE start_time >= $yday AND start_time < $today AND session_state = 'active'
             """;
         var hadYesterdayData = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
 

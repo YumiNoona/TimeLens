@@ -69,7 +69,8 @@
     const q = newExe.trim().toLowerCase();
     if (!q) {
       const list = [...suggestions];
-      if ($live?.currentApp && $live.currentApp !== '—') list.unshift($live.currentApp);
+      if ($live?.currentApp && $live.currentApp !== '—' && !list.some(r => r.toLowerCase() === $live.currentApp!.toLowerCase()))
+        list.unshift($live.currentApp);
       return list;
     }
     const results = suggestions.filter(s => s.toLowerCase().includes(q));

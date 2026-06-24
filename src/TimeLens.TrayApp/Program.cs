@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using TimeLens.Api;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
@@ -7,6 +8,12 @@ namespace TimeLens.TrayApp;
 internal static class Program
 {
     private const string MutexName = "TimeLens-TrayApp-Instance";
+    private const int MB_YESNO = 0x04;
+    private const int MB_ICONQUESTION = 0x20;
+    private const int IDYES = 6;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
 
     [STAThread]
     private static void Main()
@@ -175,11 +182,40 @@ internal static class Program
             }
         }, null, 30_000, 30_000);
 
-        AutoStartManager.EnsureAutoStart();
+        // First-run: ask about auto-start, then wire settings save
+        var firstRunDone = false;
+        using (var frConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
+        {
+            frConn.Open();
+            using var frCmd = frConn.CreateCommand();
+            frCmd.CommandText = "SELECT value FROM settings WHERE key = 'first_run_done'";
+            firstRunDone = frCmd.ExecuteScalar() is not null;
+        }
+
+        if (!firstRunDone)
+        {
+            var result = MessageBox(IntPtr.Zero,
+                "Start TimeLens automatically when you log in?",
+                "TimeLens Setup",
+                MB_YESNO | MB_ICONQUESTION);
+            var wantAutoStart = result == IDYES;
+            AutoStartManager.SetAutoStart(wantAutoStart);
+            settingsSvc.Save("auto_start", wantAutoStart ? "true" : "false");
+
+            // Sync LiveStatusStore so GET /api/settings returns the right value
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { AutoStart = wantAutoStart };
+
+            settingsSvc.Save("first_run_done", "true");
+        }
 
         using var apiCts = new CancellationTokenSource();
         _ = ApiHost.StartAsync(dbPath, apiCts.Token,
-            saveSetting: (k, v) => settingsSvc.Save(k, v),
+            saveSetting: (k, v) =>
+            {
+                settingsSvc.Save(k, v);
+                if (k == "auto_start")
+                    AutoStartManager.SetAutoStart(v == "true");
+            },
             setTrackAudio: ApplyTrackAudio,
             setTrackInput: ApplyTrackInput,
             upsertRule: UpsertRule,
@@ -239,6 +275,14 @@ internal static class Program
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "http://127.0.0.1:47821/",
+                UseShellExecute = true
+            });
+        };
+        tray.InstallExtensionRequested += () =>
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "http://127.0.0.1:47821/extension-setup",
                 UseShellExecute = true
             });
         };

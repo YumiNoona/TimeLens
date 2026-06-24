@@ -5,13 +5,20 @@
   let idleMinutes = $state(3);
   let theme = $state('moss');
   let timelineGrouped = $state(false);
+  let autoStart = $state(false);
   let apiReachable = $state(true);
   let savedKey = $state<string | null>(null);
 
   let { ontheme }: { ontheme?: (t: string) => void } = $props();
 
   const themes = [
+    { id: 'default', label: 'Acid', color: '#C8E86A' },
+    { id: 'terminal', label: 'Terminal', color: '#39FF14' },
     { id: 'moss', label: 'Moss', color: '#81C784' },
+    { id: 'copper', label: 'Copper', color: '#B87333' },
+    { id: 'arctic', label: 'Arctic', color: '#7EC8C8' },
+    { id: 'crimson', label: 'Crimson', color: '#DC143C' },
+    { id: 'gold', label: 'Gold', color: '#FFB000' },
     { id: 'ember', label: 'Ember', color: '#FF8A65' },
     { id: 'rose', label: 'Rose', color: '#F48FB1' },
     { id: 'clay', label: 'Clay', color: '#BCAAA4' },
@@ -30,6 +37,7 @@
       idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
       theme = s.theme ?? 'moss';
       timelineGrouped = s.timelineGrouped ?? false;
+      autoStart = s.autoStart ?? false;
       apiReachable = true;
     } catch {
       if (attempt < 3) {
@@ -100,6 +108,23 @@
       <div class="control">
         <input type="checkbox" class="toggle" checked={trackInput} onchange={() => save('trackInput', trackInput)} />
         {#if savedKey === 'trackInput'}<i class="ti ti-check saved-icon"></i>{/if}
+      </div>
+    </label>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="title-small">Startup</h2>
+    </div>
+
+    <label class="setting-row last">
+      <div class="setting-info">
+        <span class="setting-label">Launch at login</span>
+        <span class="setting-desc">Start TimeLens automatically when you sign in</span>
+      </div>
+      <div class="control">
+        <input type="checkbox" class="toggle" checked={autoStart} onchange={() => save('autoStart', autoStart)} />
+        {#if savedKey === 'autoStart'}<i class="ti ti-check saved-icon"></i>{/if}
       </div>
     </label>
   </div>

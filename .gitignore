@@ -49,6 +49,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Build artifacts (root)
+/TimeLens-portable-*.zip
+/TimeLens-extension-*.zip
+
 # Temp
 tools/genicon/bin/
 tools/genicon/obj/

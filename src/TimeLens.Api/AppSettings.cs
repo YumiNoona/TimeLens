@@ -21,4 +21,7 @@ public record AppSettings
 
     [JsonPropertyName("timelineGrouped")]
     public bool TimelineGrouped { get; init; } = false;
+
+    [JsonPropertyName("autoStart")]
+    public bool AutoStart { get; init; } = false;
 }

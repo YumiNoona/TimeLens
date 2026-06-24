@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using TimeLens.Api.Dtos;
 using TimeLens.Api.Services;
@@ -6,6 +8,17 @@ namespace TimeLens.Api;
 
 public static class ApiHost
 {
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "svchost", "TextInputHost", "ApplicationFrameHost", "SystemSettings",
+        "RuntimeBroker", "SearchHost", "ShellExperienceHost", "StartMenuExperienceHost",
+        "ctfmon", "conhost", "fontdrvhost", "dwm", "csrss", "smss", "wininit",
+        "winlogon", "services", "lsass", "spoolsv", "taskhostw", "sihost",
+    };
     public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
 
     public static async Task StartAsync(string dbPath, CancellationToken ct = default,
@@ -47,17 +60,31 @@ public static class ApiHost
             await next();
         });
 
-        if (Directory.Exists(dashboardPath))
-        {
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dashboardPath)
-            });
+        // Try embedded dashboard first (single-file deployment), fall back to physical folder
+        var entryAsm = Assembly.GetEntryAssembly();
+        StaticFileOptions? staticOpts = null;
 
-            app.MapFallbackToFile("index.html", new StaticFileOptions
+        if (entryAsm is not null)
+        {
+            var embedded = new EmbeddedDashboardProvider(entryAsm);
+            if (embedded.GetFileInfo("index.html").Exists)
+            {
+                staticOpts = new StaticFileOptions { FileProvider = embedded };
+            }
+        }
+
+        if (staticOpts is null && Directory.Exists(dashboardPath))
+        {
+            staticOpts = new StaticFileOptions
             {
                 FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dashboardPath)
-            });
+            };
+        }
+
+        if (staticOpts is not null)
+        {
+            app.UseStaticFiles(staticOpts);
+            app.MapFallbackToFile("index.html", staticOpts);
         }
 
         app.MapGet("/api/settings", async (HttpContext ctx) =>
@@ -91,6 +118,7 @@ public static class ApiHost
                     "idleThresholdSeconds" => "idle_threshold_seconds",
                     "theme" => "theme",
                     "timelineGrouped" => "timeline_grouped",
+                    "autoStart" => "auto_start",
                     _ => prop.Name
                 }, value);
 
@@ -323,7 +351,11 @@ public static class ApiHost
         app.MapGet("/api/running-processes", (HttpContext ctx) =>
         {
             var procs = System.Diagnostics.Process.GetProcesses()
-                .Where(p => p.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(p.ProcessName))
+                .Where(p =>
+                    p.MainWindowHandle != IntPtr.Zero &&
+                    !string.IsNullOrEmpty(p.ProcessName) &&
+                    IsWindowVisible(p.MainWindowHandle) &&
+                    !InfrastructureExes.Contains(p.ProcessName))
                 .Select(p => p.ProcessName + ".exe")
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
@@ -379,6 +411,13 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapGet("/extension-setup", (HttpContext ctx) =>
+        {
+            ctx.Response.ContentType = "text/html; charset=utf-8";
+            ctx.Response.StatusCode = 200;
+            return ctx.Response.WriteAsync("""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TimeLens · Extensions</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0D0F0A;color:#E4E8DC;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#141810;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;max-width:480px;width:100%}h1{font-size:22px;font-weight:600;margin-bottom:4px}h2{font-size:13px;font-weight:500;color:#8A9283;margin-bottom:24px}.btn{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#1C2118;color:#E4E8DC;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;text-decoration:none;margin-bottom:10px;transition:background .15s,border-color .15s}.btn:hover{background:#222819;border-color:#C8E86A}.btn-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}.btn-label{flex:1;text-align:left}.btn-hint{font-size:11px;color:#4A5145;font-weight:400}.chrome .btn-icon{background:#1E2E00;color:#C8E86A}.edge .btn-icon{background:#002E1E;color:#7ECFA8}.firefox .btn-icon{background:#2E1E00;color:#E8A23A}.divider{height:1px;background:rgba(255,255,255,.06);margin:20px 0}.note{font-size:12px;color:#4A5145;line-height:1.6}.note a{color:#8A9283}</style></head><body><div class="card"><h1>Browser Extensions</h1><h2>Install the extension to track browser activity</h2><a class="btn chrome" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank"><div class="btn-icon">C</div><div class="btn-label"><div>Chrome / Brave / Arc</div><div class="btn-hint">Download &amp; load unpacked in chrome://extensions</div></div></a><a class="btn edge" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank"><div class="btn-icon">E</div><div class="btn-label"><div>Microsoft Edge</div><div class="btn-hint">Same extension, works in edge://extensions</div></div></a><a class="btn firefox" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank"><div class="btn-icon">F</div><div class="btn-label"><div>Firefox / Zen</div><div class="btn-hint">Download &amp; load in about:debugging</div></div></a><div class="divider"></div><div class="note">After downloading, extract the zip and load it as an unpacked extension in your browser's developer mode. For detailed instructions, see the <a href="https://github.com/anomalyco/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.</div></div></body></html>""");
         });
 
         await app.RunAsync(ct);

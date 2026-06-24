@@ -26,13 +26,15 @@ public sealed class NativeTrayIcon : IDisposable
 
     // Custom message IDs for menu items
     private const uint ID_OPEN_DASHBOARD = WM_APP + 1;
-    private const uint ID_EXIT = WM_APP + 2;
+    private const uint ID_INSTALL_EXTENSION = WM_APP + 2;
+    private const uint ID_EXIT = WM_APP + 3;
 
     private IntPtr _hWnd;
     private IntPtr _hMenu;
     private bool _disposed;
 
     public event Action? OpenDashboardRequested;
+    public event Action? InstallExtensionRequested;
     public event Action? ExitRequested;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -201,6 +203,7 @@ public sealed class NativeTrayIcon : IDisposable
 
         _hMenu = CreatePopupMenu();
         AppendMenuW(_hMenu, MF_STRING, ID_OPEN_DASHBOARD, "Open Dashboard");
+        AppendMenuW(_hMenu, MF_STRING, ID_INSTALL_EXTENSION, "Install Browser Extension");
         AppendMenuW(_hMenu, MF_STRING, ID_EXIT, "Exit");
 
         // Message loop
@@ -236,6 +239,8 @@ public sealed class NativeTrayIcon : IDisposable
                 var cmdId = (uint)wParam;
                 if (cmdId == ID_OPEN_DASHBOARD)
                     OpenDashboardRequested?.Invoke();
+                else if (cmdId == ID_INSTALL_EXTENSION)
+                    InstallExtensionRequested?.Invoke();
                 else if (cmdId == ID_EXIT)
                     ExitRequested?.Invoke();
                 return IntPtr.Zero;

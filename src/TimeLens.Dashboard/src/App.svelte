@@ -33,7 +33,9 @@
   function applyTheme(t: string) {
     currentTheme = t;
     document.documentElement.className = '';
-    document.documentElement.classList.add('theme-' + t);
+    if (t !== 'default') {
+      document.documentElement.classList.add('theme-' + t);
+    }
   }
 
   onMount(async () => {

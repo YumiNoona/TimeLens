@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DashboardData, TimelineBlock } from '../types';
+  import { colorForCategory } from '../colors';
 
   let { data, timelineGrouped = false }: { data: DashboardData; timelineGrouped?: boolean } = $props();
 
@@ -87,9 +88,9 @@
               <span class="tl-arrow">→</span>
               <span>{fmtHour(group.endHour)}</span>
             </div>
-            <div class="tl-bar-bg">
-              <div class="tl-bar" style="width: {((group.endHour - group.startHour) / 24) * 100}%"></div>
-            </div>
+              <div class="tl-bar-bg">
+                <div class="tl-bar" style="width: {((group.endHour - group.startHour) / 24) * 100}%; background: {colorForCategory(group.type)}"></div>
+              </div>
             <span class="tl-type">{group.type}</span>
             <span class="tl-count">{group.count}</span>
           </div>
@@ -102,7 +103,7 @@
                   <span>{fmtHour(block.endHour)}</span>
                 </div>
                 <div class="tl-bar-bg">
-                  <div class="tl-bar" style="width: {((block.endHour - block.startHour) / 24) * 100}%"></div>
+                  <div class="tl-bar" style="width: {((block.endHour - block.startHour) / 24) * 100}%; background: {colorForCategory(block.type)}"></div>
                 </div>
                 <span class="tl-type">{block.type}</span>
               </div>
@@ -119,7 +120,7 @@
             <span>{fmtHour(block.endHour)}</span>
           </div>
           <div class="tl-bar-bg">
-            <div class="tl-bar" style="width: {((block.endHour - block.startHour) / 24) * 100}%"></div>
+            <div class="tl-bar" style="width: {((block.endHour - block.startHour) / 24) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
           <span class="tl-type">{block.type}</span>
         </div>
@@ -206,7 +207,7 @@
   }
   .tl-arrow { color: var(--md-primary); font-size: 10px; }
   .tl-bar-bg { flex: 1; height: 10px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
-  .tl-bar { height: 100%; background: var(--md-primary); border-radius: 99px; min-width: 4px; }
+  .tl-bar { height: 100%; border-radius: 99px; min-width: 4px; }
   .tl-type {
     width: 80px; flex-shrink: 0;
     font-size: 12px; font-weight: 500; text-transform: capitalize;

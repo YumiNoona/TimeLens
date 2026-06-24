@@ -32,6 +32,9 @@
     return result;
   });
 
+  const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+  const showNow = blocks.length > 0 && nowHour > 0 && nowHour < 24;
+
   const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
 </script>
 
@@ -67,6 +70,12 @@
             style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'transparent' : colorForCategory(block.type)}"
           ></div>
         {/each}
+        {#if showNow}
+          <div class="tl-now" style="left: {nowHour / 24 * 100}%" aria-label="Current time">
+            <div class="tl-now-dot"></div>
+            <div class="tl-now-line"></div>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -133,6 +142,30 @@
   }
 
   .tl-block.gap { background: transparent !important; }
+
+  .tl-now {
+    position: absolute;
+    top: -4px;
+    bottom: 0;
+    width: 0;
+    z-index: 2;
+  }
+  .tl-now-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--md-primary);
+    margin-left: -4px;
+    box-shadow: 0 0 6px var(--md-primary);
+  }
+  .tl-now-line {
+    position: absolute;
+    top: 10px;
+    left: -0.5px;
+    width: 1px;
+    bottom: 0;
+    background: var(--md-primary);
+    opacity: 0.4;
+  }
 
   .tl-empty {
     display: flex;

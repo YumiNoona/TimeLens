@@ -70,6 +70,12 @@
 <div class="history">
   <div class="topbar">
     <h1 class="headline-small">History</h1>
+    <input
+      type="date"
+      class="date-jump"
+      value={selectedDate}
+      onchange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) selectDate(v); }}
+    />
   </div>
 
   <div class="week-nav" role="tablist">
@@ -196,6 +202,18 @@
 <style>
   .history { display: flex; flex-direction: column; gap: var(--sp-4); }
   .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .date-jump {
+    background: var(--md-surface-1);
+    border: 1px solid var(--md-outline);
+    border-radius: var(--shape-sm);
+    padding: var(--sp-1) var(--sp-2);
+    color: var(--md-on-surf);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    outline: none;
+    color-scheme: dark;
+  }
+  .date-jump:focus { border-color: var(--md-primary); }
   .week-nav { display: flex; gap: var(--sp-2); overflow-x: auto; padding-bottom: var(--sp-1); }
   .day-chip {
     display: flex;

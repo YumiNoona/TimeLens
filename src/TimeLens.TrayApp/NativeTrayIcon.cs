@@ -19,6 +19,9 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint NIF_TIP = 4;
     private const uint NIS_HIDDEN = 8;
 
+    private const uint WS_EX_TOOLWINDOW = 0x00000080;
+    private static readonly IntPtr HWND_MESSAGE = new(-3);
+
     private const uint MF_STRING = 0;
     private const uint TPM_LEFTALIGN = 0;
     private const uint TPM_BOTTOMALIGN = 0x0020;
@@ -178,8 +181,8 @@ public sealed class NativeTrayIcon : IDisposable
             throw new InvalidOperationException("Failed to register window class.");
 
         _hWnd = CreateWindowExW(
-            0, WindowClass, "TimeLens",
-            0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
+            WS_EX_TOOLWINDOW, WindowClass, "TimeLens",
+            0, 0, 0, 0, 0, HWND_MESSAGE, IntPtr.Zero, hInstance, IntPtr.Zero);
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
 

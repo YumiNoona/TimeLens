@@ -12,7 +12,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>TimeLens.ico</ApplicationIcon>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <DebugType>none</DebugType>
     <NoWarn>CA1416</NoWarn>
     <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>

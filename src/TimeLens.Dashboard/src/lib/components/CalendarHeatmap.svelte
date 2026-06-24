@@ -44,7 +44,6 @@
     border-radius: var(--shape-lg);
     border: 1px solid var(--md-outline);
     padding: var(--sp-5);
-    max-width: 280px;
   }
 
   .card-title {

@@ -84,7 +84,7 @@
 </div>
 
 <style>
-  .apps { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .apps { display: flex; flex-direction: column; gap: var(--sp-4); }
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   .search {
     background: var(--md-surface-1);

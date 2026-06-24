@@ -46,21 +46,33 @@ public static class ApiHost
 
         app.Use(async (ctx, next) =>
         {
-            LastActivityUtc = DateTime.UtcNow;
-            var origin = ctx.Request.Headers.Origin.ToString();
-            if (origin.StartsWith("chrome-extension://") ||
-                origin.StartsWith("moz-extension://"))
+            try
             {
-                ctx.Response.Headers.Append("Access-Control-Allow-Origin", origin);
-                ctx.Response.Headers.Append("Access-Control-Allow-Headers", "Content-Type");
-                ctx.Response.Headers.Append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                LastActivityUtc = DateTime.UtcNow;
+                var origin = ctx.Request.Headers.Origin.ToString();
+                if (origin.StartsWith("chrome-extension://") ||
+                    origin.StartsWith("moz-extension://"))
+                {
+                    ctx.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+                    ctx.Response.Headers.Append("Access-Control-Allow-Headers", "Content-Type");
+                    ctx.Response.Headers.Append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                }
+                if (ctx.Request.Method == "OPTIONS")
+                {
+                    ctx.Response.StatusCode = 204;
+                    return;
+                }
+                await next();
             }
-            if (ctx.Request.Method == "OPTIONS")
+            catch (Exception ex)
             {
-                ctx.Response.StatusCode = 204;
-                return;
+                System.IO.File.AppendAllText(
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens", "api_error.log"),
+                    $"{DateTime.UtcNow:o} {ctx.Request.Method} {ctx.Request.Path}: {ex}{Environment.NewLine}");
+                ctx.Response.StatusCode = 500;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync($"{{\"error\":\"{ex.Message.Replace("\"", "'")}\"}}");
             }
-            await next();
         });
 
         // Try embedded dashboard first (single-file deployment), fall back to physical folder
@@ -255,7 +267,7 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
-        app.MapGet("/api/builtin-rules", (HttpContext ctx) =>
+        app.MapGet("/api/builtin-rules", async (HttpContext ctx) =>
         {
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             arr.WriteStartObject();
@@ -285,10 +297,9 @@ public static class ApiHost
             arr.WriteString("linkedin.com", "social"); arr.WriteString("instagram.com", "social"); arr.WriteString("facebook.com", "social");
             arr.WriteEndObject();
             arr.WriteEndObject();
-            arr.FlushAsync();
+            await arr.FlushAsync();
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
-            return System.Threading.Tasks.Task.CompletedTask;
         });
 
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
@@ -305,6 +316,7 @@ public static class ApiHost
             if (evt is null)
             {
                 ctx.Response.StatusCode = 400;
+                ctx.Response.ContentType = "application/json";
                 return;
             }
 

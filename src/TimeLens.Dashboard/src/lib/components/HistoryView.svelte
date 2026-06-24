@@ -128,7 +128,7 @@
       </div>
 
       <div class="section">
-        <h2 class="title-large">Top Apps</h2>
+        <h2 class="title-small">Top Apps</h2>
         <div class="app-list">
           {#each historyData.topApps as app}
             <div class="app-row">
@@ -145,7 +145,7 @@
       </div>
 
       <div class="section">
-        <h2 class="title-large">Categories</h2>
+        <h2 class="title-small">Categories</h2>
         <div class="cat-list">
           {#each historyData.categories as cat}
             <div class="cat-row">
@@ -165,7 +165,7 @@
 
       {#if browserSites.length > 0}
         <div class="section">
-          <h2 class="title-large">Top sites</h2>
+          <h2 class="title-small">Top sites</h2>
           <div class="app-list">
             {#each browserSites as site}
               <div class="app-row">
@@ -182,7 +182,7 @@
 
       {#if inputActivity.length > 0}
         <div class="section">
-          <h2 class="title-large">Input activity</h2>
+          <h2 class="title-small">Input activity</h2>
           <div class="app-list">
             {#each inputActivity as row}
               <div class="app-row">

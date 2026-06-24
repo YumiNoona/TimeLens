@@ -109,7 +109,11 @@
   function fmtHour(n: number): string {
     const h = Math.floor(n);
     const m = Math.floor((n % 1) * 60);
-    return `${h}:${String(Math.min(m, 59)).padStart(2, '0')}`;
+    const mm = String(Math.min(m, 59)).padStart(2, '0');
+    if (h === 0) return `12:${mm}am`;
+    if (h < 12) return `${h}:${mm}am`;
+    if (h === 12) return `12:${mm}pm`;
+    return `${h - 12}:${mm}pm`;
   }
 
   function fmtDuration(secs: number): string {

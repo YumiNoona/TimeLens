@@ -246,12 +246,12 @@
   }
   .select:focus { border-color: var(--md-primary); }
   .add-btn {
-    display: flex; align-items: center; gap: var(--sp-0); padding: var(--sp-2) var(--sp-3);
+    display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3);
     background: var(--md-primary); color: #1a1a1a; border: none; border-radius: var(--shape-sm);
     font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; height: 36px;
   }
   .add-btn:disabled { opacity: 0.4; cursor: default; }
-  .card { border: 1px solid var(--md-outline); border-radius: var(--shape-md); overflow: hidden; }
+  .card { border: 1px solid var(--md-outline); border-radius: var(--shape-lg); background: var(--md-surface-1); overflow: hidden; }
   .card-header {
     padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--md-outline);
     font-size: 13px; font-weight: 500; color: var(--md-on-surf);

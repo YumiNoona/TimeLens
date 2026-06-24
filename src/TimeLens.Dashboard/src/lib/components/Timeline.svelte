@@ -120,7 +120,7 @@
 
   .tl-container {
     position: relative;
-    padding-top: 16px;
+    padding-top: var(--sp-4);
     margin-bottom: var(--sp-3);
   }
 

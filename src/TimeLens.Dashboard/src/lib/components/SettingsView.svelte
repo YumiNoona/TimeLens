@@ -339,7 +339,8 @@
 
   .card {
     border: 1px solid var(--md-outline);
-    border-radius: var(--shape-md);
+    border-radius: var(--shape-lg);
+    background: var(--md-surface-1);
     overflow: hidden;
   }
 

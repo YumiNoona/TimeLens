@@ -19,7 +19,7 @@ public sealed class AnalyticsService
 
     public async Task<DashboardResponse> GetDashboardAsync(DateTime? queryDate = null)
     {
-        var localDate = (queryDate ?? DateTime.Now).Date;
+        var localDate = DateTime.SpecifyKind((queryDate ?? DateTime.Now).Date, DateTimeKind.Local);
         var cacheKey = localDate.ToString("yyyy-MM-dd");
 
         lock (_cacheLock)

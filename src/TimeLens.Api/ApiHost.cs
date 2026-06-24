@@ -283,7 +283,7 @@ public static class ApiHost
         {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -307,7 +307,7 @@ public static class ApiHost
         {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -331,7 +331,7 @@ public static class ApiHost
         {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = parsed;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -375,7 +375,7 @@ public static class ApiHost
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime? queryDate = null;
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
-                queryDate = parsed;
+                queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var svc = new AnalyticsService(dbPath);
             var result = await svc.GetDashboardAsync(queryDate);
             ctx.Response.StatusCode = 200;

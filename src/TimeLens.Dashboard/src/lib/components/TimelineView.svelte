@@ -32,23 +32,25 @@
     if (!groupedMode) return [];
     if (filtered.length === 0) return [];
 
-    // Level 0: group by category (merge adjacent same-category runs)
-    const cats: { type: string; startHour: number; endHour: number; blocks: TimelineBlock[] }[] = [];
+    // Level 0: group ALL blocks of same type across the entire day
+    const catMap = new Map<string, { type: string; startHour: number; endHour: number; blocks: TimelineBlock[] }>();
     for (const b of filtered) {
-      const last = cats[cats.length - 1];
-      if (last && last.type === b.type && Math.abs(last.endHour - b.startHour) < 0.1) {
-        last.endHour = b.endHour;
-        last.blocks.push(b);
-      } else {
-        cats.push({ type: b.type, startHour: b.startHour, endHour: b.endHour, blocks: [b] });
+      const key = b.type.toLowerCase();
+      if (!catMap.has(key)) {
+        catMap.set(key, { type: b.type, startHour: b.startHour, endHour: b.endHour, blocks: [] });
       }
+      const cat = catMap.get(key)!;
+      cat.startHour = Math.min(cat.startHour, b.startHour);
+      cat.endHour = Math.max(cat.endHour, b.endHour);
+      cat.blocks.push(b);
     }
+    const cats = [...catMap.values()].sort((a, b) => a.startHour - b.startHour);
 
     const result: TreeNode[] = [];
     let nodeId = 0;
 
     for (const cat of cats) {
-      // Level 1: group by exeName within category
+      // Level 1: group by exeName (merge adjacent same-exe runs)
       const appGroups: { exe: string; startHour: number; endHour: number; blocks: TimelineBlock[] }[] = [];
       for (const b of cat.blocks) {
         const last = appGroups[appGroups.length - 1];
@@ -62,7 +64,6 @@
 
       const catChildren: TreeNode[] = [];
       for (const ag of appGroups) {
-        // Level 2: individual blocks (window title changes)
         const blockChildren: TreeNode[] = ag.blocks.map(b => ({
           id: `t${nodeId++}`,
           startHour: b.startHour,
@@ -189,7 +190,7 @@
             <span class="tl-dur">{fmtDuration(n.durationSeconds)}</span>
           </div>
           {#if open}
-            <div class="tl-children">
+            <div class="tl-children" style="border-color: {colorForCategory(n.type)}">
               {#each n.children as child}
                 {@render renderNode(child)}
               {/each}
@@ -267,7 +268,7 @@
   .tl-row.d2:hover { background: var(--md-surface-2); }
 
   .tl-children {
-    border-left: 2px solid var(--md-primary);
+    border-left: 2px solid;
     margin-left: 24px;
   }
 

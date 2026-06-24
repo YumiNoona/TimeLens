@@ -79,15 +79,14 @@ public sealed class CategoryClassifier : ICategoryClassifier
 
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
-        // Custom rules first — user overrides take priority
         if (CustomRules.TryGetValue(exeName, out var customCat))
-            return customCat;
+            return customCat.ToLowerInvariant();
 
         if (domain is not null && DomainRules.TryGetValue(domain, out var domainCat))
-            return domainCat;
+            return domainCat.ToLowerInvariant();
 
         if (ExeRules.TryGetValue(exeName, out var exeCat))
-            return exeCat;
+            return exeCat.ToLowerInvariant();
 
         return "other";
     }

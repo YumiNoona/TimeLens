@@ -8,12 +8,12 @@
   let groupedMode = $state(timelineGrouped);
   let expanded = $state<Set<number>>(new Set());
 
-  let types = $derived([...new Set(data.timeline.map(b => b.type))]);
+  let types = $derived([...new Set(data.timeline.map(b => b.type.toLowerCase()))]);
 
   let filtered = $derived(
     selectedTypes.length === 0
       ? data.timeline
-      : data.timeline.filter(b => selectedTypes.includes(b.type))
+      : data.timeline.filter(b => selectedTypes.includes(b.type.toLowerCase()))
   );
 
   type Group = { startHour: number; endHour: number; type: string; count: number; blocks: TimelineBlock[] };

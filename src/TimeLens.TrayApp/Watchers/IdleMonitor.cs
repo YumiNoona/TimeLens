@@ -25,6 +25,14 @@ public sealed class IdleMonitor
         return false;
     }
 
+    private static long ElapsedSince(uint dwTime)
+    {
+        long now = Environment.TickCount64;
+        long then = (now & ~0xFFFFFFFFL) | dwTime;
+        if (then > now) then -= 0x100000000L;
+        return now - then;
+    }
+
     public bool IsIdle()
     {
         if (IsAudioActive()) return false;
@@ -32,8 +40,7 @@ public sealed class IdleMonitor
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return false;
 
-        var idleMs = (uint)Environment.TickCount - lii.dwTime;
-        return idleMs >= IdleThresholdSeconds * 1000;
+        return ElapsedSince(lii.dwTime) >= IdleThresholdSeconds * 1000;
     }
 
     public int IdleSeconds()
@@ -43,6 +50,6 @@ public sealed class IdleMonitor
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return 0;
 
-        return ((int)Environment.TickCount - (int)lii.dwTime) / 1000;
+        return (int)(ElapsedSince(lii.dwTime) / 1000);
     }
 }

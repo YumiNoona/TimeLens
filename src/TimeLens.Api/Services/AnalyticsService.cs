@@ -18,9 +18,10 @@ public sealed class AnalyticsService
         using var conn = new SqliteConnection(_connString);
         await conn.OpenAsync();
 
-        var today = (queryDate ?? DateTime.UtcNow).Date;
-        var tomorrow = today.AddDays(1);
-        var yesterday = today.AddDays(-1);
+        var localDate = (queryDate ?? DateTime.Now).Date;
+        var today = localDate.ToUniversalTime();
+        var tomorrow = localDate.AddDays(1).ToUniversalTime();
+        var yesterday = localDate.AddDays(-1).ToUniversalTime();
 
         var summary = await GetSummaryAsync(conn, today, tomorrow, yesterday);
         var timeline = await GetTimelineAsync(conn, today, tomorrow);
@@ -130,9 +131,7 @@ public sealed class AnalyticsService
             var cat = r.IsDBNull(2) ? null : r.GetString(2);
 
             var startHour = start.TimeOfDay.TotalHours;
-            var endHour = end.TimeOfDay.TotalHours;
-
-            if (endHour > 24) endHour = 24;
+            var endHour = end.Date > start.Date ? 24.0 : end.TimeOfDay.TotalHours;
 
             var type = wasIdle ? "idle" : cat ?? "other";
 

@@ -5,6 +5,7 @@ namespace TimeLens.TrayApp.Watchers;
 public sealed class AudioMonitor : IDisposable
 {
     private Timer? _pollTimer;
+    private HashSet<(int pid, string exe)> _previousPlaying = [];
 
     public bool AnyAudioPlaying { get; private set; }
     public event Action<int, string, bool>? SessionAudioChanged;
@@ -19,7 +20,7 @@ public sealed class AudioMonitor : IDisposable
     {
         try
         {
-            var hasAudio = false;
+            var currentPlaying = new HashSet<(int pid, string exe)>();
 
             var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(
                 Type.GetTypeFromCLSID(AudioClsids.MMDeviceEnumerator)!)!;
@@ -40,11 +41,9 @@ public sealed class AudioMonitor : IDisposable
                 if (meter == null) continue;
 
                 meter.GetPeakValue(out var peak);
-                var playing = peak > 0.001f;
 
-                if (playing)
+                if (peak > 0.001f)
                 {
-                    hasAudio = true;
                     uint pid = 0;
                     try { ctl2.GetProcessId(out pid); } catch { }
 
@@ -59,7 +58,7 @@ public sealed class AudioMonitor : IDisposable
                         catch { }
                     }
 
-                    SessionAudioChanged?.Invoke((int)pid, exe, true);
+                    currentPlaying.Add(((int)pid, exe));
                 }
 
                 Marshal.ReleaseComObject(session);
@@ -67,7 +66,16 @@ public sealed class AudioMonitor : IDisposable
                 Marshal.ReleaseComObject(ctl2);
             }
 
-            AnyAudioPlaying = hasAudio;
+            foreach (var key in currentPlaying)
+                if (!_previousPlaying.Contains(key))
+                    SessionAudioChanged?.Invoke(key.pid, key.exe, true);
+
+            foreach (var key in _previousPlaying)
+                if (!currentPlaying.Contains(key))
+                    SessionAudioChanged?.Invoke(key.pid, key.exe, false);
+
+            _previousPlaying = currentPlaying;
+            AnyAudioPlaying = currentPlaying.Count > 0;
 
             Marshal.ReleaseComObject(sessions);
             Marshal.ReleaseComObject(mgr);

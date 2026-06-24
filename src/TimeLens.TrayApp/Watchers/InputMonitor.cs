@@ -38,6 +38,10 @@ public sealed class InputMonitor : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WH_MOUSE_LL = 14;
 
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_RBUTTONDOWN = 0x0204;
+    private const int WM_MBUTTONDOWN = 0x0207;
+
     public void Start()
     {
         using var curProc = System.Diagnostics.Process.GetCurrentProcess();
@@ -71,7 +75,11 @@ public sealed class InputMonitor : IDisposable
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
-            Interlocked.Increment(ref _clickCount);
+        {
+            var msg = wParam.ToInt32();
+            if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
+                Interlocked.Increment(ref _clickCount);
+        }
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 

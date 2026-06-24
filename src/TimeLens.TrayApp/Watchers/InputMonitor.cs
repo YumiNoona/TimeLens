@@ -83,6 +83,16 @@ public sealed class InputMonitor : IDisposable
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
+    public void Stop()
+    {
+        _flushTimer?.Dispose();
+        _flushTimer = null;
+        if (_keyboardHook != IntPtr.Zero) { UnhookWindowsHookEx(_keyboardHook); _keyboardHook = IntPtr.Zero; }
+        if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
+        _keyCount = 0;
+        _clickCount = 0;
+    }
+
     public void Dispose()
     {
         _flushTimer?.Dispose();

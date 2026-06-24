@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using TimeLens.Api;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
@@ -23,73 +22,174 @@ internal static class Program
 
         DatabaseInitializer.Initialize(dbPath);
 
+        var settingsSvc = new SettingsService(dbPath);
+        var settings = settingsSvc.Load();
+        RuntimeConfig.Settings = settings;
+        LiveStatusStore.Settings = settings;
+
         var writer = new EventWriter(dbPath);
         var classifier = new CategoryClassifier();
         var winWatcher = new WinEventWatcher();
-        var idleMonitor = new IdleMonitor();
+        var idleMonitor = new IdleMonitor { IdleThresholdSeconds = settings.IdleThresholdSeconds };
         var sessionWatcher = new SessionWatcher();
         var inputMonitor = new InputMonitor();
         var audioMonitor = new AudioMonitor();
 
-        idleMonitor.AudioMonitorRef = audioMonitor;
+        if (settings.TrackAudio)
+            idleMonitor.AudioMonitorRef = audioMonitor;
+
+        void WriteAppEvent()
+        {
+            var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+            var cat = classifier.Classify(exe, title);
+            var state = idleMonitor.GetState();
+            writer.OpenAppEvent(exe, title, pid, state, cat);
+            LiveStatusStore.CurrentApp = exe;
+            LiveStatusStore.IsIdle = state != "active";
+            LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
+            LiveStatusStore.SystemState = state;
+        }
 
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             var cat = classifier.Classify(exe, title);
-            var isIdle = idleMonitor.IsIdle();
-            writer.OpenAppEvent(exe, title, pid, isIdle, cat);
-
+            var state = idleMonitor.GetState();
+            writer.OpenAppEvent(exe, title, pid, state, cat);
             LiveStatusStore.CurrentApp = exe;
-            LiveStatusStore.IsIdle = isIdle;
+            LiveStatusStore.IsIdle = state != "active";
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
+            LiveStatusStore.SystemState = state;
         };
 
         sessionWatcher.StateChanged += state =>
         {
             writer.InsertSessionEvent(state);
+
+            switch (state)
+            {
+                case "locked":
+                case "sleep":
+                    LiveStatusStore.SystemState = "away";
+                    WriteAppEvent();
+                    break;
+                case "unlocked":
+                case "wake":
+                    LiveStatusStore.SystemState = "active";
+                    WriteAppEvent();
+                    break;
+            }
         };
 
-        inputMonitor.InputActivityTick += (keys, clicks, pid, exe) =>
-        {
-            writer.InsertInputActivity(keys, clicks, pid, exe);
-        };
+        if (settings.TrackInput)
+            inputMonitor.InputActivityTick += (keys, clicks, pid, exe) =>
+            {
+                writer.InsertInputActivity(keys, clicks, pid, exe);
+            };
 
-        audioMonitor.SessionAudioChanged += (pid, exe, playing) =>
-        {
-            writer.InsertAudioActivity(pid, exe, playing);
-            LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
-        };
+        if (settings.TrackAudio)
+            audioMonitor.SessionAudioChanged += (pid, exe, playing) =>
+            {
+                writer.InsertAudioActivity(pid, exe, playing);
+                LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
+            };
 
         winWatcher.Start();
         sessionWatcher.Start();
-        inputMonitor.Start();
-        audioMonitor.Start();
+        if (settings.TrackInput) inputMonitor.Start();
+        if (settings.TrackAudio) audioMonitor.Start();
 
-        var lastWasIdle = idleMonitor.IsIdle();
+        var lastSystemState = idleMonitor.GetState();
 
         var idleTimer = new Timer(_ =>
         {
-            var isIdle = idleMonitor.IsIdle();
-            LiveStatusStore.IsIdle = isIdle;
-            LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
+            var curState = idleMonitor.GetState();
+            var idleSecs = idleMonitor.IdleSeconds();
+            LiveStatusStore.IsIdle = curState != "active";
+            LiveStatusStore.IdleSeconds = idleSecs;
+            LiveStatusStore.SystemState = curState;
 
-            if (isIdle != lastWasIdle)
+            if (curState != lastSystemState)
             {
-                lastWasIdle = isIdle;
-                var (exe, title, pid) = GetForegroundWindowInfo();
+                if (lastSystemState != "active" && curState == "active")
+                    LiveStatusStore.PendingIdleReturn = true;
+
+                lastSystemState = curState;
+                var (exe, title, pid) = Win32.GetForegroundWindowInfo();
                 var cat = classifier.Classify(exe, title);
-                writer.OpenAppEvent(exe, title, pid, isIdle, cat);
+                writer.OpenAppEvent(exe, title, pid, curState, cat);
                 LiveStatusStore.CurrentApp = exe;
             }
-        }, null, 8000, 8000);
-
-        _ = ApiHost.StartAsync(dbPath);
+        }, null, 30_000, 30_000);
 
         AutoStartManager.EnsureAutoStart();
+
+        using var apiCts = new CancellationTokenSource();
+        var apiStarted = false;
+        var apiIdleTimer = new Timer(_ =>
+        {
+            if (apiStarted && (DateTime.UtcNow - ApiHost.LastActivityUtc).TotalMinutes > 5)
+            {
+                apiCts.Cancel();
+                apiStarted = false;
+            }
+        }, null, 60_000, 60_000);
+
+        void OnAudioChanged(int pid, string exe, bool playing)
+        {
+            writer.InsertAudioActivity(pid, exe, playing);
+            LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
+        }
+
+        void OnInputTick(int keys, int clicks, int? pid, string? exe)
+        {
+            writer.InsertInputActivity(keys, clicks, pid, exe);
+        }
+
+        void ApplyTrackAudio(bool on)
+        {
+            RuntimeConfig.Settings = RuntimeConfig.Settings with { TrackAudio = on };
+            LiveStatusStore.Settings = RuntimeConfig.Settings;
+            if (on)
+            {
+                idleMonitor.AudioMonitorRef = audioMonitor;
+                audioMonitor.Start();
+                audioMonitor.SessionAudioChanged += OnAudioChanged;
+            }
+            else
+            {
+                audioMonitor.Stop();
+                audioMonitor.SessionAudioChanged -= OnAudioChanged;
+                idleMonitor.AudioMonitorRef = null;
+            }
+        }
+
+        void ApplyTrackInput(bool on)
+        {
+            RuntimeConfig.Settings = RuntimeConfig.Settings with { TrackInput = on };
+            LiveStatusStore.Settings = RuntimeConfig.Settings;
+            if (on)
+            {
+                inputMonitor.Start();
+                inputMonitor.InputActivityTick += OnInputTick;
+            }
+            else
+            {
+                inputMonitor.Stop();
+                inputMonitor.InputActivityTick -= OnInputTick;
+            }
+        }
 
         using var tray = new NativeTrayIcon();
         tray.OpenDashboardRequested += () =>
         {
+            if (!apiStarted)
+            {
+                apiStarted = true;
+                _ = ApiHost.StartAsync(dbPath, apiCts.Token,
+                    saveSetting: (k, v) => settingsSvc.Save(k, v),
+                    setTrackAudio: ApplyTrackAudio,
+                    setTrackInput: ApplyTrackInput);
+            }
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "http://127.0.0.1:47821/",
@@ -100,36 +200,4 @@ internal static class Program
 
         tray.Run();
     }
-
-    private static (string exe, string title, int pid) GetForegroundWindowInfo()
-    {
-        var hwnd = GetForegroundWindow();
-        if (hwnd == IntPtr.Zero)
-            return ("unknown", "", 0);
-
-        var sb = new System.Text.StringBuilder(256);
-        GetWindowText(hwnd, sb, sb.Capacity);
-        var title = sb.ToString();
-
-        GetWindowThreadProcessId(hwnd, out var pid);
-
-        try
-        {
-            using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-            return (proc.ProcessName + ".exe", title, (int)pid);
-        }
-        catch
-        {
-            return ("unknown", title, (int)pid);
-        }
-    }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }

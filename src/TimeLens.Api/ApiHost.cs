@@ -6,7 +6,12 @@ namespace TimeLens.Api;
 
 public static class ApiHost
 {
-    public static async Task StartAsync(string dbPath, CancellationToken ct = default)
+    public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
+
+    public static async Task StartAsync(string dbPath, CancellationToken ct = default,
+        Action<string, string>? saveSetting = null,
+        Action<bool>? setTrackAudio = null,
+        Action<bool>? setTrackInput = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -23,13 +28,14 @@ public static class ApiHost
 
         app.Use(async (ctx, next) =>
         {
+            LastActivityUtc = DateTime.UtcNow;
             var origin = ctx.Request.Headers.Origin.ToString();
             if (origin.StartsWith("chrome-extension://") ||
                 origin.StartsWith("moz-extension://"))
             {
                 ctx.Response.Headers.Append("Access-Control-Allow-Origin", origin);
                 ctx.Response.Headers.Append("Access-Control-Allow-Headers", "Content-Type");
-                ctx.Response.Headers.Append("Access-Control-Allow-Methods", "POST, OPTIONS");
+                ctx.Response.Headers.Append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
             }
             if (ctx.Request.Method == "OPTIONS")
             {
@@ -52,8 +58,74 @@ public static class ApiHost
             });
         }
 
+        app.MapGet("/api/settings", (HttpContext ctx) =>
+        {
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            return ctx.Response.WriteAsJsonAsync(
+                LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
+        });
+
+        app.MapPost("/api/settings", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var value = prop.Value.ValueKind == System.Text.Json.JsonValueKind.True
+                    ? "true" : prop.Value.ValueKind == System.Text.Json.JsonValueKind.False
+                    ? "false" : prop.Value.GetRawText();
+                saveSetting?.Invoke(prop.Name switch
+                {
+                    "trackAudio" => "track_audio",
+                    "trackBrowser" => "track_browser",
+                    "trackInput" => "track_input",
+                    "idleThresholdSeconds" => "idle_threshold_seconds",
+                    _ => prop.Name
+                }, value);
+
+                // Apply live toggles
+                switch (prop.Name)
+                {
+                    case "trackAudio":
+                        setTrackAudio?.Invoke(value == "true");
+                        break;
+                    case "trackInput":
+                        setTrackInput?.Invoke(value == "true");
+                        break;
+                    case "trackBrowser":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with
+                        {
+                            TrackBrowser = value == "true"
+                        };
+                        break;
+                    case "idleThresholdSeconds":
+                        if (int.TryParse(value, out var secs))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with
+                            {
+                                IdleThresholdSeconds = secs
+                            };
+                        break;
+                }
+            }
+
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
         {
+            if (!LiveStatusStore.Settings.TrackBrowser)
+            {
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"ok\":true}");
+                return;
+            }
+
             var evt = await ctx.Request.ReadFromJsonAsync<BrowserEventDto>(AppJsonContext.Default.BrowserEventDto);
             if (evt is null)
             {
@@ -106,6 +178,31 @@ public static class ApiHost
             await ctx.Response.WriteAsJsonAsync(result, AppJsonContext.Default.DashboardResponse);
         });
 
+        app.MapPost("/api/idle-reason", async (HttpContext ctx) =>
+        {
+            using var sr = new System.IO.StreamReader(ctx.Request.Body);
+            var body = await sr.ReadToEndAsync();
+            var doc = System.Text.Json.JsonDocument.Parse(body);
+            var reason = doc.RootElement.GetProperty("reason").GetString() ?? "";
+            var startTime = doc.RootElement.GetProperty("startTime").GetString();
+
+            if (startTime is not null)
+            {
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                await conn.OpenAsync();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE app_events SET idle_reason = $reason WHERE start_time = $start AND session_state = 'idle'";
+                cmd.Parameters.AddWithValue("$reason", reason);
+                cmd.Parameters.AddWithValue("$start", startTime);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            LiveStatusStore.PendingIdleReturn = false;
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         await app.RunAsync(ct);
     }
 }
@@ -119,4 +216,5 @@ public static class ApiHost
 [JsonSerializable(typeof(HeatmapEntryDto))]
 [JsonSerializable(typeof(CategoryEntryDto))]
 [JsonSerializable(typeof(LiveStatusDto))]
+[JsonSerializable(typeof(AppSettings))]
 internal partial class AppJsonContext : JsonSerializerContext { }

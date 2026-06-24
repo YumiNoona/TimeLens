@@ -55,5 +55,7 @@ export const mockData: DashboardData = {
     isIdle: false,
     audibleTab: null,
     audioActive: false,
+    systemState: 'active',
+    pendingIdleReturn: false,
   },
 };

@@ -13,7 +13,7 @@
     return (h - 12) + 'p';
   }
 
-  const legendTypes = ['dev', 'work', 'browse', 'social', 'idle'];
+  const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
 </script>
 
 <div class="card">

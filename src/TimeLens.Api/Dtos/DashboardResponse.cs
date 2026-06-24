@@ -47,5 +47,7 @@ public sealed record LiveStatusDto(
     int IdleMinutes,
     bool IsIdle,
     string? AudibleTab,
-    bool AudioActive
+    bool AudioActive,
+    string SystemState,
+    bool PendingIdleReturn
 );

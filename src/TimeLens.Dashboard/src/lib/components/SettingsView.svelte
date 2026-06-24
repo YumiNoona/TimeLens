@@ -1,34 +1,105 @@
 <script lang="ts">
-  let autoStart = $state(true);
-  let idleThreshold = $state(3);
+  let trackAudio = $state(true);
+  let trackBrowser = $state(true);
+  let trackInput = $state(true);
+  let idleMinutes = $state(3);
+  let apiReachable = $state(true);
+  let savedKey = $state<string | null>(null);
+
+  const API = 'http://127.0.0.1:47821/api/settings';
+
+  async function load() {
+    try {
+      const r = await fetch(API);
+      const s = await r.json();
+      trackAudio = s.trackAudio ?? true;
+      trackBrowser = s.trackBrowser ?? true;
+      trackInput = s.trackInput ?? true;
+      idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
+      apiReachable = true;
+    } catch {
+      apiReachable = false;
+    }
+  }
+
+  async function save(key: string, value: boolean | number) {
+    try {
+      await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      savedKey = key;
+      setTimeout(() => { savedKey = null; }, 1500);
+    } catch {
+      apiReachable = false;
+    }
+  }
+
+  $effect(() => { load(); });
 </script>
 
 <div class="settings">
   <div class="topbar">
     <h1 class="headline-small">Settings</h1>
+    {#if !apiReachable}
+      <span class="warning">Tray app not running</span>
+    {/if}
   </div>
 
   <div class="section">
-    <h2 class="title-large">General</h2>
+    <h2 class="title-large">Tracking Toggles</h2>
 
     <label class="setting-row">
       <div class="setting-info">
-        <span class="setting-label">Launch on startup</span>
-        <span class="setting-desc">Automatically start TimeLens when you log in</span>
+        <span class="setting-label">Audio Tracking</span>
+        <span class="setting-desc">Monitor audio output to prevent idle while playing media</span>
       </div>
-      <input type="checkbox" bind:checked={autoStart} class="toggle" />
+      <div class="control">
+        <input type="checkbox" class="toggle" checked={trackAudio}
+          onchange={() => save('trackAudio', trackAudio)} />
+        {#if savedKey === 'trackAudio'}<span class="saved">Saved</span>{/if}
+      </div>
+    </label>
+
+    <label class="setting-row">
+      <div class="setting-info">
+        <span class="setting-label">Browser Tracking</span>
+        <span class="setting-desc">Record browsing history via the browser extension</span>
+      </div>
+      <div class="control">
+        <input type="checkbox" class="toggle" checked={trackBrowser}
+          onchange={() => save('trackBrowser', trackBrowser)} />
+        {#if savedKey === 'trackBrowser'}<span class="saved">Saved</span>{/if}
+      </div>
+    </label>
+
+    <label class="setting-row">
+      <div class="setting-info">
+        <span class="setting-label">Input / Keystroke Tracking</span>
+        <span class="setting-desc">Track keyboard and mouse activity</span>
+      </div>
+      <div class="control">
+        <input type="checkbox" class="toggle" checked={trackInput}
+          onchange={() => save('trackInput', trackInput)} />
+        {#if savedKey === 'trackInput'}<span class="saved">Saved</span>{/if}
+      </div>
     </label>
 
     <div class="setting-row">
       <div class="setting-info">
-        <span class="setting-label">Idle threshold</span>
+        <span class="setting-label">Idle Threshold</span>
         <span class="setting-desc">Minutes of inactivity before considering you idle</span>
       </div>
-      <select class="select" bind:value={idleThreshold}>
-        {#each [1, 2, 3, 5, 10, 15] as n}
-          <option value={n}>{n} min</option>
-        {/each}
-      </select>
+      <div class="control">
+        <select class="select" bind:value={idleMinutes}
+          onchange={() => save('idleThresholdSeconds', idleMinutes * 60)}>
+          {#each [1, 2, 3, 5, 10, 15] as n}
+            <option value={n}>{n} min</option>
+          {/each}
+        </select>
+        {#if savedKey === 'idleThresholdSeconds'}<span class="saved">Saved</span>{/if}
+      </div>
     </div>
   </div>
 
@@ -72,6 +143,7 @@
 <style>
   .settings { display: flex; flex-direction: column; gap: var(--sp-5); max-width: 640px; }
   .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .warning { font-size: 12px; color: var(--md-error); font-weight: 500; }
   .section { display: flex; flex-direction: column; gap: var(--sp-2); }
   .setting-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -81,6 +153,8 @@
   .setting-info { display: flex; flex-direction: column; gap: var(--sp-0); }
   .setting-label { font-size: 13px; font-weight: 500; color: var(--md-on-surf); }
   .setting-desc { font-size: 12px; color: var(--md-on-surf-var); }
+  .control { display: flex; align-items: center; gap: var(--sp-1); flex-shrink: 0; }
+  .saved { font-size: 11px; color: var(--md-primary); font-weight: 500; }
   .toggle {
     appearance: none;
     width: 36px; height: 20px;

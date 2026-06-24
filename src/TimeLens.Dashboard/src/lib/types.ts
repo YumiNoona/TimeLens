@@ -37,6 +37,8 @@ export interface LiveStatus {
   isIdle: boolean;
   audibleTab: string | null;
   audioActive: boolean;
+  systemState: string;
+  pendingIdleReturn: boolean;
 }
 
 export interface DashboardData {

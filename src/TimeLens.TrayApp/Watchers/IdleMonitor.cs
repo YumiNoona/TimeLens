@@ -16,7 +16,7 @@ public sealed class IdleMonitor
 
     public AudioMonitor? AudioMonitorRef;
 
-    public const int IdleThresholdSeconds = 180;
+    public int IdleThresholdSeconds { get; set; } = 180;
 
     private bool IsAudioActive()
     {
@@ -51,5 +51,13 @@ public sealed class IdleMonitor
         if (!GetLastInputInfo(ref lii)) return 0;
 
         return (int)(ElapsedSince(lii.dwTime) / 1000);
+    }
+
+    public string GetState()
+    {
+        var sysState = TimeLens.Api.LiveStatusStore.SystemState;
+        if (sysState == "away") return "away";
+        if (IsIdle()) return "idle";
+        return "active";
     }
 }

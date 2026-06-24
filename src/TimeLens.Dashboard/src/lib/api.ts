@@ -15,7 +15,7 @@ export async function getDashboardData(date?: string): Promise<DashboardData> {
     console.warn('API unreachable, showing mock data');
     return {
       ...mockData,
-      live: { currentApp: '—', idleMinutes: 0, isIdle: false, audibleTab: null, audioActive: false },
+      live: { currentApp: '—', idleMinutes: 0, isIdle: false, audibleTab: null, audioActive: false, systemState: 'active', pendingIdleReturn: false },
     };
   }
 }

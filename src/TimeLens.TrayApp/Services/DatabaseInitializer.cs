@@ -139,6 +139,38 @@ public static class DatabaseInitializer
         migRules.CommandText = "UPDATE custom_rules SET rule_type='substring', target='exe' WHERE rule_type IS NULL";
         migRules.ExecuteNonQuery();
 
+        // Rebuild custom_rules if missing the auto-increment id column (old schema)
+        try
+        {
+            using var checkId = conn.CreateCommand();
+            checkId.CommandText = "SELECT id FROM custom_rules LIMIT 1";
+            checkId.ExecuteNonQuery();
+        }
+        catch
+        {
+            using var rebuild = conn.CreateCommand();
+            rebuild.CommandText = """
+                CREATE TABLE custom_rules_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exe_pattern TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    rule_type TEXT NOT NULL DEFAULT 'substring',
+                    target TEXT NOT NULL DEFAULT 'exe',
+                    priority INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO custom_rules_new (exe_pattern, category, rule_type, target, priority)
+                    SELECT exe_pattern, category,
+                           COALESCE(rule_type, 'substring'),
+                           COALESCE(target, 'exe'),
+                           COALESCE(priority, 0)
+                    FROM custom_rules;
+                DROP TABLE custom_rules;
+                ALTER TABLE custom_rules_new RENAME TO custom_rules;
+                CREATE INDEX IF NOT EXISTS idx_custom_rules_priority ON custom_rules(priority);
+                """;
+            rebuild.ExecuteNonQuery();
+        }
+
         // Fix any broken rows where end_time < start_time (timezone/timer bug)
         using var fixNeg = conn.CreateCommand();
         fixNeg.CommandText = """

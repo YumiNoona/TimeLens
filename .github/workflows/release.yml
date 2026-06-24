@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: src/TimeLens.Dashboard/package-lock.json
 
@@ -79,4 +81,3 @@ jobs:
             TimeLens-portable-*.zip
             TimeLens-extension-*.zip
             dist/TimeLens-Setup-*.exe
-          generate_release_notes: true

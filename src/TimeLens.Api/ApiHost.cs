@@ -417,7 +417,219 @@ public static class ApiHost
         {
             ctx.Response.ContentType = "text/html; charset=utf-8";
             ctx.Response.StatusCode = 200;
-            return ctx.Response.WriteAsync("""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TimeLens · Extensions</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0D0F0A;color:#E4E8DC;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#141810;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;max-width:480px;width:100%}h1{font-size:22px;font-weight:600;margin-bottom:4px}h2{font-size:13px;font-weight:500;color:#8A9283;margin-bottom:24px}.btn{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#1C2118;color:#E4E8DC;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;text-decoration:none;margin-bottom:10px;transition:background .15s,border-color .15s}.btn:hover{background:#222819;border-color:#C8E86A}.btn-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}.btn-label{flex:1;text-align:left}.btn-hint{font-size:11px;color:#4A5145;font-weight:400}.chrome .btn-icon{background:#1E2E00;color:#C8E86A}.edge .btn-icon{background:#002E1E;color:#7ECFA8}.firefox .btn-icon{background:#2E1E00;color:#E8A23A}.divider{height:1px;background:rgba(255,255,255,.06);margin:20px 0}.note{font-size:12px;color:#4A5145;line-height:1.6}.note a{color:#8A9283}</style></head><body><div class="card"><h1>Browser Extensions</h1><h2>Install the extension to track browser activity</h2><a class="btn chrome" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank"><div class="btn-icon">C</div><div class="btn-label"><div>Chrome / Brave / Arc</div><div class="btn-hint">Download &amp; load unpacked in chrome://extensions</div></div></a><a class="btn edge" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank"><div class="btn-icon">E</div><div class="btn-label"><div>Microsoft Edge</div><div class="btn-hint">Same extension, works in edge://extensions</div></div></a><a class="btn firefox" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank"><div class="btn-icon">F</div><div class="btn-label"><div>Firefox / Zen</div><div class="btn-hint">Download &amp; load in about:debugging</div></div></a><div class="divider"></div><div class="note">After downloading, extract the zip and load it as an unpacked extension in your browser's developer mode. For detailed instructions, see the <a href="https://github.com/anomalyco/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.</div></div></body></html>""");
+            return ctx.Response.WriteAsync("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TimeLens · Browser Extensions</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#0D0F0A;color:#E4E8DC;
+    font-family:Inter,system-ui,-apple-system,sans-serif;
+    font-size:14px;line-height:1.5;
+    min-height:100vh;padding:24px;
+    display:flex;flex-direction:column;align-items:center;
+    -webkit-font-smoothing:antialiased
+  }
+  .logo{
+    display:flex;align-items:center;gap:10px;
+    margin-bottom:8px
+  }
+  .logo-icon{
+    width:36px;height:36px;border-radius:10px;
+    background:linear-gradient(135deg,#C8E86A,#81C784);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:#1A1A1A;font-weight:700
+  }
+  .logo-text{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .subtitle{
+    font-size:13px;color:#8A9283;margin-bottom:32px;
+    max-width:400px;text-align:center;line-height:1.5
+  }
+  .module{
+    background:#141810;border:1px solid rgba(255,255,255,.07);
+    border-radius:16px;padding:28px;width:100%;max-width:620px;
+    display:flex;flex-direction:column;gap:16px
+  }
+  .module-header{
+    display:flex;align-items:flex-start;gap:16px;
+    padding-bottom:16px;
+    border-bottom:1px solid rgba(255,255,255,.06)
+  }
+  .module-icon{
+    width:52px;height:52px;border-radius:14px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:26px
+  }
+  .module-icon.ic-chrome{background:#1a2e0a;color:#C8E86A}
+  .module-icon.ic-firefox{background:#2e1a00;color:#FFB74D}
+  .module-title{
+    font-size:16px;font-weight:600;letter-spacing:-.01em
+  }
+  .module-desc{
+    font-size:12px;color:#8A9283;margin-top:2px
+  }
+  .browser-card{
+    background:#1C2118;border:1px solid rgba(255,255,255,.05);
+    border-radius:12px;padding:16px;display:flex;
+    align-items:center;gap:14px;transition:all .15s;
+    text-decoration:none;color:inherit
+  }
+  .browser-card:hover{
+    background:#222819;border-color:#C8E86A;
+    transform:translateY(-1px)
+  }
+  .browser-card+.browser-card{margin-top:8px}
+  .bc-icon{
+    width:44px;height:44px;border-radius:12px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:700
+  }
+  .bc-chrome{background:linear-gradient(135deg,#4285F4,#34A853);color:#fff}
+  .bc-edge{background:linear-gradient(135deg,#0078D4,#00BCF2);color:#fff}
+  .bc-brave{background:linear-gradient(135deg,#FB542B,#FF5500);color:#fff}
+  .bc-firefox{background:linear-gradient(135deg,#FF7139,#FFA436);color:#fff}
+  .bc-zen{background:linear-gradient(135deg,#7B68EE,#9370DB);color:#fff}
+  .bc-info{flex:1;min-width:0}
+  .bc-name{font-size:13px;font-weight:600}
+  .bc-detail{font-size:11px;color:#4A5145;margin-top:1px}
+  .bc-detail code{
+    font-family:'JetBrains Mono','Fira Code',monospace;
+    font-size:10px;background:rgba(255,255,255,.04);
+    padding:1px 6px;border-radius:4px
+  }
+  .bc-arrow{
+    font-size:11px;color:#4A5145;flex-shrink:0;
+    transition:color .15s,transform .15s
+  }
+  .browser-card:hover .bc-arrow{color:#C8E86A;transform:translateX(3px)}
+  .status-bar{
+    display:flex;align-items:center;gap:8px;
+    padding-top:16px;border-top:1px solid rgba(255,255,255,.06);
+    font-size:11px;color:#4A5145
+  }
+  .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .status-dot.online{background:#81C784;box-shadow:0 0 6px #81C784}
+  .status-dot.offline{background:#E07070}
+  .footer{
+    margin-top:24px;font-size:11px;color:#4A5145;
+    max-width:620px;width:100%;text-align:center
+  }
+  .footer a{color:#8A9283;text-decoration:underline}
+  .footer a:hover{color:#C8E86A}
+  @media(max-width:500px){
+    .module{padding:20px;gap:12px}
+    .browser-card{padding:14px}
+  }
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <div class="logo-icon">T</div>
+  <span class="logo-text">TimeLens</span>
+</div>
+<p class="subtitle">
+  Install the browser extension to track tabs, domains, and audible media in your activity timeline.
+</p>
+
+<div class="module">
+
+  <!-- Chromium section -->
+  <div class="module-header">
+    <div class="module-icon ic-chrome">&#x25D0;</div>
+    <div>
+      <div class="module-title">Chromium Browsers</div>
+      <div class="module-desc">Same extension works across all Chromium-based browsers. Download the zip, then load it unpacked in 3 clicks.</div>
+    </div>
+  </div>
+
+  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <div class="bc-icon bc-chrome">C</div>
+    <div class="bc-info">
+      <div class="bc-name">Google Chrome</div>
+      <div class="bc-detail">Load at <code>chrome://extensions</code> &rarr; Developer mode &rarr; Load unpacked</div>
+    </div>
+    <div class="bc-arrow">&rarr; Download</div>
+  </a>
+
+  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <div class="bc-icon bc-edge">E</div>
+    <div class="bc-info">
+      <div class="bc-name">Microsoft Edge</div>
+      <div class="bc-detail">Load at <code>edge://extensions</code> &rarr; Developer mode &rarr; Load unpacked</div>
+    </div>
+    <div class="bc-arrow">&rarr; Download</div>
+  </a>
+
+  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <div class="bc-icon bc-brave">B</div>
+    <div class="bc-info">
+      <div class="bc-name">Brave / Arc / Opera / Vivaldi</div>
+      <div class="bc-detail">All Chromium-based — same zip, same <code>extensions</code> page flow</div>
+    </div>
+    <div class="bc-arrow">&rarr; Download</div>
+  </a>
+
+  <!-- Firefox section -->
+  <div class="module-header" style="margin-top:8px;padding-top:16px;border-top:1px solid rgba(255,255,255,.06)">
+    <div class="module-icon ic-firefox">&#x1F98A;</div>
+    <div>
+      <div class="module-title">Firefox Family</div>
+      <div class="module-desc">Manifest V2 extension. Firefox requires temporary loading through the debug page or AMO signing.</div>
+    </div>
+  </div>
+
+  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+    <div class="bc-icon bc-firefox">F</div>
+    <div class="bc-info">
+      <div class="bc-name">Mozilla Firefox</div>
+      <div class="bc-detail">Load at <code>about:debugging</code> &rarr; This Firefox &rarr; Load Temporary Add-on</div>
+    </div>
+    <div class="bc-arrow">&rarr; Download</div>
+  </a>
+
+  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+    <div class="bc-icon bc-zen">Z</div>
+    <div class="bc-info">
+      <div class="bc-name">Zen Browser</div>
+      <div class="bc-detail">Load at <code>about:debugging</code> &rarr; This Firefox &rarr; Load Temporary Add-on</div>
+    </div>
+    <div class="bc-arrow">&rarr; Download</div>
+  </a>
+
+  <!-- Status -->
+  <div class="status-bar" id="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Checking tray app connection...</span>
+  </div>
+
+</div>
+
+<div class="footer">
+  Extracted the zip? Open your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the folder. For full instructions see the <a href="https://github.com/anomalyco/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.
+</div>
+
+<script>
+  fetch('http://127.0.0.1:47821/api/settings')
+    .then(r => {
+      if (r.ok) {
+        document.getElementById('status-dot').className = 'status-dot online';
+        document.getElementById('status-text').textContent = 'TimeLens tray app is running — extension will connect on install';
+      } else { throw new Error(); }
+    })
+    .catch(() => {
+      document.getElementById('status-dot').className = 'status-dot offline';
+      document.getElementById('status-text').textContent = 'Tray app not detected — start TimeLens.TrayApp.exe first';
+    });
+</script>
+
+</body>
+</html>
+""");
         });
 
         await app.RunAsync(ct);

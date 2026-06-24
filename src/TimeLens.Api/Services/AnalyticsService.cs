@@ -10,7 +10,8 @@ public sealed class AnalyticsService
     private readonly Dictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = [];
     private readonly object _cacheLock = new();
 
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CacheTtlHistory = TimeSpan.FromSeconds(300);
 
     public AnalyticsService(string dbPath)
     {
@@ -21,10 +22,12 @@ public sealed class AnalyticsService
     {
         var localDate = DateTime.SpecifyKind((queryDate ?? DateTime.Now).Date, DateTimeKind.Local);
         var cacheKey = localDate.ToString("yyyy-MM-dd");
+        var isToday = localDate == DateTime.Now.Date;
+        var ttl = isToday ? CacheTtlToday : CacheTtlHistory;
 
         lock (_cacheLock)
         {
-            if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < CacheTtl)
+            if (_cache.TryGetValue(cacheKey, out var entry) && DateTime.UtcNow - entry.cachedAt < ttl)
                 return entry.data;
         }
 

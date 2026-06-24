@@ -140,6 +140,7 @@ public static class ApiHost
                     "breakReminder" => "break_reminder",
                     "breakIntervalMinutes" => "break_interval_minutes",
                     "focusMode" => "focus_mode",
+                    "focusBlocklist" => "focus_blocklist",
                     _ => prop.Name
                 }, value);
 
@@ -196,6 +197,9 @@ public static class ApiHost
                         break;
                     case "focusMode":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusMode = value == "true" };
+                        break;
+                    case "focusBlocklist":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = value };
                         break;
                 }
             }

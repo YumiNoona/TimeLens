@@ -4,14 +4,33 @@
 
   let { blocks }: { blocks: TimelineBlock[] } = $props();
 
-  const hours = [0, 3, 6, 9, 12, 15, 18, 21];
+  const HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
   function fmtHour(h: number): string {
-    if (h === 0) return '12a';
+    if (h === 0 || h === 24) return '12a';
     if (h < 12) return h + 'a';
     if (h === 12) return '12p';
     return (h - 12) + 'p';
   }
+
+  const filled = $derived.by(() => {
+    if (blocks.length === 0) return [];
+    const sorted = [...blocks].sort((a, b) => a.startHour - b.startHour);
+    const result: TimelineBlock[] = [];
+    let cursor = 0;
+
+    for (const b of sorted) {
+      if (b.startHour > cursor) {
+        result.push({ startHour: cursor, endHour: b.startHour, type: 'gap' });
+      }
+      result.push(b);
+      cursor = b.endHour;
+    }
+    if (cursor < 24) {
+      result.push({ startHour: cursor, endHour: 24, type: 'gap' });
+    }
+    return result;
+  });
 
   const legendTypes = ['dev', 'work', 'browse', 'social', 'idle', 'away'];
 </script>
@@ -22,12 +41,6 @@
     24-hour timeline
   </div>
 
-  <div class="tl-hour-row" aria-hidden="true">
-    {#each hours as h}
-      <div class="tl-hour">{fmtHour(h)}</div>
-    {/each}
-  </div>
-
   {#if blocks.length === 0}
     <div class="tl-empty">
       <i class="ti ti-clock-hour-4" aria-hidden="true"></i>
@@ -35,13 +48,26 @@
       <span class="tl-empty-hint">TimeLens tracks your foreground apps automatically</span>
     </div>
   {:else}
-    <div class="tl-track" role="img" aria-label="Activity timeline">
-      {#each blocks as block}
+    <div class="tl-container" role="img" aria-label="Activity timeline">
+      {#each HOURS as h}
         <div
-          class="tl-block"
-          style="flex: {block.endHour - block.startHour} 0 0; background: {colorForCategory(block.type)}"
-        ></div>
+          class="tl-hour-mark"
+          style="left: {h / 24 * 100}%"
+          aria-hidden="true"
+        >
+          {fmtHour(h)}
+        </div>
       {/each}
+
+      <div class="tl-track">
+        {#each filled as block}
+          <div
+            class="tl-block"
+            class:gap={block.type === 'gap'}
+            style="left: {block.startHour / 24 * 100}%; width: {(block.endHour - block.startHour) / 24 * 100}%; background: {block.type === 'gap' ? 'transparent' : colorForCategory(block.type)}"
+          ></div>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -75,28 +101,38 @@
 
   .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
 
-  .tl-hour-row {
-    display: flex;
-    margin-bottom: var(--sp-1);
+  .tl-container {
+    position: relative;
+    padding-top: 16px;
+    margin-bottom: var(--sp-3);
   }
 
-  .tl-hour {
-    flex: 3 0 0;
+  .tl-hour-mark {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
     font-size: 10px;
     font-family: var(--font-mono);
     color: var(--md-on-surf-dim);
   }
 
   .tl-track {
-    display: flex;
+    position: relative;
     height: 28px;
     border-radius: var(--shape-sm);
-    overflow: hidden;
-    gap: 1px;
     background: var(--md-surface);
+    overflow: hidden;
   }
 
-  .tl-block { height: 100%; }
+  .tl-block {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    min-width: 2px;
+    border-radius: var(--shape-full);
+  }
+
+  .tl-block.gap { background: transparent !important; }
 
   .tl-empty {
     display: flex;

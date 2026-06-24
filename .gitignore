@@ -57,14 +57,10 @@ Thumbs.db
 # Root-level deploy (built by publish.ps1)
 /TimeLens.exe
 /dashboard/
-/categories.csv
-/*.exe
-/*.exe
 /*.dll
 /*.pdb
-/*.json
-/*.ico
 /*.csv
+/*.exe
 
 # Public asset mirror (source is Dashboard/public/)
 src/TimeLens.TrayApp/Public/

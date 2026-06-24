@@ -102,12 +102,11 @@ if (Test-Path $distDir) {
 
 # --- Deploy to root (double-click ready) ---
 & $header "=== Deploying to root ==="
-Remove-Item -Force "$root\*.dll", "$root\*.json", "$root\*.pdb", "$root\*.ico", "$root\*.csv" -ErrorAction SilentlyContinue
-Remove-Item -Force "$root\TimeLens.exe", "$root\TimeLens.TrayApp.exe" -ErrorAction SilentlyContinue
 if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
-Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 if (Test-Path $distDir) { Copy-Item -Recurse -Force $distDir "$root\dashboard" }
-Copy-Item -Force "$publishDir\categories.csv" "$root\categories.csv" -ErrorAction SilentlyContinue
+Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
+Copy-Item -Force "$publishDir\e_sqlite3.dll" "$root\" -ErrorAction SilentlyContinue
+Copy-Item -Force "$publishDir\categories.csv" "$root\" -ErrorAction SilentlyContinue
 & $ok "Root TimeLens.exe ready"
 
 # --- Summary ---

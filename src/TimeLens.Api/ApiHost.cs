@@ -550,7 +550,7 @@ public static class ApiHost
     </div>
   </div>
 
-  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
     <div class="bc-icon bc-chrome">C</div>
     <div class="bc-info">
       <div class="bc-name">Google Chrome</div>
@@ -559,7 +559,7 @@ public static class ApiHost
     <div class="bc-arrow">&rarr; Download</div>
   </a>
 
-  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
     <div class="bc-icon bc-edge">E</div>
     <div class="bc-info">
       <div class="bc-name">Microsoft Edge</div>
@@ -568,7 +568,7 @@ public static class ApiHost
     <div class="bc-arrow">&rarr; Download</div>
   </a>
 
-  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
     <div class="bc-icon bc-brave">B</div>
     <div class="bc-info">
       <div class="bc-name">Brave / Arc / Opera / Vivaldi</div>
@@ -586,7 +586,7 @@ public static class ApiHost
     </div>
   </div>
 
-  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
     <div class="bc-icon bc-firefox">F</div>
     <div class="bc-info">
       <div class="bc-name">Mozilla Firefox</div>
@@ -595,7 +595,7 @@ public static class ApiHost
     <div class="bc-arrow">&rarr; Download</div>
   </a>
 
-  <a class="browser-card" href="https://github.com/anomalyco/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+  <a class="browser-card" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
     <div class="bc-icon bc-zen">Z</div>
     <div class="bc-info">
       <div class="bc-name">Zen Browser</div>
@@ -613,7 +613,7 @@ public static class ApiHost
 </div>
 
 <div class="footer">
-  Extracted the zip? Open your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the folder. For full instructions see the <a href="https://github.com/anomalyco/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.
+  Extracted the zip? Open your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the folder. For full instructions see the <a href="https://github.com/YumiNoona/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">installation guide</a>.
 </div>
 
 <script>

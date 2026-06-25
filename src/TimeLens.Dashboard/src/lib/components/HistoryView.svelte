@@ -249,24 +249,24 @@
   }
   .day-chip.active .day-weekday,
   .day-chip.active .day-num { color: #1a1a1a; }
-  .day-chip:hover { background: var(--md-surface-3); }
+  .day-chip:hover { background: var(--clr-bg-ter); }
   .day-chip.today { border-color: var(--md-primary); color: var(--md-primary); }
   .day-chip.active {
     background: var(--md-primary);
     color: #1a1a1a;
     border-color: var(--md-primary);
     font-weight: 600;
-    box-shadow: 0 0 0 2px rgba(200, 232, 106, 0.3);
+    border-radius: var(--shape-md);
   }
   .day-dot {
     display: block;
     width: 6px; height: 6px;
     border-radius: 50%;
-    background: var(--md-outline);
+    background: var(--clr-border);
     margin-top: 4px;
     transition: background 0.15s;
   }
-  .day-dot.l1 { background: var(--md-surface-3); }
+  .day-dot.l1 { background: var(--clr-bg-ter); }
   .day-dot.l2 { background: var(--md-secondary); }
   .day-dot.l3 { background: var(--md-primary); }
   .day-dot.hidden { visibility: hidden; }
@@ -301,12 +301,12 @@
   .app-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--clr-text-pri); }
   .app-time { font-family: var(--font-mono); font-size: 12px; color: var(--clr-text-sec); }
   .cat-list { display: flex; flex-direction: column; gap: var(--sp-2); }
-  .cat-row { display: flex; align-items: center; gap: var(--sp-2); font-size: 13px; }
-  .cat-name { width: 100px; font-weight: 500; color: var(--clr-text-pri); }
-  .cat-bar-bg { flex: 1; height: 8px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
+  .cat-row { display: flex; align-items: center; gap: var(--sp-2); font-size: 13px; overflow: hidden; }
+  .cat-name { width: 100px; font-weight: 500; color: var(--clr-text-pri); flex-shrink: 0; }
+  .cat-bar-bg { flex: 1; min-width: 0; height: 8px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
   .cat-bar { height: 100%; background: var(--md-primary); border-radius: 99px; transition: width 0.3s; }
-  .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; }
-  .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; }
+  .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; flex-shrink: 0; }
+  .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; flex-shrink: 0; }
   .empty { font-size: 13px; color: var(--clr-text-ter); padding: var(--sp-2) 0; }
   .empty-notice {
     background: var(--clr-bg-ter);

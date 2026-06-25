@@ -8,7 +8,7 @@
   const maxMins = $derived(apps.length > 0 ? apps[0].minutes : 1);
 </script>
 
-<div class="card r1h">
+<div class="card">
   <div class="card-title">
     <i class="ti ti-apps" aria-hidden="true"></i>
     Top apps
@@ -29,18 +29,11 @@
 </div>
 
 <style>
-  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
-
-  .card-title {
-    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
-    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
-  }
-  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
-
   .app-list { display: flex; flex-direction: column; gap: 6px; }
 
   .app-row {
     display: flex; align-items: center; gap: 8px;
+    font-size: 13px;
   }
 
   .app-icon {
@@ -51,7 +44,7 @@
 
   .app-name {
     width: 100px; flex-shrink: 0;
-    font-size: 11px; color: var(--clr-text-pri);
+    color: var(--clr-text-pri);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
@@ -68,6 +61,6 @@
 
   .app-time {
     width: 44px; text-align: right;
-    font-size: 10px; font-family: var(--font-mono); color: var(--clr-text-sec);
+    font-size: 11px; font-family: var(--font-mono); color: var(--clr-text-sec);
   }
 </style>

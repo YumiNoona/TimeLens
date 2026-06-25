@@ -91,13 +91,13 @@
         Input activity
       </h2>
       <div class="table" role="table">
-        <div class="th" role="row">
+        <div class="th input-th" role="row">
           <span role="columnheader">App</span>
           <span role="columnheader">Keystrokes</span>
           <span role="columnheader">Clicks</span>
         </div>
         {#each inputData as row, i}
-          <div class="tr" role="row" class:alt={i % 2 === 0}>
+          <div class="tr input-tr" role="row" class:alt={i % 2 === 0}>
             <span class="td-name" role="cell">
               <i class="ti ti-apps" aria-hidden="true"></i>
               {row.exeName || 'System / Unknown'}
@@ -145,11 +145,11 @@
   .apps { display: flex; flex-direction: column; gap: var(--sp-4); }
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
   .search {
-    background: var(--md-surface-1);
-    border: 1px solid var(--md-outline);
+    background: var(--clr-bg-sec);
+    border: 1px solid var(--clr-border);
     border-radius: var(--shape-sm);
     padding: var(--sp-1) var(--sp-2);
-    color: var(--md-on-surf);
+    color: var(--clr-text-pri);
     font-family: inherit;
     font-size: 13px;
     width: 200px;
@@ -158,55 +158,57 @@
   .search:focus { border-color: var(--md-primary); }
   .toolbar { display: flex; align-items: center; gap: var(--sp-2); }
   .sort-btn i { font-size: 14px; }
-  .count { font-size: 12px; color: var(--md-on-surf-dim); margin-left: auto; }
-  .table { display: flex; flex-direction: column; border: 1px solid var(--md-outline); border-radius: var(--shape-md); overflow: hidden; }
+  .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
+  .table { display: flex; flex-direction: column; border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
   .th {
-    display: flex; padding: var(--sp-2) var(--sp-3);
-    background: var(--md-surface-1);
+    display: grid; grid-template-columns: 2fr 1fr; padding: var(--sp-2) var(--sp-3);
+    background: var(--clr-bg-sec);
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--md-on-surf-var);
+    color: var(--clr-text-sec);
   }
-  .th span { flex: 1; }
-  .th span:last-child { width: 80px; flex: none; text-align: right; }
+  .th.input-th { grid-template-columns: 2fr 1fr 1fr; }
   .tr {
-    display: flex; align-items: center;
+    display: grid; grid-template-columns: 2fr 1fr;
+    align-items: center;
     padding: var(--sp-2) var(--sp-3);
     font-size: 13px;
-    color: var(--md-on-surf);
-    border-top: 1px solid var(--md-outline);
+    color: var(--clr-text-pri);
+    border-top: 1px solid var(--clr-border);
   }
-  .tr.alt { background: var(--md-surface-1); }
-  .td-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tr.input-tr { grid-template-columns: 2fr 1fr 1fr; }
+  .tr.alt { background: var(--clr-bg-sec); }
+  .td-name { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .td-name i { color: var(--md-primary); font-size: 16px; }
-  .td-time { width: 80px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; margin-left: var(--sp-4); }
+  .td-time { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
+  .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
   .section { margin-top: var(--sp-4); }
   .section-title {
     font-size: 14px;
     font-weight: 500;
-    color: var(--md-on-surf);
+    color: var(--clr-text-pri);
     margin-bottom: var(--sp-3);
     display: flex;
     align-items: center;
     gap: var(--sp-2);
   }
-  .section-title i { color: var(--md-on-surf-var); font-size: 16px; }
+  .section-title i { color: var(--clr-text-sec); font-size: 16px; }
   .th span:nth-child(2),
   .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
-  .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--md-on-surf-var); font-size: 12px; margin-left: var(--sp-3); }
+  .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; margin-left: var(--sp-3); }
 
-  .section-hint { font-size: 11px; color: var(--md-on-surf-dim); font-weight: 400; margin-left: var(--sp-2); }
+  .section-hint { font-size: 11px; color: var(--clr-text-ter); font-weight: 400; margin-left: var(--sp-2); }
   .uncat-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
   .uncat-row {
     display: flex; align-items: center; gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-3);
-    background: var(--md-surface-1);
+    background: var(--clr-bg-sec);
     border-radius: var(--shape-sm);
-    border: 1px solid var(--md-outline);
+    border: 1px solid var(--clr-border);
     flex-wrap: wrap;
   }
-  .uncat-exe { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf); flex: 1; }
-  .uncat-time { font-family: var(--font-mono); font-size: 11px; color: var(--md-on-surf-dim); width: 36px; text-align: right; flex-shrink: 0; }
+  .uncat-exe { font-family: var(--font-mono); font-size: 12px; color: var(--clr-text-pri); flex: 1; }
+  .uncat-time { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-ter); width: 36px; text-align: right; flex-shrink: 0; }
   .uncat-assign {
     font-size: 11px; padding: 3px 10px;
     border: 1px solid var(--md-primary); border-radius: var(--shape-sm);
@@ -216,14 +218,14 @@
   .uncat-picker { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; padding-top: var(--sp-2); }
   .cat-pill {
     font-size: 10px; padding: 2px 8px;
-    border: 1px solid var(--md-outline); border-radius: var(--shape-full);
-    background: var(--md-surface-2); color: var(--md-on-surf-var);
+    border: 1px solid var(--clr-border); border-radius: var(--shape-full);
+    background: var(--clr-bg-ter); color: var(--clr-text-sec);
     cursor: pointer; font-family: inherit; text-transform: capitalize;
   }
   .cat-pill:hover { border-color: var(--md-primary); color: var(--md-primary); }
   .cat-cancel {
     font-size: 11px; padding: 2px 8px;
-    border: 1px solid var(--md-outline); border-radius: var(--shape-full);
-    background: none; color: var(--md-on-surf-dim); cursor: pointer; font-family: inherit;
+    border: 1px solid var(--clr-border); border-radius: var(--shape-full);
+    background: none; color: var(--clr-text-ter); cursor: pointer; font-family: inherit;
   }
 </style>

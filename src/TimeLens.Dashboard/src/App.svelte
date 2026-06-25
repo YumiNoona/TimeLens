@@ -21,8 +21,12 @@
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
-  let browserHourly = $state<{hour: number; visits: number}[]>([]);
-  let timelineGrouped = $state(false);
+  let browserHourlyRaw = $state<{hour: number; visits: number}[]>([]);
+  let browserHourly = $derived.by(() => {
+    const map = new Map(browserHourlyRaw.map(h => [h.hour, h.visits]));
+    return Array.from({ length: 24 }, (_, i) => ({ hour: i, visits: map.get(i) ?? 0 }));
+  });
+  let timelineGrouped = $state(true);
 
   let view = $state('today');
   let currentTheme = $state('default');
@@ -49,7 +53,7 @@
       try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { }
       try { const bt = await fetch('http://127.0.0.1:47821/api/browser-time-summary'); browserTime = await bt.json(); } catch { }
       try { const ar = await fetch('http://127.0.0.1:47821/api/audio-summary'); audioSessions = await ar.json(); } catch { }
-      try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourly = await hr.json(); } catch { }
+      try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { }
     }, interval);
   }
 
@@ -61,13 +65,13 @@
       const r = await fetch('http://127.0.0.1:47821/api/settings');
       const s = await r.json();
       if (s.theme) applyTheme(s.theme);
-      if (s.timelineGrouped !== undefined) timelineGrouped = s.timelineGrouped;
+      timelineGrouped = s.timelineGrouped ?? true;
       if (s.timeFormat) timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
       if (s.pollIntervalSeconds) pollInterval = s.pollIntervalSeconds;
     } catch { }
     try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { browserSites = []; }
     try { const ar = await fetch('http://127.0.0.1:47821/api/audio-summary'); audioSessions = await ar.json(); } catch { audioSessions = []; }
-    try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourly = await hr.json(); } catch { browserHourly = []; }
+    try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { browserHourlyRaw = []; }
 
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) startPoll();
@@ -151,11 +155,13 @@
               <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
               <div class="hourly">
                 {#each browserHourly as h}
-                  <div class="h-bar" style="height:{Math.max(h.visits / Math.max(...browserHourly.map(x => x.visits)) * 60, 3)}px"></div>
+                  <div class="h-bar" class:zero={h.visits === 0} style="height:{h.visits > 0 ? h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 60 : 3}px; min-width: 4px;" title="{h.hour}:00 - {h.visits} visits"></div>
                 {/each}
               </div>
               <div class="tl-labels">
-                <span class="tl-label">8am</span><span class="tl-label">10am</span><span class="tl-label">12pm</span><span class="tl-label">2pm</span><span class="tl-label">4pm</span><span class="tl-label">6pm</span>
+                {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
+                  <span class="tl-label">{hr > 12 ? hr - 12 : hr}{hr >= 12 ? 'p' : 'a'}</span>
+                {/each}
               </div>
             </div>
           {/if}
@@ -185,31 +191,43 @@
             <div class="stat-card"><div class="stat-label">Total visits</div><div class="stat-val">{browserSites.reduce((a, b) => a + b.visits, 0)}</div></div>
             <div class="stat-card"><div class="stat-label">Browse time</div><div class="stat-val">{browserTime.reduce((a, b) => a + b.totalMinutes, 0)}m</div></div>
           </div>
-          <div class="two-col">
-            <TopSites sites={browserSites} />
-            {#if browserTime.length > 0}
+          {#if browserSites.length === 0 && browserTime.length === 0}
+            <div class="empty-view">
+              <i class="ti ti-world-off" aria-hidden="true"></i>
+              <span>No browsing data yet</span>
+              <span class="empty-hint">Install the browser extension to start tracking</span>
+            </div>
+          {:else}
+            <div class="two-col">
+              <TopSites sites={browserSites} />
+              {#if browserTime.length > 0}
+                <div class="card">
+                  <div class="card-title"><i class="ti ti-clock" aria-hidden="true"></i>Time on sites</div>
+                  {#each browserTime as bt}
+                    <div class="site-row">
+                      <div class="site-icon">{bt.domain.charAt(0).toUpperCase()}</div>
+                      <span class="site-name">{bt.domain}</span>
+                      <span class="site-visits">{bt.totalMinutes}m</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+            {#if browserHourly.length > 0}
               <div class="card">
-                <div class="card-title"><i class="ti ti-clock" aria-hidden="true"></i>Time on sites</div>
-                {#each browserTime as bt}
-                  <div class="site-row">
-                    <div class="site-icon">{bt.domain.charAt(0).toUpperCase()}</div>
-                    <span class="site-name">{bt.domain}</span>
-                    <span class="site-visits">{bt.totalMinutes}m</span>
-                  </div>
-                {/each}
+                <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
+                <div class="hourly">
+                  {#each browserHourly as h}
+                    <div class="h-bar" class:zero={h.visits === 0} style="height:{h.visits > 0 ? h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 60 : 3}px; min-width: 4px;" title="{h.hour}:00 - {h.visits} visits"></div>
+                  {/each}
+                </div>
+                <div class="tl-labels">
+                  {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
+                    <span class="tl-label">{hr > 12 ? hr - 12 : hr}{hr >= 12 ? 'p' : 'a'}</span>
+                  {/each}
+                </div>
               </div>
             {/if}
-          </div>
-          {#if browserHourly.length > 0}
-            <div class="card">
-              <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
-              <div class="hourly">
-                {#each browserHourly as h}
-                  <div class="h-bar" style="height:{Math.max(h.visits / Math.max(...browserHourly.map(x => x.visits)) * 60, 3)}px"></div>
-                {/each}
-              </div>
-              <div class="tl-labels"><span class="tl-label">8am</span><span class="tl-label">10am</span><span class="tl-label">12pm</span><span class="tl-label">2pm</span><span class="tl-label">4pm</span><span class="tl-label">6pm</span></div>
-            </div>
           {/if}
         </div>
       </div>
@@ -246,13 +264,14 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    padding: 0 24px;
   }
 
   .topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px 12px;
+    padding: 16px 0 12px;
     border-bottom: 0.5px solid var(--clr-border);
     flex-shrink: 0;
   }
@@ -270,7 +289,7 @@
   }
 
   .content {
-    padding: 16px 20px;
+    padding: 16px 0;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -283,18 +302,15 @@
   }
 
   .section-label {
-    font-size: 11px;
-    font-weight: 500;
     color: var(--clr-text-sec);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     margin-bottom: 8px;
   }
 
   .timeline-track {
     background: var(--clr-bg-sec);
+    border: 1px solid var(--clr-border);
     border-radius: var(--shape-md);
-    padding: 16px 18px;
+    padding: 16px 20px;
   }
 
   .three-col {
@@ -308,24 +324,6 @@
     grid-template-columns: 1fr 1fr;
     gap: 14px;
   }
-
-  .card {
-    background: var(--clr-bg-sec);
-    border-radius: var(--shape-md);
-    padding: 16px 18px;
-  }
-
-  .card-title {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--clr-text-pri);
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
 
   .site-row {
     display: flex;
@@ -363,9 +361,10 @@
     flex: 1;
     border-radius: 2px 2px 0 0;
     background: var(--md-primary);
-    opacity: 0.7;
+    opacity: 0.5;
     min-height: 3px;
   }
+  .h-bar.zero { opacity: 0.08; }
 
   .tl-labels {
     display: flex;
@@ -398,20 +397,26 @@
   }
   .placeholder-view i { font-size: 48px; }
 
+  .empty-view {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 48px 0; gap: 8px; color: var(--clr-text-ter);
+  }
+  .empty-view i { font-size: 36px; color: var(--clr-text-ter); }
+  .empty-view span { font-size: 14px; }
+  .empty-hint { font-size: 11px !important; opacity: 0.6; }
+
   .audio-card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
   .browser-view { display: flex; flex-direction: column; flex: 1; }
 
   .stat-card {
     background: var(--clr-bg-sec);
+    border: 1px solid var(--clr-border);
     border-radius: var(--shape-md);
-    padding: 16px 18px;
-  }
-  .stat-val {
-    font-size: 24px; font-weight: 500; color: var(--clr-text-pri);
-    line-height: 1; font-family: var(--font-mono);
+    padding: 16px 20px;
   }
   .stat-label {
-    font-size: 11px; font-weight: 500; color: var(--clr-text-sec);
+    font-size: 11px; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--clr-text-sec);
     margin-bottom: 4px;
   }
 </style>

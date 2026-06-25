@@ -118,9 +118,54 @@ body {
   background: var(--clr-bg-pri);
   color: var(--clr-text-pri);
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  background: var(--clr-bg-sec);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--shape-md);
+  padding: 16px 20px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clr-text-sec);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-title i { font-size: 14px; color: var(--clr-text-sec); }
+
+.metric-val {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--clr-text-pri);
+  line-height: 1;
+  font-family: var(--font-mono);
+  letter-spacing: -0.03em;
+}
+
+.body-text {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--clr-text-pri);
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clr-text-sec);
+  margin-bottom: 8px;
 }
 
 .chip-button {

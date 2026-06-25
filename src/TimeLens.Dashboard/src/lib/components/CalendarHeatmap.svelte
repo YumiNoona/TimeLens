@@ -13,7 +13,6 @@
   const monthLabels = $derived.by(() => {
     if (entries.length === 0) return [];
     const labels: { text: string; index: number }[] = [];
-    const colsPerDay = 12;
     const firstDate = new Date(entries[0].date + 'T00:00:00');
     labels.push({ text: firstDate.toLocaleString('en-US', { month: 'short' }), index: 0 });
     for (let i = 1; i < entries.length; i++) {
@@ -26,7 +25,7 @@
   });
 </script>
 
-<div class="card r1h">
+<div class="card">
   <div class="card-title">
     <i class="ti ti-calendar" aria-hidden="true"></i>
     Last 28 days
@@ -50,14 +49,6 @@
 </div>
 
 <style>
-  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
-
-  .card-title {
-    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
-    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
-  }
-  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
-
   .hm-month-labels {
     display: grid;
     grid-template-columns: repeat(28, 1fr);

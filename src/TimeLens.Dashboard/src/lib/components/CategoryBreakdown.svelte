@@ -22,7 +22,7 @@
   });
 </script>
 
-<div class="card r1h">
+<div class="card">
   <div class="card-title">
     <i class="ti ti-chart-bar" aria-hidden="true"></i>
     Categories
@@ -40,7 +40,6 @@
           stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
           stroke-dashoffset={slice.dashOffset}
           transform="rotate(-90 40 40)"
-          opacity="0.75"
         />
       {/each}
     </svg>
@@ -59,16 +58,9 @@
 </div>
 
 <style>
-  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
-
-  .card-title {
-    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
-    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
-  }
-  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
-
   .donut-row {
     display: flex; align-items: flex-start; gap: 12px;
+    font-size: 13px;
   }
 
   .donut-svg {
@@ -86,17 +78,17 @@
   }
 
   .cat-dot-name {
-    width: 64px; font-size: 11px; color: var(--clr-text-pri);
+    width: 64px; font-size: 13px; color: var(--clr-text-pri);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
   }
 
   .cat-dot-pct {
-    width: 32px; text-align: right; font-size: 10px; font-weight: 500;
+    width: 32px; text-align: right; font-weight: 500;
     font-family: var(--font-mono); flex-shrink: 0;
   }
 
   .cat-dot-time {
-    font-size: 10px; color: var(--clr-text-sec);
+    font-size: 11px; color: var(--clr-text-sec);
     font-family: var(--font-mono); text-align: right; flex: 1;
   }
 </style>

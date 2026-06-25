@@ -18,7 +18,7 @@
 
 <div class="stat-card">
   <span class="stat-label">{label}</span>
-  <span class="stat-val" class:accent class:amber>{value}</span>
+  <span class="metric-val" class:accent class:amber>{value}</span>
   {#if chip}
     <span class="stat-chip {chipClass}">{chip}</span>
   {/if}
@@ -27,28 +27,22 @@
 <style>
   .stat-card {
     background: var(--clr-bg-sec);
+    border: 1px solid var(--clr-border);
     border-radius: var(--shape-md);
-    padding: 16px 18px;
+    padding: 16px 20px;
   }
 
   .stat-label {
     font-size: 11px;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--clr-text-sec);
     margin-bottom: 4px;
   }
 
-  .stat-val {
-    font-size: 22px;
-    font-weight: 500;
-    color: var(--clr-text-pri);
-    line-height: 1;
-    font-family: var(--font-mono);
-    letter-spacing: -0.02em;
-  }
-
-  .stat-val.accent { color: var(--md-primary); }
-  .stat-val.amber { color: var(--md-secondary); }
+  .metric-val.accent { color: var(--md-primary); }
+  .metric-val.amber { color: var(--md-secondary); }
 
   .stat-chip {
     display: inline-flex;

@@ -7,7 +7,7 @@
   let { data, timelineGrouped = false }: { data: DashboardData; timelineGrouped?: boolean } = $props();
 
   let selectedTypes = $state<string[]>([]);
-  let groupedMode = $state(timelineGrouped);
+  let groupedMode = $state(timelineGrouped ?? true);
   let expanded = $state<Set<string>>(new Set());
 
   let types = $derived([...new Set(data.timeline.map(b => b.type.toLowerCase()))]);
@@ -239,12 +239,12 @@
     position: relative;
   }
   .tl-row.has-kids { cursor: pointer; }
-  .tl-row.d0 { background: var(--md-surface-2); font-weight: 600; }
-  .tl-row.d1 { background: var(--md-surface-1); }
-  .tl-row.d2 { background: var(--md-surface-1); opacity: 0.85; }
-  .tl-row.d0:hover { background: var(--md-surface-3); }
-  .tl-row.d1:hover { background: var(--md-surface-2); }
-  .tl-row.d2:hover { background: var(--md-surface-2); }
+  .tl-row.d0 { background: var(--clr-bg-ter); font-weight: 600; }
+  .tl-row.d1 { background: var(--clr-bg-sec); }
+  .tl-row.d2 { background: var(--clr-bg-sec); opacity: 0.85; }
+  .tl-row.d0:hover { background: var(--clr-bg-ter); }
+  .tl-row.d1:hover { background: var(--clr-bg-ter); }
+  .tl-row.d2:hover { background: var(--clr-bg-ter); }
 
   .tl-children {
     border-left: 2px solid;
@@ -253,7 +253,7 @@
 
   .chevron {
     font-size: 12px;
-    color: var(--md-on-surf-dim);
+    color: var(--clr-text-ter);
     flex-shrink: 0;
     width: 14px;
   }
@@ -263,36 +263,36 @@
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
     margin: 1px 0;
-    background: var(--md-surface-1);
+    background: var(--clr-bg-sec);
     border-radius: var(--shape-sm);
+    overflow: hidden;
   }
 
   .tl-time {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--md-on-surf-var);
-    width: 130px; flex-shrink: 0;
-    margin-right: var(--sp-4);
+    color: var(--clr-text-sec);
+    width: 110px; flex-shrink: 0;
   }
   .tl-arrow { color: var(--md-primary); font-size: 10px; }
-  .tl-bar-bg { flex: 1; min-width: 60px; height: 10px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
-  .tl-bar { height: 100%; border-radius: 99px; min-width: 8px; }
+  .tl-bar-bg { flex: 1; min-width: 40px; height: 10px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
+  .tl-bar { height: 100%; border-radius: 99px; min-width: 4px; max-width: 100%; }
   .tl-type {
     flex: 1; min-width: 0;
     font-size: 12px; text-transform: capitalize;
-    color: var(--md-on-surf);
+    color: var(--clr-text-pri);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .tl-type.cat { font-weight: 600; color: var(--md-on-surf); }
-  .tl-type.exe { font-family: var(--font-mono); font-size: 11px; color: var(--md-on-surf-var); }
-  .tl-type.title { font-family: var(--font-mono); font-size: 11px; color: var(--md-on-surf-dim); font-style: italic; }
+  .tl-type.cat { font-weight: 600; color: var(--clr-text-pri); }
+  .tl-type.exe { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-sec); }
+  .tl-type.title { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-ter); font-style: italic; }
   .tl-dur {
     width: 48px; flex-shrink: 0; text-align: right;
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--md-on-surf-dim);
+    color: var(--clr-text-ter);
     margin-left: var(--sp-4);
   }
-  .empty { font-size: 13px; color: var(--md-on-surf-dim); text-align: center; padding: var(--sp-6); }
+  .empty { font-size: 13px; color: var(--clr-text-ter); text-align: center; padding: var(--sp-6); }
 </style>

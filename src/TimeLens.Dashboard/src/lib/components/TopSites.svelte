@@ -7,7 +7,7 @@
   const maxVisits = $derived(sites.length > 0 ? sites[0].visits : 1);
 </script>
 
-<div class="card r1h">
+<div class="card">
   <div class="card-title">
     <i class="ti ti-world" aria-hidden="true"></i>
     Top sites
@@ -32,15 +32,8 @@
 </div>
 
 <style>
-  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
-  .card-title {
-    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
-    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
-  }
-  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
-
   .site-list { display: flex; flex-direction: column; gap: 6px; }
-  .site-row { display: flex; align-items: center; gap: 8px; }
+  .site-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 
   .site-icon {
     width: 16px; height: 16px; border-radius: 3px;
@@ -50,7 +43,7 @@
 
   .site-name {
     width: 120px; flex-shrink: 0;
-    font-size: 11px; color: var(--clr-text-pri);
+    color: var(--clr-text-pri);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
@@ -67,8 +60,8 @@
 
   .site-count {
     width: 28px; text-align: right;
-    font-size: 10px; font-family: var(--font-mono); color: var(--clr-text-sec);
+    font-size: 11px; font-family: var(--font-mono); color: var(--clr-text-sec);
   }
 
-  .empty { font-size: 11px; color: var(--clr-text-ter); padding: 8px 0; }
+  .empty { font-size: 13px; color: var(--clr-text-ter); padding: 8px 0; }
 </style>

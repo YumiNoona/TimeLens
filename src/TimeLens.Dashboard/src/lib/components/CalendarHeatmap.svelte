@@ -33,7 +33,7 @@
 
   <div class="hm-month-labels">
     {#each monthLabels as ml}
-      <span class="hm-month" style="grid-column: {ml.index + 1}">{ml.text}</span>
+      <span class="hm-month" style="grid-column: {ml.index % 5 + 1} / span 1; grid-row: {Math.floor(ml.index / 5) + 1}">{ml.text}</span>
     {/each}
   </div>
 
@@ -51,13 +51,13 @@
 <style>
   .hm-month-labels {
     display: grid;
-    grid-template-columns: repeat(28, 1fr);
-    gap: 3px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
     margin-bottom: 2px;
   }
 
   .hm-month {
-    font-size: 8px;
+    font-size: 9px;
     color: var(--clr-text-ter);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -66,12 +66,12 @@
 
   .hm-grid {
     display: grid;
-    grid-template-columns: repeat(28, 1fr);
-    gap: 3px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
   }
 
   .hm-cell {
-    aspect-ratio: 1;
-    border-radius: 2px;
+    aspect-ratio: 1.4;
+    border-radius: 3px;
   }
 </style>

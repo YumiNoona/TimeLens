@@ -4,7 +4,7 @@ namespace TimeLens.TrayApp.Services;
 
 public static class DatabaseInitializer
 {
-    public static void Initialize(string dbPath)
+    public static void Initialize(string dbPath, int retentionDays = 90)
     {
         using var conn = new SqliteConnection($"Data Source={dbPath}");
         conn.Open();
@@ -113,7 +113,7 @@ public static class DatabaseInitializer
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('idle_threshold_seconds', '180');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'default');
-            INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'false');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('time_format', '12h');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_seconds', '30');
 
@@ -212,7 +212,7 @@ public static class DatabaseInitializer
         backfill2.ExecuteNonQuery();
 
         // Retention: purge rows older than 90 days
-        var cutoff = DateTime.UtcNow.AddDays(-90).ToString("o");
+        var cutoff = DateTime.UtcNow.AddDays(-retentionDays).ToString("o");
         using var purge = conn.CreateCommand();
         purge.CommandText = $"""
             DELETE FROM app_events WHERE start_time < $cutoff;

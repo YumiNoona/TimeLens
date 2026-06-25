@@ -20,7 +20,7 @@ public record AppSettings
     public string Theme { get; init; } = "default";
 
     [JsonPropertyName("timelineGrouped")]
-    public bool TimelineGrouped { get; init; } = false;
+    public bool TimelineGrouped { get; init; } = true;
 
     [JsonPropertyName("autoStart")]
     public bool AutoStart { get; init; } = false;

@@ -59,12 +59,12 @@ internal static class Program
             "TimeLens", "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
-        DatabaseInitializer.Initialize(dbPath);
-
         var settingsSvc = new SettingsService(dbPath);
         var settings = settingsSvc.Load();
         RuntimeConfig.Settings = settings;
         LiveStatusStore.Settings = settings;
+
+        DatabaseInitializer.Initialize(dbPath, settings.RetentionDays);
 
         var writer = new EventWriter(dbPath);
         var classifier = new CategoryClassifier();
@@ -182,7 +182,7 @@ internal static class Program
 
             try
             {
-                var exeOnly = exeName.Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
+                var exeOnly = System.IO.Path.GetFileNameWithoutExtension(exeName);
                 var procs = System.Diagnostics.Process.GetProcessesByName(exeOnly);
 
                 foreach (var proc in procs)
@@ -402,7 +402,8 @@ internal static class Program
                 lastSystemState = curState;
                 var (exe, title, pid) = Win32.GetForegroundWindowInfo();
                 var cat = classifier.Classify(exe, title);
-                writer.OpenAppEvent(exe, title, pid, curState, cat);
+                var project = CategoryClassifier.ExtractProject(exe, title);
+                writer.OpenAppEvent(exe, title, pid, curState, cat, project);
                 LiveStatusStore.CurrentApp = exe;
             }
         }, null, 30_000, 30_000);
@@ -502,7 +503,7 @@ internal static class Program
             }
         }
 
-        void UpsertRule(string pattern, string category) => classifier.AddCustomRule(pattern, category, "substring", "exe", 0);
+        void UpsertRule(string pattern, string category, string ruleType, string target, int priority) => classifier.AddCustomRule(pattern, category, ruleType, target, priority);
         void DeleteRule(string pattern) => classifier.RemoveCustomRule(pattern);
 
         int consecutiveActiveMinutes = 0;

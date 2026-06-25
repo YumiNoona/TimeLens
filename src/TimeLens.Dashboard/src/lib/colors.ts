@@ -6,7 +6,7 @@ export const categoryColors: Record<string, string> = {
   browse: '#E8A23A',
   communication: '#60A5FA',
   documents: '#C084FC',
-  media: '#7ECFA8',
+  media: '#A78BFA',
   entertainment: '#F59E0B',
   design: '#F472B6',
   social: '#E07070',
@@ -30,12 +30,12 @@ export function colorForCategory(name: string): string {
 export const appColors = [
   '#C8E86A',
   '#E8A23A',
-  '#7ECFA8',
+  '#60A5FA',
   '#E07070',
-  '#7ECFA8',
-  '#C8E86A',
-  '#E8A23A',
-  '#E07070',
+  '#C084FC',
+  '#A78BFA',
+  '#F59E0B',
+  '#F472B6',
 ];
 
 export function colorForApp(index: number): string {

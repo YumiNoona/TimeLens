@@ -29,8 +29,8 @@ public sealed class SettingsService
             TrackBrowser = dict.GetValueOrDefault("track_browser", "true") == "true",
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",
             IdleThresholdSeconds = int.TryParse(dict.GetValueOrDefault("idle_threshold_seconds", "180"), out var t) ? t : 180,
-            Theme = dict.GetValueOrDefault("theme", "moss").Trim('"'),
-            TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "false") == "true",
+            Theme = dict.GetValueOrDefault("theme", "default").Trim('"'),
+            TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "true") == "true",
             AutoStart = dict.GetValueOrDefault("auto_start", "false") == "true",
             RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) ? rd : 90,
             ShowTitles = dict.GetValueOrDefault("show_titles", "false") == "true",
@@ -38,6 +38,9 @@ public sealed class SettingsService
             BreakIntervalMinutes = int.TryParse(dict.GetValueOrDefault("break_interval_minutes", "50"), out var bi) ? bi : 50,
             FocusMode = dict.GetValueOrDefault("focus_mode", "false") == "true",
             FocusBlocklist = dict.GetValueOrDefault("focus_blocklist", "[]"),
+            TimeFormat = dict.GetValueOrDefault("time_format", "12h"),
+            PollIntervalSeconds = int.TryParse(dict.GetValueOrDefault("poll_interval_seconds", "30"), out var pis) ? pis : 30,
+            BlockAction = dict.GetValueOrDefault("block_action", "notify"),
         };
     }
 

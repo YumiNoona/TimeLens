@@ -36,12 +36,14 @@ public static class ApiHost
         Action<string, string>? saveSetting = null,
         Action<bool>? setTrackAudio = null,
         Action<bool>? setTrackInput = null,
-        Action<string, string>? upsertRule = null,
+        Action<string, string, string, string, int>? upsertRule = null,
         Action<string>? deleteRule = null,
         Action<string>? enforceBlock = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
+
+        var analytics = new AnalyticsService(dbPath);
 
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:47821");
@@ -303,7 +305,7 @@ public static class ApiHost
                 await insCmd.ExecuteNonQueryAsync();
             }
 
-            upsertRule?.Invoke(pattern, category);
+            upsertRule?.Invoke(pattern, category, ruleType, target, priority);
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
@@ -716,7 +718,7 @@ public static class ApiHost
             // Estimate time per domain by assuming each event covers until the next event (or end of day)
             cmd.CommandText = """
                 SELECT domain, start_time,
-                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (PARTITION BY DATE(start_time) ORDER BY start_time)) AS next_time
+                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (PARTITION BY SUBSTR(start_time, 1, 10) ORDER BY start_time)) AS next_time
                 FROM browser_events
                 WHERE start_time >= $t0 AND start_time < $t1
                 ORDER BY start_time
@@ -962,7 +964,7 @@ public static class ApiHost
             DateTime? queryDate = null;
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
                 queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
-            var svc = new AnalyticsService(dbPath);
+            var svc = analytics;
             var result = await svc.GetDashboardAsync(queryDate);
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
@@ -1257,12 +1259,12 @@ body{
 """);
         });
 
-        app.MapGet("/api/db-size", (HttpContext ctx) =>
+        app.MapGet("/api/db-size", async (HttpContext ctx) =>
         {
             ctx.Response.ContentType = "application/json";
             ctx.Response.StatusCode = 200;
             var size = System.IO.File.Exists(dbPath) ? new System.IO.FileInfo(dbPath).Length : 0;
-            return ctx.Response.WriteAsync($"{{\"sizeBytes\":{size}}}");
+            await ctx.Response.WriteAsync($"{{\"sizeBytes\":{size}}}");
         });
 
         app.MapGet("/api/export", async (HttpContext ctx) =>

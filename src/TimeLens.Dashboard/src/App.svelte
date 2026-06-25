@@ -47,7 +47,7 @@
 
   function startPoll() {
     if (pollTimer) return;
-    const interval = Math.max(5000, pollInterval) * 1000;
+    const interval = Math.max(5, pollInterval) * 1000;
     pollTimer = setInterval(async () => {
       await refresh(true);
       try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { }
@@ -110,8 +110,12 @@
         <div class="content">
           <div class="stat-row">
             <StatCard label="Active time" value={$data.summary.activeTime}
-              chip={$data.summary.vsYesterday !== null ? `${$data.summary.vsYesterday >= 0 ? '↑' : '↓'} ${Math.abs($data.summary.vsYesterday)}m vs yesterday` : ''}
-              chipClass={$data.summary.vsYesterday !== null && $data.summary.vsYesterday >= 0 ? 'chip-up' : 'chip-down'} />
+              chip={$data.summary.vsYesterday !== null
+                ? ($data.summary.vsYesterday === 0
+                    ? '= yesterday'
+                    : `${$data.summary.vsYesterday > 0 ? '↑' : '↓'} ${Math.abs($data.summary.vsYesterday)}m vs yesterday`)
+                : ''}
+              chipClass={$data.summary.vsYesterday === null ? '' : ($data.summary.vsYesterday === 0 ? 'chip-neu' : ($data.summary.vsYesterday > 0 ? 'chip-up' : 'chip-down'))} />
             <StatCard label="Idle time" value={$data.summary.idleTime}
               chip={$data.summary.idleSeconds > 0 ? Math.round($data.summary.idleSeconds / ($data.summary.idleSeconds + $data.summary.activeSeconds) * 100) + '% of session' : ''}
               chipClass="chip-down" amber />
@@ -160,8 +164,8 @@
                 {/each}
               </div>
               <div class="tl-labels">
-                {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
-                  <span class="tl-label">{hr > 12 ? hr - 12 : hr}{hr >= 12 ? 'p' : 'a'}</span>
+                  {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
+                  <span class="tl-label">{$timeFormatStore === '24h' ? String(hr).padStart(2, '0') + ':00' : (hr > 12 ? hr - 12 : hr) + (hr >= 12 ? 'p' : 'a')}</span>
                 {/each}
               </div>
             </div>
@@ -173,7 +177,7 @@
               {#each audioSessions as a}
                 <div class="site-row">
                   <span class="site-name">{a.exeName}</span>
-                  <span class="site-visits">active {a.sessions} time{a.sessions > 1 ? 's' : ''}</span>
+                  <span class="site-visits">{a.sessions} session{a.sessions !== 1 ? 's' : ''}</span>
                 </div>
               {/each}
             </div>
@@ -222,9 +226,9 @@
                 </div>
                 <div class="tl-labels">
                   {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
-                    <span class="tl-label">{hr > 12 ? hr - 12 : hr}{hr >= 12 ? 'p' : 'a'}</span>
-                  {/each}
-                </div>
+                  <span class="tl-label">{$timeFormatStore === '24h' ? String(hr).padStart(2, '0') + ':00' : (hr > 12 ? hr - 12 : hr) + (hr >= 12 ? 'p' : 'a')}</span>
+                {/each}
+              </div>
               </div>
             {/if}
           {/if}

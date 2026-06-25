@@ -132,11 +132,15 @@ function enqueue(event) {
   });
 }
 
+var _flushing = false;
 function flushQueue() {
+  if (_flushing) return;
+  _flushing = true;
   api.storage.local.get(QUEUE_KEY, function(result) {
     var queue = result[QUEUE_KEY];
-    if (!queue || queue.length === 0) return;
+    if (!queue || queue.length === 0) { _flushing = false; return; }
     api.storage.local.remove(QUEUE_KEY);
+    var remaining = queue.length;
     for (var i = 0; i < queue.length; i++) {
       var evt = queue[i];
       var target = evt._leave ? LEAVE_API : API;
@@ -144,7 +148,14 @@ function flushQueue() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evt),
-      }).catch(function() { enqueue(evt); });
+      }).then(function() {
+        remaining--;
+        if (remaining === 0) _flushing = false;
+      }).catch(function() {
+        enqueue(evt);
+        remaining--;
+        if (remaining === 0) _flushing = false;
+      });
     }
   });
 }

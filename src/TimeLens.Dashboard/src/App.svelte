@@ -5,7 +5,6 @@
   import StatCard from './lib/components/StatCard.svelte';
   import Timeline from './lib/components/Timeline.svelte';
   import TopApps from './lib/components/TopApps.svelte';
-  import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
 
   import AppsView from './lib/components/AppsView.svelte';
@@ -136,7 +135,6 @@
           <div class="three-col">
             <TopApps apps={$data.topApps} />
             <CategoryBreakdown categories={$data.categories} />
-            <CalendarHeatmap entries={$data.heatmap} />
           </div>
 
           <div class="two-col">

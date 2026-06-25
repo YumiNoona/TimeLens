@@ -30,9 +30,11 @@
 
   <div class="hm-layout">
     <div class="hm-labels" aria-hidden="true">
-      <span class="hm-day" style="grid-row: 1">M</span>
-      <span class="hm-day" style="grid-row: 3">W</span>
-      <span class="hm-day" style="grid-row: 5">F</span>
+      <span>M</span>
+      <span></span>
+      <span>W</span>
+      <span></span>
+      <span>F</span>
     </div>
     <div class="hm-grid" role="img" aria-label="Activity heatmap for the last 28 days">
       {#each gridCells as cell}
@@ -72,34 +74,30 @@
 
   .hm-layout {
     display: flex;
-    gap: var(--sp-1);
+    gap: 6px;
   }
 
   .hm-labels {
     display: grid;
-    grid-template-rows: repeat(7, 1fr);
+    grid-template-rows: repeat(5, 22px);
     gap: 3px;
-  }
-
-  .hm-day {
-    font-size: 9px;
+    padding-top: 0;
+    font-size: 10px;
     color: var(--md-on-surf-dim);
     font-family: var(--font-mono);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    line-height: 22px;
   }
 
   .hm-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-template-rows: repeat(7, 1fr);
+    grid-template-rows: repeat(7, 22px);
     gap: 3px;
-    flex: 1;
   }
 
   .hm-cell {
-    aspect-ratio: 1;
+    width: 22px;
+    height: 22px;
     border-radius: 3px;
   }
 

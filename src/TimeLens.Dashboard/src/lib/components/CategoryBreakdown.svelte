@@ -61,7 +61,7 @@
 
   .cat-track {
     flex: 1;
-    height: 6px;
+    height: 16px;
     background: var(--md-surface);
     border-radius: var(--shape-full);
     overflow: hidden;

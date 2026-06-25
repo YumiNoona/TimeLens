@@ -298,6 +298,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: var(--sp-4);
+    align-items: start;
   }
   @media (max-width: 900px) {
     .bottom-grid { grid-template-columns: 1fr; }

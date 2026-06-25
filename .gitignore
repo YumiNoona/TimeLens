@@ -61,6 +61,7 @@ Thumbs.db
 /*.pdb
 /*.csv
 /*.exe
+/*.ico
 
 # Public asset mirror (source is Dashboard/public/)
 src/TimeLens.TrayApp/Public/

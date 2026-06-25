@@ -2,6 +2,7 @@
   import type { AppEntry } from '../types';
   import { colorForApp } from '../colors';
   import { fmtTime } from '../utils';
+  import { appIcon } from '../appIcons';
 
   let { apps }: { apps: AppEntry[] } = $props();
 
@@ -16,8 +17,13 @@
 
   <div class="app-list">
     {#each apps as app, i}
+      {@const icon = appIcon(app.name)}
       <div class="app-row">
-        <div class="app-icon" style="background: {colorForApp(i)}">{app.name.charAt(0).toUpperCase()}</div>
+        {#if icon}
+          <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
+        {:else}
+          <div class="app-icon" style="background: {colorForApp(i)}">{app.name.charAt(0).toUpperCase()}</div>
+        {/if}
         <span class="app-name">{app.name}</span>
         <div class="app-bar">
           <div class="app-fill" style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
@@ -40,6 +46,10 @@
     width: 16px; height: 16px; border-radius: 3px;
     display: flex; align-items: center; justify-content: center;
     font-size: 9px; color: #0D0F0A; font-weight: 700; flex-shrink: 0;
+  }
+
+  .app-icon-tabler {
+    font-size: 16px; color: var(--md-on-surf-var); flex-shrink: 0; width: 16px;
   }
 
   .app-name {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appIcon } from '../appIcons';
 
   type BlockEntry = { i: string; m: 'u' | 't'; e?: string };
 
@@ -161,7 +162,8 @@
   }
 
   function typeIcon(id: string): string {
-    return id.includes('.exe') ? 'ti-apps' : 'ti-world';
+    if (id.includes('.exe')) return appIcon(id) ?? 'ti-apps';
+    return appIcon(id) ?? 'ti-world';
   }
 
   function typeLabel(id: string): string {

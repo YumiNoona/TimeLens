@@ -120,14 +120,10 @@
 </script>
 
 <div class="settings">
-  <div class="topbar">
-    <h1 class="headline-small">Settings</h1>
     {#if !apiReachable}
       <span class="warning">Tray app not running</span>
     {/if}
-  </div>
-
-    <div class="card"> 
+  <div class="card"> 
       <div class="card-header">
         <h2 class="title-small">Tracking</h2>
       </div>
@@ -435,13 +431,6 @@
     align-items: start;
   }
 
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    grid-column: 1 / -1;
-  }
-
   .card-theme,
   .card-about { grid-column: 1 / -1; }
 
@@ -452,6 +441,8 @@
     padding: var(--sp-1) var(--sp-2);
     background: color-mix(in srgb, var(--md-error) 10%, transparent);
     border-radius: var(--shape-sm);
+    width: fit-content;
+    grid-column: 1 / -1;
   }
 
   .card {

@@ -186,63 +186,90 @@
       {/if}
 
     {:else if view === 'browser'}
-      <div class="browser-view">
-        <div class="topbar"><h1 class="page-title">Browser</h1></div>
-        <div class="content">
-          <div class="stat-row">
-            <div class="stat-card"><div class="stat-label">Unique sites</div><div class="stat-val">{browserSites.length}</div></div>
-            <div class="stat-card"><div class="stat-label">Total visits</div><div class="stat-val">{browserSites.reduce((a, b) => a + b.visits, 0)}</div></div>
-            <div class="stat-card"><div class="stat-label">Browse time</div><div class="stat-val">{browserTime.reduce((a, b) => a + b.totalMinutes, 0)}m</div></div>
-          </div>
-          {#if browserSites.length === 0 && browserTime.length === 0}
-            <div class="empty-view">
-              <i class="ti ti-world-off" aria-hidden="true"></i>
-              <span>No browsing data yet</span>
-              <span class="empty-hint">Install the browser extension to start tracking</span>
-            </div>
-          {:else}
-            <div class="two-col">
-              <TopSites sites={browserSites} />
-              {#if browserTime.length > 0}
-                <div class="card">
-                  <div class="card-title"><i class="ti ti-clock" aria-hidden="true"></i>Time on sites</div>
-                  {#each browserTime as bt}
-                    <div class="site-row">
-                      <div class="site-icon">{bt.domain.charAt(0).toUpperCase()}</div>
-                      <span class="site-name">{bt.domain}</span>
-                      <span class="site-visits">{bt.totalMinutes}m</span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-            {#if browserHourly.length > 0}
-              <div class="card">
-                <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
-                <div class="hourly">
-                  {#each browserHourly as h}
-                    <div class="h-bar" class:zero={h.visits === 0} style="height:{h.visits > 0 ? h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 60 : 3}px; min-width: 4px;" title="{h.hour}:00 - {h.visits} visits"></div>
-                  {/each}
-                </div>
-                <div class="tl-labels">
-                  {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
-                  <span class="tl-label">{$timeFormatStore === '24h' ? String(hr).padStart(2, '0') + ':00' : (hr > 12 ? hr - 12 : hr) + (hr >= 12 ? 'p' : 'a')}</span>
-                {/each}
-              </div>
-              </div>
-            {/if}
-          {/if}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Browser</h1>
         </div>
       </div>
+      <div class="content">
+        <div class="stat-row">
+          <StatCard label="Unique sites" value={browserSites.length} />
+          <StatCard label="Total visits" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
+          <StatCard label="Browse time" value={`${browserTime.reduce((a, b) => a + b.totalMinutes, 0)}m`} />
+        </div>
+        {#if browserSites.length === 0 && browserTime.length === 0}
+          <div class="empty-view">
+            <i class="ti ti-world-off" aria-hidden="true"></i>
+            <span>No browsing data yet</span>
+            <span class="empty-hint">Install the browser extension to start tracking</span>
+          </div>
+        {:else}
+          <div class="two-col">
+            <TopSites sites={browserSites} />
+            {#if browserTime.length > 0}
+              <div class="card">
+                <div class="card-title"><i class="ti ti-clock" aria-hidden="true"></i>Time on sites</div>
+                {#each browserTime as bt}
+                  <div class="site-row">
+                    <div class="site-icon">{bt.domain.charAt(0).toUpperCase()}</div>
+                    <span class="site-name">{bt.domain}</span>
+                    <span class="site-visits">{bt.totalMinutes}m</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+          {#if browserHourly.length > 0}
+            <div class="card">
+              <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
+              <div class="hourly">
+                {#each browserHourly as h}
+                  <div class="h-bar" class:zero={h.visits === 0} style="height:{h.visits > 0 ? h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 60 : 3}px; min-width: 4px;" title="{h.hour}:00 - {h.visits} visits"></div>
+                {/each}
+              </div>
+              <div class="tl-labels">
+                {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
+                <span class="tl-label">{$timeFormatStore === '24h' ? String(hr).padStart(2, '0') + ':00' : (hr > 12 ? hr - 12 : hr) + (hr >= 12 ? 'p' : 'a')}</span>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {/if}
+      </div>
     {:else if view === 'apps' && $data}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Apps</h1>
+        </div>
+      </div>
       <div class="content"><AppsView data={$data} browserSites={browserSites} {browserTime} /></div>
     {:else if view === 'timeline' && $data}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Timeline</h1>
+        </div>
+      </div>
       <div class="content"><TimelineView data={$data} timelineGrouped={timelineGrouped} /></div>
     {:else if view === 'rules'}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Rules</h1>
+        </div>
+      </div>
       <div class="content"><RulesView /></div>
     {:else if view === 'block'}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Block</h1>
+        </div>
+      </div>
       <div class="content"><BlockView /></div>
     {:else if view === 'settings'}
+      <div class="topbar">
+        <div class="topbar-left">
+          <h1 class="page-title">Settings</h1>
+        </div>
+      </div>
       <div class="content"><SettingsView ontheme={applyTheme} /></div>
     {:else if !$data}
       <div class="placeholder-view">

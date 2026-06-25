@@ -173,11 +173,7 @@
 </script>
 
 <div class="rules">
-  <div class="topbar">
-    <h1 class="headline-small">Rules</h1>
-    {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
-  </div>
-
+  {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
   <div class="add-bar">
     <div class="combo-wrapper">
       <input class="input" placeholder="pattern, e.g. notion or *notion*" bind:value={newPattern}
@@ -285,12 +281,12 @@
 
 <style>
   .rules { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .topbar { display: flex; align-items: center; justify-content: space-between; }
   .warning {
     font-size: 12px; color: var(--md-error); font-weight: 500;
     padding: var(--sp-1) var(--sp-2);
     background: color-mix(in srgb, var(--md-error) 10%, transparent);
     border-radius: var(--shape-sm);
+    width: fit-content;
   }
   .add-bar { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
   .combo-wrapper { flex: 1; min-width: 180px; position: relative; }

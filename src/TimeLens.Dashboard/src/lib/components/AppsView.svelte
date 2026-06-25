@@ -59,18 +59,16 @@
 </script>
 
 <div class="apps">
-  <div class="topbar">
-    <h1 class="headline-small">Apps</h1>
+  <div class="app-toolbar">
     <input class="search" type="search" placeholder="Search apps…" bind:value={search} />
-  </div>
-
-  <div class="toolbar">
-    <button class="sort-btn chip-button" class:active={sortKey === 'time'} onclick={() => sortKey = 'time'}>
-      <i class="ti ti-clock" aria-hidden="true"></i> Time
-    </button>
-    <button class="sort-btn chip-button" class:active={sortKey === 'name'} onclick={() => sortKey = 'name'}>
-      <i class="ti ti-sort-alpha" aria-hidden="true"></i> Name
-    </button>
+    <div class="sort-controls">
+      <button class="sort-btn chip-button" class:active={sortKey === 'time'} onclick={() => sortKey = 'time'}>
+        <i class="ti ti-clock" aria-hidden="true"></i> Time
+      </button>
+      <button class="sort-btn chip-button" class:active={sortKey === 'name'} onclick={() => sortKey = 'name'}>
+        <i class="ti ti-sort-alpha" aria-hidden="true"></i> Name
+      </button>
+    </div>
     <span class="count">{allApps.length} apps</span>
   </div>
 
@@ -161,7 +159,12 @@
 
 <style>
   .apps { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+  .app-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+  }
   .search {
     background: var(--clr-bg-sec);
     border: 1px solid var(--clr-border);
@@ -174,7 +177,10 @@
     outline: none;
   }
   .search:focus { border-color: var(--md-primary); }
-  .toolbar { display: flex; align-items: center; gap: var(--sp-2); }
+  .sort-controls {
+    display: flex;
+    gap: var(--sp-2);
+  }
   .sort-btn i { font-size: 14px; }
   .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
   .table { display: flex; flex-direction: column; border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }

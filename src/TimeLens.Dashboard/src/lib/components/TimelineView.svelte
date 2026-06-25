@@ -128,14 +128,12 @@
 </script>
 
 <div class="tlv">
-  <div class="topbar">
-    <h1 class="headline-small">Timeline</h1>
+  <div class="tl-toolbar">
     <button class="mode-btn chip-button" onclick={() => groupedMode = !groupedMode}>
       <i class="ti ti-{groupedMode ? 'list' : 'folders'}" aria-hidden="true"></i>
       {groupedMode ? 'Flat' : 'Grouped'}
     </button>
   </div>
-
   <div class="filter-row">
     {#each types as t}
       <button class="type-chip chip-button" class:active={selectedTypes.includes(t)} onclick={() => toggleType(t)}>
@@ -217,10 +215,8 @@
 
 <style>
   .tlv { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .topbar { display: flex; align-items: center; justify-content: space-between; }
-
+  .tl-toolbar { display: flex; align-items: center; justify-content: flex-start; }
   .mode-btn i { font-size: 14px; }
-
   .filter-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
   .type-chip {
     font-size: 11px; font-weight: 500;

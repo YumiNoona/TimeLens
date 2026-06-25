@@ -192,12 +192,12 @@
 </script>
 
 <div class="block">
-  <div class="topbar">
-    <h1 class="headline-small">Block</h1>
     {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
-    <button class="refresh-btn" onclick={loadStats} title="Refresh stats"><i class="ti ti-refresh"></i></button>
-  </div>
-
+    <div class="block-toolbar">
+      <button class="refresh-btn chip-button" onclick={loadStats} title="Refresh stats">
+        <i class="ti ti-refresh"></i> Refresh
+      </button>
+    </div>
   <!-- Action Mode -->
   <div class="card">
     <div class="card-header">
@@ -325,20 +325,19 @@
 
 <style>
   .block { display: flex; flex-direction: column; gap: 24px; }
-  .topbar { display: flex; align-items: center; gap: var(--sp-2); }
-  .topbar h1 { flex: 1; }
   .warning {
     font-size: 12px; color: var(--md-error); font-weight: 500;
     padding: var(--sp-1) var(--sp-2);
     background: color-mix(in srgb, var(--md-error) 10%, transparent);
     border-radius: var(--shape-sm);
+    width: fit-content;
   }
-  .refresh-btn {
-    background: none; border: 1px solid var(--clr-border); border-radius: var(--shape-sm);
-    color: var(--clr-text-sec); cursor: pointer; padding: var(--sp-1) var(--sp-2);
-    font-size: 16px; transition: all 0.15s;
+  .block-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
   }
-  .refresh-btn:hover { color: var(--md-primary); border-color: var(--md-primary); }
+  .refresh-btn i { font-size: 14px; }
   .card {
     background: var(--clr-bg-sec); border: 1px solid var(--clr-border);
     border-radius: var(--shape-lg); overflow: hidden;

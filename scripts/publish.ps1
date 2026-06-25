@@ -105,6 +105,7 @@ if (Test-Path $distDir) {
 if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
 if (Test-Path $distDir) { Copy-Item -Recurse -Force $distDir "$root\dashboard" }
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
+Copy-Item -Force "$publishDir\TimeLens.ico" "$root\" -ErrorAction SilentlyContinue
 Copy-Item -Force "$publishDir\e_sqlite3.dll" "$root\" -ErrorAction SilentlyContinue
 Copy-Item -Force "$publishDir\categories.csv" "$root\" -ErrorAction SilentlyContinue
 & $ok "Root TimeLens.exe ready"

@@ -24,49 +24,49 @@
   .live-chip {
     display: flex;
     align-items: center;
-    gap: var(--sp-2);
-    background: var(--md-surface-2);
-    border: 1px solid var(--md-outline-var);
-    border-radius: var(--shape-full);
-    padding: var(--sp-2) var(--sp-4);
-    font-size: 13px;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(200,232,106,0.12);
+    border: 0.5px solid rgba(200,232,106,0.4);
+    font-size: 11px;
     font-weight: 500;
-    color: var(--md-on-surf);
+    color: #7a9a00;
   }
 
   .live-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--md-primary);
-    animation: blink 2s ease-in-out infinite;
+    background: #8ab800;
+    animation: pulse 1.8s ease-in-out infinite;
   }
 
   .live-dot.idle {
     background: var(--md-secondary);
   }
 
-  .audio-icon {
-    font-size: 14px;
-    color: var(--md-tertiary);
+  @keyframes pulse {
+    0%, 100% { opacity: 1 }
+    50% { opacity: 0.4 }
   }
 
-  @keyframes blink {
-    0%, 100% { opacity: 1 }
-    50% { opacity: 0.3 }
+  .audio-icon {
+    font-size: 13px;
+    color: var(--md-tertiary);
   }
 
   .live-app {
     font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--md-primary);
+    font-size: 11px;
+    color: #7a9a00;
   }
 
-  .live-sep { color: var(--md-on-surf-dim); }
+  .live-sep { color: rgba(122,154,0,0.4); }
 
   .live-idle {
-    color: var(--md-on-surf-var);
+    color: rgba(122,154,0,0.7);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 11px;
   }
 </style>

@@ -45,60 +45,56 @@
 
 <style>
   .rail {
-    width: 80px;
-    background: var(--md-surface-1);
-    border-right: 1px solid var(--md-outline);
+    width: 76px;
+    background: var(--clr-bg-sec);
+    border-right: 0.5px solid var(--clr-border);
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--sp-3) 0;
-    gap: var(--sp-1);
+    padding: 16px 0;
+    gap: 4px;
     flex-shrink: 0;
     overflow-y: auto;
   }
 
   .rail-logo {
-    width: 40px;
-    height: 40px;
-    background: var(--md-primary-cont);
-    border-radius: var(--shape-md);
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--md-primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: var(--sp-4);
+    margin-bottom: 16px;
   }
 
   .rail-logo i {
-    color: var(--md-primary);
-    font-size: 20px;
+    color: #1a2400;
+    font-size: 26px;
   }
 
   .rail-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--sp-1);
-    padding: var(--sp-2) 0;
-    width: 72px;
-    border-radius: var(--shape-lg);
+    justify-content: center;
+    gap: 4px;
+    width: 64px;
+    height: 60px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: background 0.15s;
-    color: var(--md-on-surf-var);
+    transition: background 0.12s;
+    color: var(--clr-text-sec);
     background: none;
     border: none;
     font-family: inherit;
   }
 
-  .rail-item i { font-size: 22px; }
-  .rail-item span { font-size: 11px; font-weight: 500; letter-spacing: 0.03em; }
+  .rail-item i { font-size: 24px; }
+  .rail-item span { font-size: 10px; font-weight: 500; letter-spacing: 0.03em; }
 
-  .rail-item:hover {
-    background: rgba(200,232,106,0.06);
-    color: var(--md-on-surf);
-  }
-
-  .rail-item.active {
-    background: var(--md-primary-cont);
-    color: var(--md-on-pri-cont);
-  }
+  .rail-item:hover { background: var(--clr-bg-ter); }
+  .rail-item.active { background: rgba(200,232,106,0.15); }
+  .rail-item.active i,
+  .rail-item.active span { color: #7a9a00; }
 </style>

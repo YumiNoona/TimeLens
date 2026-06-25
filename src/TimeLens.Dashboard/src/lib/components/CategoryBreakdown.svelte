@@ -4,84 +4,99 @@
   import { fmtTime } from '../utils';
 
   let { categories }: { categories: CategoryEntry[] } = $props();
+
+  const total = $derived(categories.reduce((a, c) => a + c.minutes, 0) || 1);
+  const sorted = $derived([...categories].sort((a, b) => b.minutes - a.minutes));
+  const top = $derived(sorted.slice(0, 5));
+
+  const CIR = 2 * Math.PI * 28;
+  const slices = $derived.by(() => {
+    let off = 0;
+    return sorted.map(cat => {
+      const pct = cat.minutes / total;
+      const dash = CIR * pct;
+      const slice = { name: cat.name, color: colorForCategory(cat.name), dashArray: dash, dashOffset: -off };
+      off += dash;
+      return slice;
+    });
+  });
 </script>
 
-<div class="card">
+<div class="card r1h">
   <div class="card-title">
     <i class="ti ti-chart-bar" aria-hidden="true"></i>
-    Category breakdown
+    Categories
   </div>
 
-  <div role="list">
-    {#each categories as cat}
-      <div class="cat-row" role="listitem">
-        <div class="cat-name">{cat.name}</div>
-        <div class="cat-track">
-          <div class="cat-fill" style="width: {cat.percentage}%; background: {colorForCategory(cat.name)}"></div>
+  <div class="donut-row">
+    <svg viewBox="0 0 80 80" class="donut-svg" aria-label="Category breakdown donut">
+      <circle cx="40" cy="40" r="28" fill="none" stroke="var(--clr-bg-ter)" stroke-width="12" />
+      {#each slices as slice}
+        <circle
+          cx="40" cy="40" r="28"
+          fill="none"
+          stroke={slice.color}
+          stroke-width="12"
+          stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
+          stroke-dashoffset={slice.dashOffset}
+          transform="rotate(-90 40 40)"
+          opacity="0.75"
+        />
+      {/each}
+    </svg>
+
+    <div class="cat-list">
+      {#each top as cat}
+        <div class="cat-dot-row">
+          <div class="cat-dot" style="background: {colorForCategory(cat.name)}"></div>
+          <span class="cat-dot-name">{cat.name}</span>
+          <span class="cat-dot-pct" style="color: {colorForCategory(cat.name)}">{cat.percentage}%</span>
+          <span class="cat-dot-time">{fmtTime(cat.minutes)}</span>
         </div>
-        <div class="cat-pct" style="color: {colorForCategory(cat.name)}">{cat.percentage}%</div>
-        <div class="cat-time">{fmtTime(cat.minutes)}</div>
-      </div>
-    {/each}
+      {/each}
+    </div>
   </div>
 </div>
 
 <style>
-  .card {
-    background: var(--md-surface-1);
-    border-radius: var(--shape-lg);
-    border: 1px solid var(--md-outline);
-    padding: var(--sp-5);
-  }
+  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
 
   .card-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--md-on-surf);
-    margin-bottom: var(--sp-4);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
+    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
+
+  .donut-row {
+    display: flex; align-items: flex-start; gap: 12px;
   }
 
-  .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
-
-  .cat-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    margin-bottom: var(--sp-3);
+  .donut-svg {
+    width: 60px; height: 60px; flex-shrink: 0;
   }
 
-  .cat-name {
-    width: 72px;
-    font-size: 12px;
-    color: var(--md-on-surf-var);
+  .cat-list { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+  .cat-dot-row {
+    display: flex; align-items: center; gap: 6px;
   }
 
-  .cat-track {
-    flex: 1;
-    height: 16px;
-    background: var(--md-surface);
-    border-radius: var(--shape-full);
-    overflow: hidden;
+  .cat-dot {
+    width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
   }
 
-  .cat-fill { height: 100%; border-radius: var(--shape-full); }
-
-  .cat-pct {
-    width: 36px;
-    text-align: right;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    font-weight: 500;
+  .cat-dot-name {
+    width: 64px; font-size: 11px; color: var(--clr-text-pri);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
   }
 
-  .cat-time {
-    width: 44px;
-    text-align: right;
-    font-size: 11px;
-    color: var(--md-on-surf-dim);
-    font-family: var(--font-mono);
+  .cat-dot-pct {
+    width: 32px; text-align: right; font-size: 10px; font-weight: 500;
+    font-family: var(--font-mono); flex-shrink: 0;
+  }
+
+  .cat-dot-time {
+    font-size: 10px; color: var(--clr-text-sec);
+    font-family: var(--font-mono); text-align: right; flex: 1;
   }
 </style>

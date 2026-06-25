@@ -10,71 +10,77 @@
     return 0.12 + 0.76 * (v / maxVal);
   }
 
-  const gridCells = $derived.by(() => {
+  const monthLabels = $derived.by(() => {
     if (entries.length === 0) return [];
+    const labels: { text: string; index: number }[] = [];
+    const colsPerDay = 12;
     const firstDate = new Date(entries[0].date + 'T00:00:00');
-    const startDow = (firstDate.getDay() + 6) % 7;
-
-    const cells: (HeatmapEntry | null)[] = [];
-    for (let i = 0; i < startDow; i++) cells.push(null);
-    for (const e of entries) cells.push(e);
-    return cells;
+    labels.push({ text: firstDate.toLocaleString('en-US', { month: 'short' }), index: 0 });
+    for (let i = 1; i < entries.length; i++) {
+      const d = new Date(entries[i].date + 'T00:00:00');
+      if (d.getDate() <= 7) {
+        labels.push({ text: d.toLocaleString('en-US', { month: 'short' }), index: i });
+      }
+    }
+    return labels;
   });
 </script>
 
-<div class="card">
+<div class="card r1h">
   <div class="card-title">
     <i class="ti ti-calendar" aria-hidden="true"></i>
     Last 28 days
   </div>
 
+  <div class="hm-month-labels">
+    {#each monthLabels as ml}
+      <span class="hm-month" style="grid-column: {ml.index + 1}">{ml.text}</span>
+    {/each}
+  </div>
+
   <div class="hm-grid" role="img" aria-label="Activity heatmap for the last 28 days">
-    {#each gridCells as cell}
-      {#if cell}
-        <div
-          class="hm-cell"
-          style="background: rgba(200, 232, 106, {opacity(cell.value).toFixed(2)})"
-          title="{cell.date}: {cell.value}h active"
-        ></div>
-      {:else}
-        <div class="hm-cell hm-empty"></div>
-      {/if}
+    {#each entries as cell, i}
+      <div
+        class="hm-cell"
+        style="background: rgba(200, 232, 106, {opacity(cell.value).toFixed(2)})"
+        title="{cell.date}: {cell.value}h active"
+      ></div>
     {/each}
   </div>
 </div>
 
 <style>
-  .card {
-    background: var(--md-surface-1);
-    border-radius: var(--shape-lg);
-    border: 1px solid var(--md-outline);
-    padding: var(--sp-5);
-  }
+  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
 
   .card-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--md-on-surf);
-    margin-bottom: var(--sp-4);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
+    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
+
+  .hm-month-labels {
+    display: grid;
+    grid-template-columns: repeat(28, 1fr);
+    gap: 3px;
+    margin-bottom: 2px;
   }
 
-  .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
+  .hm-month {
+    font-size: 8px;
+    color: var(--clr-text-ter);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
 
   .hm-grid {
     display: grid;
-    grid-template-columns: repeat(7, minmax(28px, 1fr));
+    grid-template-columns: repeat(28, 1fr);
     gap: 3px;
   }
 
   .hm-cell {
     aspect-ratio: 1;
-    border-radius: 3px;
-  }
-
-  .hm-cell.hm-empty {
-    visibility: hidden;
+    border-radius: 2px;
   }
 </style>

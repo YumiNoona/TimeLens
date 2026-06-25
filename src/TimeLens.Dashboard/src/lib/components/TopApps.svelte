@@ -8,83 +8,66 @@
   const maxMins = $derived(apps.length > 0 ? apps[0].minutes : 1);
 </script>
 
-<div class="card">
+<div class="card r1h">
   <div class="card-title">
     <i class="ti ti-apps" aria-hidden="true"></i>
     Top apps
   </div>
 
-  <div role="list">
+  <div class="app-list">
     {#each apps as app, i}
-      <div class="bar-row" role="listitem">
-        <div class="bar-app">{app.name}</div>
-        <div class="bar-track">
-          <div
-            class="bar-fill"
-            style="width: {Math.round(app.minutes / maxMins * 100)}%; background: {colorForApp(i)}"
-          ></div>
+      <div class="app-row">
+        <div class="app-icon" style="background: {colorForApp(i)}">{app.name.charAt(0).toUpperCase()}</div>
+        <span class="app-name">{app.name}</span>
+        <div class="app-bar">
+          <div class="app-fill" style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
         </div>
-        <div class="bar-time">{fmtTime(app.minutes)}</div>
+        <span class="app-time">{fmtTime(app.minutes)}</span>
       </div>
     {/each}
   </div>
 </div>
 
 <style>
-  .card {
-    background: var(--md-surface-1);
-    border-radius: var(--shape-lg);
-    border: 1px solid var(--md-outline);
-    padding: var(--sp-5);
-  }
+  .card { background: var(--clr-bg-sec); border-radius: var(--shape-md); padding: 16px 18px; }
 
   .card-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--md-on-surf);
-    margin-bottom: var(--sp-4);
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
+    font-size: 12px; font-weight: 500; color: var(--clr-text-pri);
+    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .card-title i { font-size: 14px; color: var(--clr-text-sec); }
+
+  .app-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .app-row {
+    display: flex; align-items: center; gap: 8px;
   }
 
-  .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
-
-  .bar-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    margin-bottom: var(--sp-3);
+  .app-icon {
+    width: 16px; height: 16px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: #0D0F0A; font-weight: 700; flex-shrink: 0;
   }
 
-  .bar-app {
-    width: 120px; flex-shrink: 0;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: var(--md-on-surf-var);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .app-name {
+    width: 100px; flex-shrink: 0;
+    font-size: 11px; color: var(--clr-text-pri);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  .bar-track {
-    flex: 1; min-width: 60px;
-    height: 16px;
-    background: var(--md-surface);
-    border-radius: var(--shape-full);
-    overflow: hidden;
+  .app-bar {
+    flex: 1; height: 8px;
+    background: var(--clr-bg-ter);
+    border-radius: 999px; overflow: hidden;
   }
 
-  .bar-fill {
-    height: 100%;
-    border-radius: var(--shape-full);
+  .app-fill {
+    height: 100%; border-radius: 999px;
+    background: var(--md-primary); opacity: 0.6;
   }
 
-  .bar-time {
-    width: 40px;
-    text-align: right;
-    font-size: 11px;
-    font-family: var(--font-mono);
-    color: var(--md-on-surf-dim);
+  .app-time {
+    width: 44px; text-align: right;
+    font-size: 10px; font-family: var(--font-mono); color: var(--clr-text-sec);
   }
 </style>

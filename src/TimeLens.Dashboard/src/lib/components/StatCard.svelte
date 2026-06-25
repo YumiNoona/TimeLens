@@ -26,29 +26,24 @@
 
 <style>
   .stat-card {
-    background: var(--md-surface-2);
-    border-radius: var(--shape-lg);
-    padding: var(--sp-4) var(--sp-5);
-    border: 1px solid var(--md-outline);
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
+    background: var(--clr-bg-sec);
+    border-radius: var(--shape-md);
+    padding: 16px 18px;
   }
 
   .stat-label {
     font-size: 11px;
     font-weight: 500;
-    color: var(--md-on-surf-dim);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    color: var(--clr-text-sec);
+    margin-bottom: 4px;
   }
 
   .stat-val {
-    font-family: var(--font-mono);
-    font-size: 26px;
-    font-weight: 600;
-    color: var(--md-on-surf);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--clr-text-pri);
     line-height: 1;
+    font-family: var(--font-mono);
     letter-spacing: -0.02em;
   }
 
@@ -58,26 +53,27 @@
   .stat-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 11px;
+    gap: 3px;
+    margin-top: 5px;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
     font-weight: 500;
-    border-radius: var(--shape-xs);
-    padding: 2px 6px;
     width: fit-content;
   }
 
   .chip-up {
-    background: rgba(200,232,106,0.12);
-    color: var(--md-primary);
+    background: rgba(99,153,34,0.12);
+    color: #3B6D11;
   }
 
   .chip-down {
-    background: rgba(232,162,58,0.12);
-    color: var(--md-secondary);
+    background: rgba(226,75,74,0.1);
+    color: #A32D2D;
   }
 
   .chip-neu {
-    background: var(--md-surface-3);
-    color: var(--md-on-surf-var);
+    background: var(--clr-bg-ter);
+    color: var(--clr-text-sec);
   }
 </style>

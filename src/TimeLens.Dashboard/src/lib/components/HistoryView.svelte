@@ -101,9 +101,9 @@
   {/if}
 
   {#if loadingHistory}
-    <p class="title-small" style="color:var(--md-on-surf-var)">Loading…</p>
+    <p class="title-small" style="color:var(--clr-text-sec)">Loading…</p>
   {:else}
-    <p class="title-small" style="color:var(--md-on-surf-var);margin-bottom:calc(-1 * var(--sp-2))">{displayDate}</p>
+    <p class="title-small" style="color:var(--clr-text-sec);margin-bottom:calc(-1 * var(--sp-2))">{displayDate}</p>
 
     {#if historyEmpty}
       <div class="empty-notice">No activity recorded for this day.</div>
@@ -203,13 +203,14 @@
 
 <style>
   .history { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 0.5px solid var(--clr-border); }
+  .headline-small { font-size: 18px; font-weight: 500; color: var(--clr-text-pri); }
   .date-jump {
-    background: var(--md-surface-1);
-    border: 1px solid var(--md-outline);
+    background: var(--clr-bg-ter);
+    border: 1px solid var(--clr-border);
     border-radius: var(--shape-sm);
     padding: var(--sp-1) var(--sp-2);
-    color: var(--md-on-surf);
+    color: var(--clr-text-pri);
     font-family: var(--font-mono);
     font-size: 13px;
     outline: none;
@@ -225,9 +226,9 @@
     width: 44px;
     padding: var(--sp-1) 0 var(--sp-1);
     border-radius: var(--shape-md);
-    border: 1px solid var(--md-outline);
-    background: var(--md-surface-2);
-    color: var(--md-on-surf-var);
+    border: 1px solid var(--clr-border);
+    background: var(--clr-bg-ter);
+    color: var(--clr-text-sec);
     font-family: inherit;
     cursor: pointer;
     transition: all 0.15s;
@@ -238,12 +239,12 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--md-on-surf-dim);
+    color: var(--clr-text-ter);
   }
   .day-num {
     font-size: 15px;
     font-weight: 600;
-    color: var(--md-on-surf);
+    color: var(--clr-text-pri);
     line-height: 1;
   }
   .day-chip.active .day-weekday,
@@ -272,44 +273,44 @@
   .summary-row { display: flex; gap: var(--sp-3); }
   .stat-box {
     flex: 1;
-    background: var(--md-surface-1);
+    background: var(--clr-bg-sec);
     border-radius: var(--shape-md);
     padding: var(--sp-3);
     display: flex;
     flex-direction: column;
     gap: var(--sp-1);
   }
-  .stat-val { font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--md-on-surf); }
+  .stat-val { font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--clr-text-pri); }
   .stat-val.up { color: var(--md-primary); }
-  .stat-lbl { font-size: 12px; color: var(--md-on-surf-var); }
+  .stat-lbl { font-size: 12px; color: var(--clr-text-sec); }
   .section { display: flex; flex-direction: column; gap: var(--sp-2); }
   .app-list { display: flex; flex-direction: column; gap: var(--sp-1); }
   .app-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-2);
     border-radius: var(--shape-sm);
-    background: var(--md-surface-1);
+    background: var(--clr-bg-sec);
   }
   .app-icon-box {
     width: 28px; height: 28px;
-    background: var(--md-surface-2);
+    background: var(--clr-bg-ter);
     border-radius: var(--shape-sm);
     display: flex; align-items: center; justify-content: center;
   }
   .app-icon-box i { font-size: 16px; color: var(--md-primary); }
-  .app-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--md-on-surf); }
-  .app-time { font-family: var(--font-mono); font-size: 12px; color: var(--md-on-surf-var); }
+  .app-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--clr-text-pri); }
+  .app-time { font-family: var(--font-mono); font-size: 12px; color: var(--clr-text-sec); }
   .cat-list { display: flex; flex-direction: column; gap: var(--sp-2); }
   .cat-row { display: flex; align-items: center; gap: var(--sp-2); font-size: 13px; }
-  .cat-name { width: 100px; font-weight: 500; color: var(--md-on-surf); }
-  .cat-bar-bg { flex: 1; height: 8px; background: var(--md-surface-2); border-radius: 99px; overflow: hidden; }
+  .cat-name { width: 100px; font-weight: 500; color: var(--clr-text-pri); }
+  .cat-bar-bg { flex: 1; height: 8px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
   .cat-bar { height: 100%; background: var(--md-primary); border-radius: 99px; transition: width 0.3s; }
-  .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
-  .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--md-on-surf-var); font-size: 12px; }
-  .empty { font-size: 13px; color: var(--md-on-surf-dim); padding: var(--sp-2) 0; }
+  .cat-pct { width: 36px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; }
+  .cat-time { width: 60px; text-align: right; font-family: var(--font-mono); color: var(--clr-text-sec); font-size: 12px; }
+  .empty { font-size: 13px; color: var(--clr-text-ter); padding: var(--sp-2) 0; }
   .empty-notice {
-    background: var(--md-surface-2);
-    color: var(--md-on-surf-dim);
+    background: var(--clr-bg-ter);
+    color: var(--clr-text-ter);
     padding: var(--sp-6);
     border-radius: var(--shape-md);
     text-align: center;

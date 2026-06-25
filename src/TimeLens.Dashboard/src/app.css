@@ -38,6 +38,14 @@ html, body, #app {
   --md-on-surf-var:   #8A9283;
   --md-on-surf-dim:   #4A5145;
 
+  --clr-bg-pri:   #0D0F0A;
+  --clr-bg-sec:   #141810;
+  --clr-bg-ter:   #1C2118;
+  --clr-text-pri: #E4E8DC;
+  --clr-text-sec: #8A9283;
+  --clr-text-ter: #4A5145;
+  --clr-border:   rgba(255,255,255,0.08);
+
   --shape-xs:   4px;
   --shape-sm:   8px;
   --shape-md:   12px;
@@ -52,8 +60,6 @@ html, body, #app {
   --font-mono:    'JetBrains Mono', monospace;
 }
 
-/* Ember */
-/* Terminal */
 .theme-terminal {
   --md-surface:       #080F08;
   --md-surface-1:     #0C140C;
@@ -69,9 +75,9 @@ html, body, #app {
   --md-tertiary:      #7ECC7E;
   --md-on-tertiary:   #002200;
   --md-ter-cont:      #003311;
+  --clr-bg-pri:#080F08;--clr-bg-sec:#0C140C;--clr-bg-ter:#111A11;--clr-text-pri:#E4E8DC;--clr-text-sec:#8A9283;--clr-text-ter:#4A5145;--clr-border:rgba(255,255,255,0.08);
 }
 
-/* Copper */
 .theme-copper {
   --md-surface:       #0F0B08;
   --md-surface-1:     #1A1208;
@@ -87,9 +93,9 @@ html, body, #app {
   --md-tertiary:      #E8A87C;
   --md-on-tertiary:   #1F0D00;
   --md-ter-cont:      #301500;
+  --clr-bg-pri:#0F0B08;--clr-bg-sec:#1A1208;--clr-bg-ter:#231A0E;--clr-text-pri:#E4E8DC;--clr-text-sec:#8A9283;--clr-text-ter:#4A5145;--clr-border:rgba(255,255,255,0.08);
 }
 
-/* Arctic */
 .theme-arctic {
   --md-surface:       #090C0E;
   --md-surface-1:     #10161A;
@@ -105,11 +111,12 @@ html, body, #app {
   --md-tertiary:      #A8DCDC;
   --md-on-tertiary:   #002222;
   --md-ter-cont:      #0A2E2E;
+  --clr-bg-pri:#090C0E;--clr-bg-sec:#10161A;--clr-bg-ter:#161E22;--clr-text-pri:#E4E8DC;--clr-text-sec:#8A9283;--clr-text-ter:#4A5145;--clr-border:rgba(255,255,255,0.08);
 }
 
 body {
-  background: var(--md-surface);
-  color: var(--md-on-surf);
+  background: var(--clr-bg-pri);
+  color: var(--clr-text-pri);
   font-family: var(--font-display);
   font-size: 14px;
   line-height: 1.5;
@@ -120,22 +127,23 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--md-outline);
-  border-radius: var(--shape-sm);
-  background: transparent;
-  color: var(--md-on-surf-var);
+  padding: 5px 12px;
+  border: 0.5px solid var(--clr-border);
+  border-radius: 999px;
+  background: var(--clr-bg-sec);
+  color: var(--clr-text-sec);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.12s;
 }
 .chip-button:hover {
-  background: var(--md-surface-1);
-  color: var(--md-on-surf);
+  background: var(--clr-bg-ter);
+  color: var(--clr-text-pri);
 }
 .chip-button.active {
-  border-color: var(--md-primary);
-  background: var(--md-primary-cont);
-  color: var(--md-on-pri-cont);
+  background: rgba(200,232,106,0.15);
+  border-color: rgba(200,232,106,0.5);
+  color: #3B6D11;
 }

@@ -309,7 +309,7 @@ public sealed class AnalyticsService
     private static async Task<HeatmapEntryDto[]> GetHeatmapAsync(
         SqliteConnection conn, DateTime today)
     {
-        var startDate = today.AddDays(-27);
+        var startDate = today.AddDays(-364);
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -335,7 +335,7 @@ public sealed class AnalyticsService
         }
 
         var entries = new List<HeatmapEntryDto>();
-        for (int i = 0; i < 28; i++)
+        for (int i = 0; i < 365; i++)
         {
             var date = startDate.AddDays(i).ToString("yyyy-MM-dd");
             entries.Add(new HeatmapEntryDto(date, map.GetValueOrDefault(date, 0)));

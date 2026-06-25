@@ -72,7 +72,7 @@
 <div class="heatmap-card">
   <div class="hm-header">
     <i class="ti ti-calendar" aria-hidden="true"></i>
-    Last {entries.length} days
+    {entries.length} days
   </div>
 
   <div class="hm-body">
@@ -159,10 +159,9 @@
     gap: var(--sp-2);
     align-items: flex-start;
   }
-
   .hm-day-labels {
     display: grid;
-    grid-template-rows: repeat(7, 12px);
+    grid-template-rows: repeat(7, 1fr);
     gap: 3px;
     padding-top: 16px;
     flex-shrink: 0;
@@ -170,8 +169,9 @@
   .hm-day-labels span {
     font-size: 9px;
     color: var(--md-on-surf-dim);
-    line-height: 12px;
+    line-height: 1;
     text-align: right;
+    align-self: center;
   }
 
   .hm-scroll {
@@ -183,12 +183,13 @@
   .hm-month-row {
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 12px;
+    grid-auto-columns: 1fr;
     gap: 3px;
     margin-bottom: 3px;
     height: 12px;
   }
-  .hm-month-row   .hm-month {
+
+  .hm-month-row .hm-month {
     font-size: 9px;
     color: var(--md-on-surf-dim);
     text-transform: uppercase;
@@ -201,15 +202,16 @@
   .hm-grid {
     display: grid;
     grid-auto-flow: column;
-    grid-template-rows: repeat(7, 12px);
+    grid-template-rows: repeat(7, 1fr);
     gap: 3px;
-    grid-auto-columns: 12px;
+    grid-auto-columns: 1fr;
   }
 
   .hm-cell {
+    aspect-ratio: 1;
     border-radius: 2px;
-    width: 12px;
-    height: 12px;
+    width: 100%;
+    height: auto;
   }
   .hm-cell.empty {
     background: transparent !important;

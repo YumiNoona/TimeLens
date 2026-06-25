@@ -180,11 +180,23 @@ public static class DatabaseInitializer
         fixNeg.ExecuteNonQuery();
 
         // Patch orphaned rows from previous sessions (race left end_time=NULL)
+        // Use the next event's start_time as end boundary for best accuracy;
+        // fall back to start_time + 30 minutes if no next event exists.
+        // NOTE: All comparisons use ISO 8601 strings to match stored format (e.g. "2026-06-25T10:36:15.6682266Z")
+        //       SQLite's datetime() can't parse ISO 8601 directly, so REPLACE T→space and strip Z first.
+        var orphanCutoff = DateTime.UtcNow.AddMinutes(-10).ToString("o");
         using var patchOrphans = conn.CreateCommand();
         patchOrphans.CommandText = """
-            UPDATE app_events SET end_time = datetime(start_time, '+5 minutes')
-            WHERE end_time IS NULL AND start_time < datetime('now', '-10 minutes')
+            UPDATE app_events SET end_time = COALESCE(
+                (SELECT MIN(next.start_time) FROM app_events next
+                 WHERE next.start_time > app_events.start_time
+                   AND next.start_time < $fortyeight),
+                datetime(REPLACE(REPLACE(start_time, 'T', ' '), 'Z', ''), '+30 minutes')
+            )
+            WHERE end_time IS NULL AND start_time < $cutoff
             """;
+        patchOrphans.Parameters.AddWithValue("$cutoff", orphanCutoff);
+        patchOrphans.Parameters.AddWithValue("$fortyeight", DateTime.UtcNow.AddHours(48).ToString("o"));
         patchOrphans.ExecuteNonQuery();
 
         // Backfill session_state for rows that still have NULL

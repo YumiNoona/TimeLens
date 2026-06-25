@@ -7,7 +7,7 @@
   import TopApps from './lib/components/TopApps.svelte';
   import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
-  import HistoryView from './lib/components/HistoryView.svelte';
+
   import AppsView from './lib/components/AppsView.svelte';
   import TimelineView from './lib/components/TimelineView.svelte';
   import RulesView from './lib/components/RulesView.svelte';
@@ -72,6 +72,7 @@
     try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { browserSites = []; }
     try { const ar = await fetch('http://127.0.0.1:47821/api/audio-summary'); audioSessions = await ar.json(); } catch { audioSessions = []; }
     try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { browserHourlyRaw = []; }
+    try { const bt = await fetch('http://127.0.0.1:47821/api/browser-time-summary'); browserTime = await bt.json(); } catch { browserTime = []; }
 
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) startPoll();
@@ -180,8 +181,6 @@
         </div>
       {/if}
 
-    {:else if view === 'history' && $data}
-      <div class="content"><HistoryView data={$data} /></div>
     {:else if view === 'browser'}
       <div class="browser-view">
         <div class="topbar"><h1 class="page-title">Browser</h1></div>

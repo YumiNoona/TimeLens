@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -16,6 +18,7 @@ public static class ApiHost
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     private static readonly ConcurrentDictionary<int, long> OpenBrowserEvents = new();
+    private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -755,8 +758,11 @@ public static class ApiHost
 
         app.MapGet("/api/browser-hourly", async (HttpContext ctx) =>
         {
-            var today = DateTime.UtcNow.Date;
-            var tomorrow = today.AddDays(1);
+            var localNow = DateTime.Now;
+            var localDate = localNow.Date;
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(localDate);
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            var offsetHours = (int)Math.Round((localNow - DateTime.UtcNow).TotalHours);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
@@ -766,16 +772,23 @@ public static class ApiHost
                 WHERE start_time >= $t0 AND start_time < $t1
                 GROUP BY h ORDER BY h
                 """;
-            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
-            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
-            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
-            arr.WriteStartArray();
+            cmd.Parameters.AddWithValue("$t0", utcStart.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", utcEnd.ToString("o"));
+            var counts = new int[24];
             using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
             {
+                var utcHour = r.GetInt32(0);
+                var localHour = (utcHour + offsetHours + 24) % 24;
+                counts[localHour] += r.GetInt32(1);
+            }
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            for (int i = 0; i < 24; i++)
+            {
                 arr.WriteStartObject();
-                arr.WriteNumber("hour", r.GetInt32(0));
-                arr.WriteNumber("visits", r.GetInt32(1));
+                arr.WriteNumber("hour", i);
+                arr.WriteNumber("visits", counts[i]);
                 arr.WriteEndObject();
             }
             arr.WriteEndArray();
@@ -783,6 +796,146 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
         });
+
+        app.MapGet("/api/app-icon", async (HttpContext ctx) =>
+        {
+            var name = ctx.Request.Query["name"].FirstOrDefault();
+            if (string.IsNullOrEmpty(name))
+            {
+                ctx.Response.StatusCode = 400;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"error\":\"missing name\"}");
+                return;
+            }
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                name += ".exe";
+
+            var cacheKey = name.ToLowerInvariant();
+            if (IconCache.TryGetValue(cacheKey, out var cached))
+            {
+                ctx.Response.ContentType = "image/png";
+                ctx.Response.ContentLength = cached.Length;
+                await ctx.Response.Body.WriteAsync(cached);
+                return;
+            }
+
+            var exePath = FindExePath(name);
+            if (exePath is null)
+            {
+                ctx.Response.StatusCode = 404;
+                return;
+            }
+
+            try
+            {
+                using var icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+                if (icon is null) { ctx.Response.StatusCode = 404; return; }
+                using var ms = new MemoryStream();
+                using var bmp = icon.ToBitmap();
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                var png = ms.ToArray();
+                IconCache[cacheKey] = png;
+                ctx.Response.ContentType = "image/png";
+                ctx.Response.ContentLength = png.Length;
+                await ctx.Response.Body.WriteAsync(png);
+            }
+            catch
+            {
+                ctx.Response.StatusCode = 404;
+            }
+        });
+
+        static string? FindExePath(string name)
+        {
+            var pathExts = new[] { "", ".exe", ".com", ".bat" };
+            foreach (var ext in pathExts)
+            {
+                var withExt = name.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? name : name + ext;
+                if (Path.IsPathRooted(withExt) && File.Exists(withExt)) return withExt;
+            }
+
+            // 1) Check running processes — most reliable for currently-running apps
+            try
+            {
+                var procName = Path.GetFileNameWithoutExtension(name);
+                foreach (var p in System.Diagnostics.Process.GetProcessesByName(procName))
+                {
+                    try
+                    {
+                        var path = p.MainModule?.FileName;
+                        if (path is not null && File.Exists(path))
+                        {
+                            p.Dispose();
+                            return path;
+                        }
+                    }
+                    catch { }
+                    p.Dispose();
+                }
+            }
+            catch { }
+
+            // 2) Search PATH
+            foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (var ext in pathExts)
+                {
+                    var withExt = name.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? name : name + ext;
+                    var path = Path.Combine(dir, withExt);
+                    if (File.Exists(path)) return path;
+                }
+            }
+
+            // 3) Search common install dirs (top-level + one sub-level)
+            var searchDirs = new List<string>
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Programs"),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            };
+
+            foreach (var dir in searchDirs)
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (var ext in pathExts)
+                {
+                    var withExt = name.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? name : name + ext;
+                    var path = Path.Combine(dir, withExt);
+                    if (File.Exists(path)) return path;
+                }
+                // One level deep
+                foreach (var sub in Directory.EnumerateDirectories(dir, "*", SearchOption.TopDirectoryOnly))
+                {
+                    foreach (var ext in pathExts)
+                    {
+                        var withExt = name.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? name : name + ext;
+                        var path = Path.Combine(sub, withExt);
+                        if (File.Exists(path)) return path;
+                    }
+                    // Two levels deep for common patterns like %ProgramFiles%\Microsoft VS Code\Code.exe
+                    try
+                    {
+                        foreach (var sub2 in Directory.EnumerateDirectories(sub, "*", SearchOption.TopDirectoryOnly))
+                        {
+                            foreach (var ext in pathExts)
+                            {
+                                var withExt = name.EndsWith(ext, StringComparison.OrdinalIgnoreCase) ? name : name + ext;
+                                var path = Path.Combine(sub2, withExt);
+                                if (File.Exists(path)) return path;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            return null;
+        }
 
         app.MapGet("/api/running-processes", (HttpContext ctx) =>
         {

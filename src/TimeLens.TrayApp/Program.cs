@@ -371,7 +371,6 @@ internal static class Program
         // so that WinEvent hooks have a running message pump.
 
         var lastSystemState = idleMonitor.GetState();
-        var lastWriteUtc = DateTime.UtcNow;
 
         var idleTimer = new Timer(_ =>
         {
@@ -394,16 +393,13 @@ internal static class Program
             LiveStatusStore.SystemState = curState;
 
             var changed = curState != lastSystemState;
-            var overdue = (DateTime.UtcNow - lastWriteUtc).TotalMinutes >= 5;
 
-            if (changed || overdue)
+            if (changed)
             {
-                if (changed && lastSystemState != "active" && curState == "active")
+                if (lastSystemState != "active" && curState == "active")
                     LiveStatusStore.PendingIdleReturn = true;
 
-                if (changed)
-                    lastSystemState = curState;
-                lastWriteUtc = DateTime.UtcNow;
+                lastSystemState = curState;
                 var (exe, title, pid) = Win32.GetForegroundWindowInfo();
                 var cat = classifier.Classify(exe, title);
                 writer.OpenAppEvent(exe, title, pid, curState, cat);

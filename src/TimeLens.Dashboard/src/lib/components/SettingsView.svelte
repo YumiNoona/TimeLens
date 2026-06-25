@@ -49,7 +49,7 @@
       trackInput = s.trackInput ?? true;
       idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
       theme = s.theme ?? 'default';
-      timelineGrouped = s.timelineGrouped ?? false;
+      timelineGrouped = s.timelineGrouped ?? true;
       autoStart = s.autoStart ?? false;
       retentionDays = s.retentionDays ?? 90;
       showTitles = s.showTitles ?? false;

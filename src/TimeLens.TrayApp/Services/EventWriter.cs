@@ -5,7 +5,6 @@ namespace TimeLens.TrayApp.Services;
 public sealed class EventWriter
 {
     private readonly WriterQueue _queue;
-    private long? _openAppEventId;
 
     public EventWriter(string dbPath)
     {
@@ -16,18 +15,17 @@ public sealed class EventWriter
     {
         _queue.ExecuteSync(conn =>
         {
-            var previousId = _openAppEventId;
-            _openAppEventId = null;
+            var now = DateTime.UtcNow.ToString("o");
+            var since = DateTime.UtcNow.AddHours(-48).ToString("o");
 
-            if (previousId is long openId)
-            {
-                using var close = conn.CreateCommand();
-                close.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id";
-                close.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                close.Parameters.AddWithValue("$id", openId);
-                close.ExecuteNonQuery();
-            }
+            // Close ALL orphaned rows — idempotent, handles any chaining failures
+            using var closeAll = conn.CreateCommand();
+            closeAll.CommandText = "UPDATE app_events SET end_time = $now WHERE end_time IS NULL AND start_time >= $since";
+            closeAll.Parameters.AddWithValue("$now", now);
+            closeAll.Parameters.AddWithValue("$since", since);
+            closeAll.ExecuteNonQuery();
 
+            // Insert new row
             using var insert = conn.CreateCommand();
             insert.CommandText = """
                 INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date, project)
@@ -37,15 +35,11 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$title", windowTitle);
             insert.Parameters.AddWithValue("$pid", pid);
             insert.Parameters.AddWithValue("$cat", category ?? (object)DBNull.Value);
-            insert.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
+            insert.Parameters.AddWithValue("$start", now);
             insert.Parameters.AddWithValue("$state", sessionState);
             insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
             insert.ExecuteNonQuery();
-
-            using var idCmd = conn.CreateCommand();
-            idCmd.CommandText = "SELECT last_insert_rowid();";
-            _openAppEventId = (long)idCmd.ExecuteScalar()!;
         });
     }
 

@@ -3,7 +3,6 @@
 
   const items = [
     { id: 'today', icon: 'ti-layout-dashboard', label: 'Today' },
-    { id: 'history', icon: 'ti-calendar-week', label: 'History' },
     { id: 'apps', icon: 'ti-chart-donut', label: 'Apps' },
     { id: 'browser', icon: 'ti-world', label: 'Browser' },
     { id: 'timeline', icon: 'ti-timeline', label: 'Timeline' },

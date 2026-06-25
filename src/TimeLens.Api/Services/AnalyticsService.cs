@@ -106,7 +106,7 @@ public sealed class AnalyticsService
                 COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
                     (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS active_secs,
-                COALESCE(SUM(CASE WHEN session_state IN ('idle', 'away') THEN
+                COALESCE(SUM(CASE WHEN session_state IN ('idle', 'away') AND COALESCE(category, '') != 'system' THEN
                     (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS idle_secs
             FROM app_events

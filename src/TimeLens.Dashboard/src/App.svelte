@@ -21,6 +21,7 @@
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
+  let browserHourly = $state<{hour: number; visits: number}[]>([]);
   let timelineGrouped = $state(false);
 
   let view = $state('today');
@@ -61,6 +62,10 @@
         const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
         audioSessions = await ar.json();
       } catch { }
+      try {
+        const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly');
+        browserHourly = await hr.json();
+      } catch { }
     }, interval);
   }
 
@@ -87,6 +92,10 @@
       const ar = await fetch('http://127.0.0.1:47821/api/audio-summary');
       audioSessions = await ar.json();
     } catch { audioSessions = []; }
+    try {
+      const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly');
+      browserHourly = await hr.json();
+    } catch { browserHourly = []; }
 
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) startPoll();
@@ -177,8 +186,9 @@
         <div class="bottom-grid">
           <TopApps apps={$data.topApps} />
           <CategoryBreakdown categories={$data.categories} />
-          <CalendarHeatmap entries={$data.heatmap} />
         </div>
+
+        <CalendarHeatmap entries={$data.heatmap} />
 
         <div class="bottom-grid">
           <TopSites sites={browserSites} />
@@ -208,7 +218,41 @@
         <div class="topbar">
           <h1 class="headline-small">Browser</h1>
         </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-value">{browserSites.length}</span>
+            <span class="stat-label">Unique sites</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value">{browserSites.reduce((a, b) => a + b.visits, 0)}</span>
+            <span class="stat-label">Total visits</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value">{browserTime.reduce((a, b) => a + b.totalMinutes, 0)}m</span>
+            <span class="stat-label">Browse time</span>
+          </div>
+        </div>
+
         <TopSites sites={browserSites} />
+
+        {#if browserHourly.length > 0}
+          <div class="card">
+            <div class="card-title">
+              <i class="ti ti-clock-hour" aria-hidden="true"></i>
+              Visits by hour
+            </div>
+            <div class="hourly-grid">
+              {#each browserHourly as h}
+                <div class="hourly-col">
+                  <div class="hourly-bar" style="height: {Math.max(h.visits / Math.max(...browserHourly.map(x => x.visits)) * 80, 4)}px"></div>
+                  <span class="hourly-label">{h.hour}:00</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         {#if browserTime.length > 0}
           <div class="card">
             <div class="card-title">
@@ -376,5 +420,59 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-4);
+  }
+
+  .browser-view .stat-card {
+    background: var(--md-surface-1);
+    border: 1px solid var(--md-outline);
+    border-radius: var(--shape-lg);
+    padding: var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .browser-view .stat-value {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--md-on-surf);
+    line-height: 1.1;
+  }
+
+  .browser-view .stat-label {
+    font-size: 12px;
+    color: var(--md-on-surf-var);
+    font-weight: 500;
+  }
+
+  .hourly-grid {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 100px;
+    padding-top: var(--sp-2);
+  }
+
+  .hourly-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .hourly-bar {
+    width: 100%;
+    background: var(--md-primary);
+    border-radius: var(--shape-sm) var(--shape-sm) 0 0;
+    min-height: 4px;
+  }
+
+  .hourly-label {
+    font-size: 9px;
+    color: var(--md-on-surf-dim);
+    font-family: var(--font-mono);
+    white-space: nowrap;
   }
 </style>

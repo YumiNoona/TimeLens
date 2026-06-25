@@ -369,45 +369,49 @@
       <div class="card-header">
         <h2 class="title-small">Goals</h2>
       </div>
-      {#if goals.length > 0}
-        {#each goals as g, i}
-          <div class="setting-row" class:last={i === goals.length - 1 && !goals[i+1]}>
-            <div class="setting-info">
-              <span class="setting-label">
-                {g.goalType === 'max_time' ? 'Limit' : 'Minimum'} · {g.target}
-              </span>
-              <span class="setting-desc">{g.thresholdMinutes} min — alert at {g.notifyAt}%</span>
+      <div class="card-body">
+        {#if goals.length > 0}
+          {#each goals as g, i}
+            <div class="setting-row" class:last={i === goals.length - 1 && !goals[i+1]}>
+              <div class="setting-info">
+                <span class="setting-label">
+                  {g.goalType === 'max_time' ? 'Limit' : 'Minimum'} · {g.target}
+                </span>
+                <span class="setting-desc">{g.thresholdMinutes} min — alert at {g.notifyAt}%</span>
+              </div>
+              <div class="control">
+                <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove">
+                  <i class="ti ti-trash"></i>
+                </button>
+              </div>
             </div>
-            <div class="control">
-              <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove">
-                <i class="ti ti-trash"></i>
-              </button>
+          {/each}
+        {:else}
+          <div class="section-row">
+            <div class="empty-state"><span class="empty-text">No goals yet. Set a time limit for any app or category.</span></div>
+          </div>
+        {/if}
+        <div class="section-row">
+          <div class="setting-info">
+            <span class="setting-label">New goal</span>
+            <div class="goal-fields">
+              <input class="mini-input" placeholder="app or category" bind:value={goalTarget} />
+              <select class="select mini" bind:value={goalType}>
+                <option value="max_time">max</option>
+                <option value="min_time">min</option>
+              </select>
+              <select class="select mini" bind:value={goalMinutes}>
+                {#each [15, 30, 60, 90, 120, 180, 240] as n}
+                  <option value={n}>{n}m</option>
+                {/each}
+              </select>
             </div>
           </div>
-        {/each}
-      {:else}
-        <div class="empty-state"><span class="empty-text">No goals yet. Set a time limit for any app or category.</span></div>
-      {/if}
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">New goal</span>
-          <div class="goal-fields">
-            <input class="mini-input" placeholder="app or category" bind:value={goalTarget} />
-            <select class="select mini" bind:value={goalType}>
-              <option value="max_time">max</option>
-              <option value="min_time">min</option>
-            </select>
-            <select class="select mini" bind:value={goalMinutes}>
-              {#each [15, 30, 60, 90, 120, 180, 240] as n}
-                <option value={n}>{n}m</option>
-              {/each}
-            </select>
+          <div class="control">
+            <button class="export-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
+              <i class="ti ti-plus"></i> Add
+            </button>
           </div>
-        </div>
-        <div class="control">
-          <button class="export-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
-            <i class="ti ti-plus"></i> Add
-          </button>
         </div>
       </div>
     </div>
@@ -633,7 +637,33 @@
     .settings { grid-template-columns: 1fr; }
   }
 
-  .card-goals { grid-column: 1 / -1; }
+  .card-goals {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .card-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .section-row {
+    border-top: 1px solid var(--md-outline);
+    padding: var(--sp-3) var(--sp-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
 
   .goal-fields {
     display: flex; gap: var(--sp-2); align-items: center; margin-top: var(--sp-2);

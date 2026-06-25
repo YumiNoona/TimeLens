@@ -28,27 +28,18 @@
     Last 28 days
   </div>
 
-  <div class="hm-layout">
-    <div class="hm-labels" aria-hidden="true">
-      <span>M</span>
-      <span></span>
-      <span>W</span>
-      <span></span>
-      <span>F</span>
-    </div>
-    <div class="hm-grid" role="img" aria-label="Activity heatmap for the last 28 days">
-      {#each gridCells as cell}
-        {#if cell}
-          <div
-            class="hm-cell"
-            style="background: rgba(200, 232, 106, {opacity(cell.value).toFixed(2)})"
-            title="{cell.date}: {cell.value}h active"
-          ></div>
-        {:else}
-          <div class="hm-cell hm-empty"></div>
-        {/if}
-      {/each}
-    </div>
+  <div class="hm-grid" role="img" aria-label="Activity heatmap for the last 28 days">
+    {#each gridCells as cell}
+      {#if cell}
+        <div
+          class="hm-cell"
+          style="background: rgba(200, 232, 106, {opacity(cell.value).toFixed(2)})"
+          title="{cell.date}: {cell.value}h active"
+        ></div>
+      {:else}
+        <div class="hm-cell hm-empty"></div>
+      {/if}
+    {/each}
   </div>
 </div>
 
@@ -72,32 +63,14 @@
 
   .card-title i { color: var(--md-on-surf-var); font-size: 16px; }
 
-  .hm-layout {
-    display: flex;
-    gap: 6px;
-  }
-
-  .hm-labels {
-    display: grid;
-    grid-template-rows: repeat(5, 22px);
-    gap: 3px;
-    padding-top: 0;
-    font-size: 10px;
-    color: var(--md-on-surf-dim);
-    font-family: var(--font-mono);
-    line-height: 22px;
-  }
-
   .hm-grid {
     display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(7, 22px);
+    grid-template-columns: repeat(7, minmax(28px, 1fr));
     gap: 3px;
   }
 
   .hm-cell {
-    width: 22px;
-    height: 22px;
+    aspect-ratio: 1;
     border-radius: 3px;
   }
 

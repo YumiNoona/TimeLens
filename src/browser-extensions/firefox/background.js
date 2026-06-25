@@ -159,7 +159,13 @@ function doSendTab(tabId, url, title, audible) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-      .then(function() { flushQueue(); })
+      .then(function(r) { return r.json(); })
+      .then(function(resp) {
+        if (resp && resp.blocked) {
+          api.tabs.update(tabId, { url: BLOCKED_PAGE });
+        }
+        flushQueue();
+      })
       .catch(function() { enqueue(body); });
   } catch(e) {}
 }

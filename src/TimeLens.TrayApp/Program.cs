@@ -149,7 +149,7 @@ internal static class Program
             foreach (var be in focusBlocked)
             {
                 var id = be.I.Replace(".exe", "").ToLowerInvariant();
-                if (lower.Contains(id) || id.Contains(lower)) return true;
+                if (lower == id || lower.EndsWith("." + id)) return true;
             }
             return false;
         }
@@ -170,7 +170,15 @@ internal static class Program
             if (!LiveStatusStore.Settings.FocusMode) return;
 
             var action = GetBlockAction();
-            if (action == "notify") return; // only toast (handled in foreground changed)
+
+            // Always show toast when a blocked app is detected
+            if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
+            {
+                lastFocusToast = DateTime.UtcNow;
+                tray?.ShowBalloon("Focus Mode", $"'{exeName}' is blocked — get back to work!", true);
+            }
+
+            if (action == "notify") return; // toast only, no further enforcement
 
             try
             {
@@ -205,7 +213,7 @@ internal static class Program
                 if (action == "hide" || action == "strict")
                 {
                     // Minimize any visible windows of this process
-                    var windows = Win32.FindWindowsForProcess(exeName);
+                    var windows = Win32.FindWindowsForProcess(exeOnly);
                     foreach (var hwnd in windows)
                     {
                         Win32.ShowWindow(hwnd, Win32.SW_MINIMIZE);
@@ -219,8 +227,6 @@ internal static class Program
         var blockTimer = new Timer(_ =>
         {
             if (!LiveStatusStore.Settings.FocusMode) return;
-            var action = GetBlockAction();
-            if (action == "notify") return;
 
             // Check for expired entries and remove them
             var removed = focusBlocked.RemoveAll(be => be.IsExpired());
@@ -276,7 +282,7 @@ internal static class Program
                     var target = gr.GetString(2);
                     var threshold = gr.GetInt32(3);
                     var notifyAt = gr.GetInt32(4);
-                    var lastNotified = gr.GetString(6);
+                    var lastNotified = gr.GetString(5);
                     var notifyPct = notifyAt > 0 ? notifyAt : 80;
                     var limit = threshold * notifyPct / 100;
                     var current = goalType == "max_time"
@@ -311,14 +317,7 @@ internal static class Program
             {
                 var blocked = IsBlocked(exe);
                 if (blocked)
-                {
                     EnforceBlock(exe);
-                    if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
-                    {
-                        lastFocusToast = DateTime.UtcNow;
-                        tray!.ShowBalloon("Focus Mode", $"'{exe}' is blocked — get back to work!", true);
-                    }
-                }
             }
         };
 

@@ -211,7 +211,7 @@ public sealed class AnalyticsService
             FormatDuration(idleSecs), idleSecs,
             focusScore,
             topCat, FormatDuration(topCatSecs),
-            yesterdaySecs >= 0 ? (activeSecs - yesterdaySecs) / 60 : null,
+            yesterdaySecs >= 0 && activeSecs >= 30 * 60 ? (activeSecs - yesterdaySecs) / 60 : null,
             totalKeys,
             totalClicks
         );

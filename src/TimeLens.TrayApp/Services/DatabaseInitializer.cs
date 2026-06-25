@@ -179,6 +179,14 @@ public static class DatabaseInitializer
             """;
         fixNeg.ExecuteNonQuery();
 
+        // Patch orphaned rows from previous sessions (race left end_time=NULL)
+        using var patchOrphans = conn.CreateCommand();
+        patchOrphans.CommandText = """
+            UPDATE app_events SET end_time = datetime(start_time, '+5 minutes')
+            WHERE end_time IS NULL AND start_time < datetime('now', '-10 minutes')
+            """;
+        patchOrphans.ExecuteNonQuery();
+
         // Backfill session_state for rows that still have NULL
         using var backfill = conn.CreateCommand();
         backfill.CommandText = """

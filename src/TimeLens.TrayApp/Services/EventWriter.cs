@@ -6,7 +6,6 @@ public sealed class EventWriter
 {
     private readonly WriterQueue _queue;
     private long? _openAppEventId;
-    private readonly object _idLock = new();
 
     public EventWriter(string dbPath)
     {
@@ -15,27 +14,20 @@ public sealed class EventWriter
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
-        long? previousId;
-        lock (_idLock)
+        _queue.ExecuteSync(conn =>
         {
-            previousId = _openAppEventId;
+            var previousId = _openAppEventId;
             _openAppEventId = null;
-        }
 
-        if (previousId is long openId)
-        {
-            _queue.ExecuteSync(conn =>
+            if (previousId is long openId)
             {
                 using var close = conn.CreateCommand();
                 close.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id";
                 close.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
                 close.Parameters.AddWithValue("$id", openId);
                 close.ExecuteNonQuery();
-            });
-        }
+            }
 
-        var newId = _queue.ExecuteSyncWithRowId(conn =>
-        {
             using var insert = conn.CreateCommand();
             insert.CommandText = """
                 INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date, project)
@@ -50,12 +42,11 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
             insert.ExecuteNonQuery();
-        });
 
-        lock (_idLock)
-        {
-            _openAppEventId = newId;
-        }
+            using var idCmd = conn.CreateCommand();
+            idCmd.CommandText = "SELECT last_insert_rowid();";
+            _openAppEventId = (long)idCmd.ExecuteScalar()!;
+        });
     }
 
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)

@@ -65,6 +65,11 @@ export interface LiveStatus {
   pendingIdleReturn: boolean;
 }
 
+export interface BrowserHourEntry {
+  hour: number;
+  visits: number;
+}
+
 export interface DashboardData {
   summary: TodaySummary;
   timeline: TimelineBlock[];

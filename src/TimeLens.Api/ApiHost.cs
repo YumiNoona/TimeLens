@@ -547,6 +547,7 @@ public static class ApiHost
             }
 
             // Focus mode check — blocklist match against domain or URL
+            var domainBlocked = false;
             if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
             {
                 var blocklist = LiveStatusStore.Settings.FocusBlocklist;
@@ -568,6 +569,7 @@ public static class ApiHost
                                 if (host.Contains(pattern) || host.EndsWith("." + pattern) || url.Contains(pattern))
                                 {
                                     LiveStatusStore.PendingFocusBlock = evt.Domain;
+                                    domainBlocked = true;
                                     break;
                                 }
                             }
@@ -579,7 +581,7 @@ public static class ApiHost
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync("{\"ok\":true}");
+            await ctx.Response.WriteAsync(domainBlocked ? "{\"ok\":true,\"blocked\":true}" : "{\"ok\":true}");
         });
 
         app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
@@ -743,6 +745,37 @@ public static class ApiHost
                 arr.WriteString("domain", kv.Key);
                 arr.WriteNumber("totalSeconds", (int)kv.Value);
                 arr.WriteNumber("totalMinutes", (int)Math.Round(kv.Value / 60));
+                arr.WriteEndObject();
+            }
+            arr.WriteEndArray();
+            await arr.FlushAsync();
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+        });
+
+        app.MapGet("/api/browser-hourly", async (HttpContext ctx) =>
+        {
+            var today = DateTime.UtcNow.Date;
+            var tomorrow = today.AddDays(1);
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT CAST(strftime('%H', start_time) AS INTEGER) AS h, COUNT(*) AS cnt
+                FROM browser_events
+                WHERE start_time >= $t0 AND start_time < $t1
+                GROUP BY h ORDER BY h
+                """;
+            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            arr.WriteStartArray();
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                arr.WriteStartObject();
+                arr.WriteNumber("hour", r.GetInt32(0));
+                arr.WriteNumber("visits", r.GetInt32(1));
                 arr.WriteEndObject();
             }
             arr.WriteEndArray();

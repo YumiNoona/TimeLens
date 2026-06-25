@@ -1,15 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { DashboardData, InputEntry } from '../types';
+  import { appIcon } from '../appIcons';
   let { data }: { data: DashboardData } = $props();
-
-  let iconErrors = $state<Record<string, boolean>>({});
-  let iconLoaded = $state<Record<string, boolean>>({});
-
-  function iconUrl(name: string): string {
-    const exe = name.toLowerCase().endsWith('.exe') ? name : name + '.exe';
-    return `/api/app-icon?name=${encodeURIComponent(exe)}`;
-  }
 
   function hashColor(s: string): string {
     let h = 0;
@@ -87,18 +80,14 @@
       <span role="columnheader">Time</span>
     </div>
     {#each allApps as app, i}
+      {@const icon = appIcon(app.name)}
       <div class="tr" role="row" class:alt={i % 2 === 0}>
         <span class="td-name" role="cell">
-          <span class="app-icon-wrap">
-            {#if !iconErrors[app.name]}
-              <img src={iconUrl(app.name)} alt="" class="app-icon"
-                onerror={() => iconErrors[app.name] = true}
-                onload={() => iconLoaded[app.name] = true}
-                class:loaded={iconLoaded[app.name]} />
-            {/if}
-            <span class="app-letter" style="background:{hashColor(app.name)}"
-              class:hidden={iconLoaded[app.name]}>{app.name.charAt(0).toUpperCase()}</span>
-          </span>
+          {#if icon}
+            <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
+          {:else}
+            <span class="app-letter" style="background:{hashColor(app.name)}">{app.name.charAt(0).toUpperCase()}</span>
+          {/if}
           {app.name}
         </span>
         <span class="td-time" role="cell">
@@ -121,18 +110,14 @@
           <span role="columnheader">Clicks</span>
         </div>
         {#each inputData as row, i}
+          {@const icon = appIcon(row.exeName || '')}
           <div class="tr input-tr" role="row" class:alt={i % 2 === 0}>
             <span class="td-name" role="cell">
-              <span class="app-icon-wrap">
-                {#if !iconErrors[row.exeName]}
-                  <img src={iconUrl(row.exeName)} alt="" class="app-icon"
-                    onerror={() => iconErrors[row.exeName] = true}
-                    onload={() => iconLoaded[row.exeName] = true}
-                    class:loaded={iconLoaded[row.exeName]} />
-                {/if}
-                <span class="app-letter" style="background:{hashColor(row.exeName || '')}"
-                  class:hidden={iconLoaded[row.exeName]}>{(row.exeName || '?').charAt(0).toUpperCase()}</span>
-              </span>
+              {#if icon}
+                <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
+              {:else}
+                <span class="app-letter" style="background:{hashColor(row.exeName || '')}">{(row.exeName || '?').charAt(0).toUpperCase()}</span>
+              {/if}
               {row.exeName || 'System / Unknown'}
             </span>
             <span class="td-num" role="cell">{row.keystrokes.toLocaleString()}</span>
@@ -211,10 +196,10 @@
   .tr.input-tr { grid-template-columns: 2fr 1fr 1fr; }
   .tr.alt { background: var(--clr-bg-sec); }
   .td-name { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.app-icon-wrap { display: inline-flex; align-items: center; position: relative; width: 20px; height: 20px; flex-shrink: 0; }
-	.app-icon { display: none; width: 20px; height: 20px; object-fit: contain; }
-	.app-icon.loaded { display: inline-block; }
-	.app-letter {
+
+  .app-icon-tabler { font-size: 18px; color: var(--md-on-surf-var); flex-shrink: 0; width: 20px; }
+
+  .app-letter {
 		display: inline-flex; align-items: center; justify-content: center;
 		width: 20px; height: 20px; border-radius: 4px;
 		font-size: 11px; font-weight: 600; color: #fff;

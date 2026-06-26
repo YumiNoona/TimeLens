@@ -6,6 +6,7 @@ public sealed class EventWriter
 {
     private readonly WriterQueue _queue;
     private long? _lastOpenEventId;
+    private readonly object _openEventLock = new();
 
     public EventWriter(string dbPath)
     {
@@ -14,8 +15,10 @@ public sealed class EventWriter
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
-        _lastOpenEventId = _queue.ExecuteSyncWithRowId(conn =>
+        lock (_openEventLock)
         {
+            _lastOpenEventId = _queue.ExecuteSyncWithRowId(conn =>
+            {
             var now = DateTime.UtcNow.ToString("o");
             var since = DateTime.UtcNow.AddHours(-48).ToString("o");
 
@@ -55,6 +58,7 @@ public sealed class EventWriter
             insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
             insert.ExecuteNonQuery();
         });
+        }
     }
 
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)

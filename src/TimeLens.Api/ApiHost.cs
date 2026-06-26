@@ -749,10 +749,11 @@ public static class ApiHost
                 var start = DateTime.Parse(r.GetString(1), null, DateTimeStyles.RoundtripKind);
                 var next = DateTime.Parse(r.GetString(2), null, DateTimeStyles.RoundtripKind);
                 var secs = (next - start).TotalSeconds;
-                if (secs > 0 && secs < 3600) // cap at 1 hour per event to avoid outliers
+                if (secs > 0)
                 {
+                    var capped = Math.Min(secs, 3600); // cap at 1 hour per event to avoid outliers
                     domainSecs.TryGetValue(domain, out var cur);
-                    domainSecs[domain] = cur + secs;
+                    domainSecs[domain] = cur + capped;
                 }
             }
 

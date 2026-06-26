@@ -406,7 +406,7 @@ internal static class Program
                 writer.OpenAppEvent(exe, title, pid, curState, cat, project);
                 LiveStatusStore.CurrentApp = exe;
             }
-        }, null, 30_000, 30_000);
+        }, null, 10_000, 10_000);
 
         // First-run: ask about auto-start, then wire settings save
         var firstRunDone = false;

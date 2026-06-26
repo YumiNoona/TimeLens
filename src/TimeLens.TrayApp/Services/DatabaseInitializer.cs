@@ -32,6 +32,7 @@ public static class DatabaseInitializer
                 url TEXT,
                 title TEXT,
                 category TEXT,
+                tab_id INTEGER,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 browser TEXT NOT NULL

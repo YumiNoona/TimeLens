@@ -25,6 +25,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["teams.exe"] = "communication",
         ["zoom.exe"] = "communication",
         ["outlook.exe"] = "communication",
+        ["wpp.exe"] = "communication",
         ["chrome.exe"] = "browsing",
         ["msedge.exe"] = "browsing",
         ["firefox.exe"] = "browsing",

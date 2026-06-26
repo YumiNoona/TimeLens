@@ -7,20 +7,31 @@
 
   const total = $derived(categories.reduce((a, c) => a + c.minutes, 0) || 1);
   const sorted = $derived([...categories].sort((a, b) => b.minutes - a.minutes));
-  const top5 = $derived(sorted.slice(0, 5));
+  const topCat = $derived(sorted[0] ?? null);
 
-  const R = 42;
+  const R = 70;
+  const STROKE = 22;
   const CIR = 2 * Math.PI * R;
+
   const slices = $derived.by(() => {
     let off = 0;
     return sorted.map(cat => {
       const pct = cat.minutes / total;
       const dash = CIR * pct;
-      const slice = { name: cat.name, color: colorForCategory(cat.name), dashArray: dash, dashOffset: -off };
+      return {
+        name: cat.name,
+        color: colorForCategory(cat.name),
+        dashArray: dash,
+        dashOffset: -off,
+        pct,
+        minutes: cat.minutes,
+        percentage: cat.percentage,
+      };
       off += dash;
-      return slice;
     });
   });
+
+  let hovered = $state<string | null>(null);
 </script>
 
 <div class="card">
@@ -30,44 +41,48 @@
   </div>
 
   <div class="cat-body">
-    <div class="cat-left">
-      {#each top5 as cat}
-        <div class="cat-tag">
-          <span class="cat-dot" style="background: {colorForCategory(cat.name)}"></span>
-          <span class="cat-tag-name">{cat.name}</span>
-        </div>
-      {/each}
-    </div>
-
-    <div class="cat-center">
-      <div class="cat-donut">
-        <svg viewBox="0 0 100 100" aria-label="Category breakdown donut chart">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="var(--clr-bg-ter)" stroke-width="14" />
-          {#each slices as slice}
-            <circle
-              cx="50" cy="50" r={R}
-              fill="none"
-              stroke={slice.color}
-              stroke-width="14"
-              stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
-              stroke-dashoffset={slice.dashOffset}
-              transform="rotate(-90 50 50)"
-              stroke-linecap="butt"
-            />
-          {/each}
-        </svg>
-        <div class="cat-donut-center">
-          <span class="cat-total">{sorted.length}</span>
-          <span class="cat-total-label">categories</span>
-        </div>
+    <div class="cat-donut">
+      <svg viewBox="0 0 180 180" aria-label="Category breakdown donut chart" role="img">
+        <circle cx="90" cy="90" r={R} fill="none" stroke="var(--clr-bg-ter)" stroke-width={STROKE} />
+        {#each slices as slice}
+          <circle
+            cx="90" cy="90" r={R}
+            fill="none"
+            stroke={slice.color}
+            stroke-width={STROKE}
+            stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
+            stroke-dashoffset={slice.dashOffset}
+            transform="rotate(-90 90 90)"
+            stroke-linecap="butt"
+            opacity={hovered ? (hovered === slice.name ? 1 : 0.3) : 1}
+            style="transition: opacity 0.15s var(--ease-out)"
+          />
+        {/each}
+      </svg>
+      <div class="cat-donut-center">
+        {#if topCat}
+          <span class="cat-label">{topCat.name}</span>
+          <span class="cat-pct-main">{topCat.percentage}%</span>
+        {:else}
+          <span class="cat-total">{fmtTime(total)}</span>
+          <span class="cat-total-label">today</span>
+        {/if}
       </div>
     </div>
 
-    <div class="cat-right">
-      {#each top5 as cat}
-        <div class="cat-stat">
-          <span class="cat-pct">{cat.percentage}%</span>
-          <span class="cat-time">{fmtTime(cat.minutes)}</span>
+    <div class="cat-legend">
+      {#each slices as slice}
+        <div
+          class="cat-item"
+          class:cat-hovered={hovered === slice.name}
+          onmouseenter={() => hovered = slice.name}
+          onmouseleave={() => hovered = null}
+          role="listitem"
+        >
+          <span class="cat-dot" style="background: {slice.color}"></span>
+          <span class="cat-name">{slice.name}</span>
+          <span class="cat-pct">{slice.percentage}%</span>
+          <span class="cat-time">{fmtTime(slice.minutes)}</span>
         </div>
       {/each}
     </div>
@@ -77,51 +92,17 @@
 <style>
   .cat-body {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-5);
-  }
-
-  .cat-left {
-    display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    align-items: flex-end;
-    flex: 1;
-  }
-
-  .cat-tag {
-    display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) 0;
+    gap: var(--space-4);
   }
 
-  .cat-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: var(--radius-xs);
-    flex-shrink: 0;
-  }
-
-  .cat-tag-name {
-    font-size: var(--text-sm);
-    color: var(--clr-text-pri);
-    font-weight: var(--weight-medium);
-    text-transform: capitalize;
-  }
-
-  .cat-center {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+  /* Donut */
   .cat-donut {
     position: relative;
     width: 160px;
     height: 160px;
+    flex-shrink: 0;
   }
 
   .cat-donut svg {
@@ -136,14 +117,35 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    pointer-events: none;
+  }
+
+  .cat-label {
+    font-size: var(--text-xs);
+    color: var(--clr-text-sec);
+    text-transform: capitalize;
+    font-weight: var(--weight-medium);
+    margin-bottom: var(--space-1);
+    max-width: 80px;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .cat-pct-main {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    color: var(--clr-text-pri);
+    font-family: var(--font-mono);
+    font-feature-settings: 'tnum';
+    line-height: 1;
   }
 
   .cat-total {
-    font-size: var(--text-2xl);
+    font-size: var(--text-xl);
     font-weight: var(--weight-bold);
     color: var(--clr-text-pri);
-    line-height: 1;
     font-family: var(--font-mono);
+    line-height: 1;
   }
 
   .cat-total-label {
@@ -155,35 +157,63 @@
     margin-top: 4px;
   }
 
-  .cat-right {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    flex: 1;
+  /* Legend */
+  .cat-legend {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2) var(--space-5);
+    width: 100%;
+    padding: 0 var(--space-1);
   }
 
-  .cat-stat {
+  .cat-item {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
     padding: var(--space-1) 0;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: background 0.1s var(--ease-out);
+  }
+
+  .cat-item:hover, .cat-hovered {
+    background: rgba(255,255,255,0.04);
+  }
+
+  .cat-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .cat-name {
+    font-size: var(--text-xs);
+    color: var(--clr-text-pri);
+    text-transform: capitalize;
+    font-weight: var(--weight-medium);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .cat-pct {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: var(--weight-semibold);
+    color: var(--clr-text-pri);
     font-family: var(--font-mono);
     font-feature-settings: 'tnum';
-    min-width: 32px;
+    margin-left: auto;
+    min-width: 28px;
     text-align: right;
   }
 
   .cat-time {
-    font-size: var(--text-xs);
+    font-size: 11px;
     color: var(--clr-text-sec);
     font-family: var(--font-mono);
     font-feature-settings: 'tnum';
-    min-width: 48px;
+    min-width: 36px;
     text-align: right;
   }
 </style>

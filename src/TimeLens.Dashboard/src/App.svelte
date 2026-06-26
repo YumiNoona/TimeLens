@@ -3,7 +3,7 @@
   import NavRail from './lib/components/NavRail.svelte';
   import LiveChip from './lib/components/LiveChip.svelte';
   import StatCard from './lib/components/StatCard.svelte';
-  import Timeline from './lib/components/Timeline.svelte';
+
   import TopApps from './lib/components/TopApps.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
 
@@ -173,14 +173,6 @@
             />
           </section>
 
-          <section class="today-timeline card">
-            <div class="card-header">
-              <i class="ti ti-timeline-event" aria-hidden="true"></i>
-              <div class="card-title">Activity timeline</div>
-            </div>
-            <Timeline blocks={$data.timeline} />
-          </section>
-
           <div class="today-grid">
             <TopApps apps={$data.topApps} />
             <CategoryBreakdown categories={$data.categories} />
@@ -196,9 +188,9 @@
                     <div class="card-title">Time on sites</div>
                   </div>
                   <div class="browser-time-list">
-                    {#each browserTime as bt}
+                    {#each browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com') as bt}
                       <div class="bt-row">
-                        <span class="bt-domain">{bt.domain}</span>
+                        <span class="bt-domain">{bt.domain.replace(/^www\./, '')}</span>
                         <span class="bt-time">{bt.totalMinutes}m</span>
                       </div>
                     {/each}
@@ -263,7 +255,7 @@
         <div class="stat-row">
           <StatCard label="Unique sites" value={browserSites.length} />
           <StatCard label="Total visits" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
-          <StatCard label="Browse time" value={`${browserTime.reduce((a, b) => a + b.totalMinutes, 0)}m`} />
+          <StatCard label="Browse time" value={`${browserTime.filter(bt => bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com').reduce((a, b) => a + b.totalMinutes, 0)}m`} />
         </div>
         {#if browserSites.length === 0 && browserTime.length === 0}
           <div class="empty-view">
@@ -274,34 +266,48 @@
         {:else}
           <div class="two-col">
             <TopSites sites={browserSites} />
-            {#if browserTime.length > 0}
-              <div class="card">
-                <div class="card-title"><i class="ti ti-clock" aria-hidden="true"></i>Time on sites</div>
-                {#each browserTime as bt}
-                  <div class="site-row">
-                    <div class="site-icon">{bt.domain.charAt(0).toUpperCase()}</div>
-                    <span class="site-name">{bt.domain}</span>
-                    <span class="site-visits">{bt.totalMinutes}m</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
+             {#if browserTime.length > 0}
+               <div class="card">
+                 <div class="card-header">
+                   <i class="ti ti-clock" aria-hidden="true"></i>
+                   <div class="card-title">Time on sites</div>
+                 </div>
+                 <div class="browser-time-list">
+                   {#each browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com') as bt}
+                     <div class="bt-row">
+                       <span class="bt-domain">{bt.domain.replace(/^www\./, '')}</span>
+                       <span class="bt-time">{bt.totalMinutes}m</span>
+                     </div>
+                   {/each}
+                 </div>
+               </div>
+             {/if}
           </div>
-          {#if browserHourly.length > 0}
-            <div class="card">
-              <div class="card-title"><i class="ti ti-clock-hour-3" aria-hidden="true"></i>Visits by hour</div>
-              <div class="hourly">
-                {#each browserHourly as h}
-                  <div class="h-bar" class:zero={h.visits === 0} style="height:{h.visits > 0 ? h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 60 : 3}px; min-width: 4px;" title="{h.hour}:00 - {h.visits} visits"></div>
-                {/each}
-              </div>
-              <div class="tl-labels">
-                {#each [8, 10, 12, 14, 16, 18, 20, 22] as hr}
-                <span class="tl-label">{$timeFormatStore === '24h' ? String(hr).padStart(2, '0') + ':00' : (hr > 12 ? hr - 12 : hr) + (hr >= 12 ? 'p' : 'a')}</span>
-                {/each}
-              </div>
-            </div>
-          {/if}
+           {#if browserHourly.length > 0}
+             <div class="card">
+               <div class="card-header">
+                 <i class="ti ti-chart-bar" aria-hidden="true"></i>
+                 <div class="card-title">Browser visits by hour</div>
+               </div>
+               <div class="browser-hourly-chart">
+                 {#each browserHourly as h}
+                   <div
+                     class="bh-bar"
+                     class:zero={h.visits === 0}
+                     style="height:{h.visits > 0 ? Math.max(3, h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 64) : 2}px"
+                     title="{h.hour}:00 — {h.visits} visits"
+                   ></div>
+                 {/each}
+               </div>
+               <div class="bh-labels">
+                 {#each [0, 6, 12, 18] as hr}
+                   <span>{$timeFormatStore === '24h'
+                     ? String(hr).padStart(2, '0') + ':00'
+                     : (hr === 12 ? '12p' : hr === 0 ? '12a' : hr > 12 ? (hr - 12) + 'p' : hr + 'a')}</span>
+                 {/each}
+               </div>
+             </div>
+           {/if}
         {/if}
       </div>
     {:else if view === 'apps' && $data}
@@ -439,11 +445,6 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-4);
-  }
-
-  /* ── Timeline section ── */
-  .today-timeline {
-    padding: var(--space-5) var(--space-6);
   }
 
   /* ── Two-column grid ── */

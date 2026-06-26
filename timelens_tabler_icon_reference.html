@@ -1,0 +1,280 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{font-family:var(--font-sans);padding:1rem 0}
+.search-bar{display:flex;gap:8px;margin-bottom:16px}
+.search-bar input{flex:1;padding:8px 12px;border-radius:var(--radius);border:0.5px solid var(--border-strong);background:var(--surface-1);color:var(--text-primary);font-size:13px}
+.section{margin-bottom:20px}
+.section-hd{font-size:11px;font-weight:500;letter-spacing:.06em;color:var(--text-muted);text-transform:uppercase;padding:6px 0 8px;border-bottom:0.5px solid var(--border);margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px}
+.item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;border:0.5px solid var(--border);background:var(--surface-1);cursor:pointer;transition:background .1s}
+.item:hover{background:var(--surface-2);border-color:var(--border-strong)}
+.item i{font-size:16px;color:var(--text-secondary);flex-shrink:0}
+.item-text{min-width:0}
+.item-name{font-size:11px;color:var(--text-primary);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-class{font-size:10px;color:var(--text-muted);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.copied{position:fixed;bottom:20px;right:20px;background:var(--surface-2);border:0.5px solid var(--border-strong);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--text-primary);opacity:0;pointer-events:none;transition:opacity .2s}
+.copied.show{opacity:1}
+.count{font-size:11px;color:var(--text-muted);margin-bottom:12px}
+</style>
+
+<div class="wrap">
+<h2 class="sr-only">Tabler outline icon reference for TimeLens — click any item to copy the CSS class</h2>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Search by app name or class…" oninput="filterIcons()">
+</div>
+<div class="count" id="count"></div>
+<div id="sections"></div>
+<div class="copied" id="copied">Copied!</div>
+</div>
+
+<script>
+const DATA = [
+  {group:'Browsers & web',items:[
+    {name:'Chrome',        key:'chrome.exe',        cls:'ti-brand-chrome'},
+    {name:'Firefox',       key:'firefox.exe',        cls:'ti-brand-firefox'},
+    {name:'Edge',          key:'msedge.exe',         cls:'ti-brand-edge'},
+    {name:'Brave',         key:'brave.exe',          cls:'ti-shield'},
+    {name:'Opera',         key:'opera.exe',          cls:'ti-browser'},
+    {name:'Zen / generic', key:'zen.exe',            cls:'ti-browser'},
+    {name:'Safari',        key:'safari.exe',         cls:'ti-brand-safari'},
+    {name:'Vivaldi',       key:'vivaldi.exe',        cls:'ti-browser'},
+    {name:'youtube.com',   key:'youtube.com',        cls:'ti-brand-youtube'},
+    {name:'github.com',    key:'github.com',         cls:'ti-brand-github'},
+    {name:'gitlab.com',    key:'gitlab.com',         cls:'ti-brand-gitlab'},
+    {name:'google.com',    key:'google.com',         cls:'ti-brand-google'},
+    {name:'stackoverflow', key:'stackoverflow.com',  cls:'ti-brand-stackoverflow'},
+    {name:'reddit.com',    key:'reddit.com',         cls:'ti-brand-reddit'},
+    {name:'twitter / x',   key:'twitter.com',        cls:'ti-brand-x'},
+    {name:'instagram',     key:'instagram.com',      cls:'ti-brand-instagram'},
+    {name:'facebook',      key:'facebook.com',       cls:'ti-brand-facebook'},
+    {name:'linkedin',      key:'linkedin.com',       cls:'ti-brand-linkedin'},
+    {name:'tiktok',        key:'tiktok.com',         cls:'ti-brand-tiktok'},
+    {name:'twitch',        key:'twitch.tv',          cls:'ti-brand-twitch'},
+    {name:'netflix',       key:'netflix.com',        cls:'ti-brand-netflix'},
+    {name:'claude.ai',     key:'claude.ai',          cls:'ti-sparkles'},
+    {name:'openai.com',    key:'openai.com',         cls:'ti-brand-openai'},
+    {name:'localhost',     key:'127.0.0.1',          cls:'ti-device-desktop'},
+  ]},
+  {group:'Development tools',items:[
+    {name:'VS Code',       key:'code.exe',           cls:'ti-brand-vscode'},
+    {name:'VS Code Insider',key:'code - insiders.exe',cls:'ti-brand-vscode'},
+    {name:'Cursor',        key:'cursor.exe',         cls:'ti-brand-cursor'},
+    {name:'Windsurf',      key:'windsurf.exe',       cls:'ti-wind'},
+    {name:'Visual Studio', key:'devenv.exe',         cls:'ti-brand-visual-studio'},
+    {name:'IntelliJ IDEA', key:'idea64.exe',         cls:'ti-brand-kotlin'},
+    {name:'PyCharm',       key:'pycharm64.exe',      cls:'ti-brand-python'},
+    {name:'WebStorm',      key:'webstorm64.exe',     cls:'ti-brand-javascript'},
+    {name:'Rider',         key:'rider64.exe',        cls:'ti-letter-r'},
+    {name:'CLion',         key:'clion64.exe',        cls:'ti-letter-c'},
+    {name:'Android Studio',key:'studio64.exe',       cls:'ti-brand-android'},
+    {name:'Xcode',         key:'xcode.exe',          cls:'ti-brand-apple'},
+    {name:'Notepad++',     key:'notepad++.exe',      cls:'ti-file-code'},
+    {name:'Notepad',       key:'notepad.exe',        cls:'ti-notes'},
+    {name:'Sublime Text',  key:'sublime_text.exe',   cls:'ti-file-code'},
+    {name:'Vim / NeoVim',  key:'nvim.exe',           cls:'ti-brand-vim'},
+    {name:'Emacs',         key:'emacs.exe',          cls:'ti-letter-e'},
+    {name:'Helix',         key:'hx.exe',             cls:'ti-letter-h'},
+    {name:'OpenCode',      key:'opencode.exe',       cls:'ti-brand-vscode'},
+  ]},
+  {group:'Terminals & shells',items:[
+    {name:'Windows Terminal',key:'windowsterminal.exe',cls:'ti-terminal-2'},
+    {name:'CMD',             key:'cmd.exe',          cls:'ti-terminal'},
+    {name:'PowerShell',      key:'powershell.exe',   cls:'ti-terminal-2'},
+    {name:'PowerShell Core', key:'pwsh.exe',         cls:'ti-terminal-2'},
+    {name:'Git Bash',        key:'git-bash.exe',     cls:'ti-brand-git'},
+    {name:'WSL',             key:'wsl.exe',          cls:'ti-brand-ubuntu'},
+    {name:'Hyper',           key:'hyper.exe',        cls:'ti-terminal'},
+    {name:'iTerm2',          key:'iterm2',           cls:'ti-terminal'},
+    {name:'Alacritty',       key:'alacritty.exe',    cls:'ti-terminal'},
+    {name:'Warp',            key:'warp.exe',         cls:'ti-terminal-2'},
+  ]},
+  {group:'Version control & API',items:[
+    {name:'GitHub Desktop',key:'githubdesktop.exe',  cls:'ti-brand-github'},
+    {name:'GitKraken',     key:'gitkraken.exe',      cls:'ti-brand-git'},
+    {name:'Sourcetree',    key:'sourcetree.exe',     cls:'ti-git-branch'},
+    {name:'Fork',          key:'fork.exe',           cls:'ti-git-fork'},
+    {name:'Postman',       key:'postman.exe',        cls:'ti-api'},
+    {name:'Insomnia',      key:'insomnia.exe',       cls:'ti-api'},
+    {name:'Bruno',         key:'bruno.exe',          cls:'ti-api'},
+    {name:'TablePlus',     key:'tableplus.exe',      cls:'ti-table'},
+    {name:'DBeaver',       key:'dbeaver.exe',        cls:'ti-database'},
+    {name:'DataGrip',      key:'datagrip64.exe',     cls:'ti-database'},
+    {name:'MongoDB Compass',key:'mongodbcompass.exe',cls:'ti-database'},
+  ]},
+  {group:'Communication',items:[
+    {name:'Slack',         key:'slack.exe',          cls:'ti-brand-slack'},
+    {name:'Discord',       key:'discord.exe',        cls:'ti-brand-discord'},
+    {name:'Teams',         key:'teams.exe',          cls:'ti-brand-teams'},
+    {name:'Zoom',          key:'zoom.exe',           cls:'ti-video'},
+    {name:'WhatsApp',      key:'whatsapp.exe',       cls:'ti-brand-whatsapp'},
+    {name:'WhatsApp (wpp)',key:'wpp.exe',            cls:'ti-brand-whatsapp'},
+    {name:'Telegram',      key:'telegram.exe',       cls:'ti-brand-telegram'},
+    {name:'Signal',        key:'signal.exe',         cls:'ti-brand-signal'},
+    {name:'Skype',         key:'skype.exe',          cls:'ti-brand-skype'},
+    {name:'Mattermost',    key:'mattermost.exe',     cls:'ti-brand-mattermost'},
+    {name:'Outlook',       key:'outlook.exe',        cls:'ti-brand-outlook'},
+    {name:'Thunderbird',   key:'thunderbird.exe',    cls:'ti-mail'},
+    {name:'Spark',         key:'spark.exe',          cls:'ti-mail'},
+    {name:'Linear',        key:'linear.app',         cls:'ti-brand-linear'},
+    {name:'Notion',        key:'notion.com',         cls:'ti-brand-notion'},
+    {name:'Loom',          key:'loom.com',           cls:'ti-video'},
+  ]},
+  {group:'Design & creative',items:[
+    {name:'Figma',         key:'figma.exe',          cls:'ti-brand-figma'},
+    {name:'Adobe XD',      key:'xd.exe',             cls:'ti-brand-adobe'},
+    {name:'Illustrator',   key:'illustrator.exe',    cls:'ti-brand-adobe'},
+    {name:'Photoshop',     key:'photoshop.exe',      cls:'ti-brand-adobe'},
+    {name:'Premiere',      key:'premiere.exe',       cls:'ti-brand-adobe'},
+    {name:'After Effects', key:'afterfx.exe',        cls:'ti-brand-adobe'},
+    {name:'Lightroom',     key:'lightroom.exe',      cls:'ti-brand-adobe'},
+    {name:'Blender',       key:'blender.exe',        cls:'ti-brand-blender'},
+    {name:'Inkscape',      key:'inkscape.exe',       cls:'ti-vector'},
+    {name:'GIMP',          key:'gimp-2.10.exe',      cls:'ti-photo'},
+    {name:'Canva',         key:'canva.com',          cls:'ti-brand-canva'},
+    {name:'Framer',        key:'framer.com',         cls:'ti-brand-framer'},
+    {name:'Sketch',        key:'sketch.exe',         cls:'ti-pencil'},
+    {name:'Affinity',      key:'affinity.exe',       cls:'ti-vector'},
+    {name:'DaVinci Resolve',key:'resolve.exe',       cls:'ti-movie'},
+    {name:'OBS',           key:'obs64.exe',          cls:'ti-brand-obs'},
+  ]},
+  {group:'Productivity & docs',items:[
+    {name:'Word',          key:'winword.exe',        cls:'ti-brand-office'},
+    {name:'Excel',         key:'excel.exe',          cls:'ti-table'},
+    {name:'PowerPoint',    key:'powerpnt.exe',       cls:'ti-presentation'},
+    {name:'OneNote',       key:'onenote.exe',        cls:'ti-notebook'},
+    {name:'Notion',        key:'notion.exe',         cls:'ti-brand-notion'},
+    {name:'Obsidian',      key:'obsidian.exe',       cls:'ti-crystal-ball'},
+    {name:'Logseq',        key:'logseq.exe',         cls:'ti-notes'},
+    {name:'Evernote',      key:'evernote.exe',       cls:'ti-notebook'},
+    {name:'Bear',          key:'bear.exe',           cls:'ti-notes'},
+    {name:'Typora',        key:'typora.exe',         cls:'ti-markdown'},
+    {name:'Todoist',       key:'todoist.exe',        cls:'ti-checklist'},
+    {name:'TickTick',      key:'ticktick.exe',       cls:'ti-checklist'},
+    {name:'Things',        key:'things.exe',         cls:'ti-check'},
+    {name:'Trello',        key:'trello.com',         cls:'ti-brand-trello'},
+    {name:'Jira',          key:'jira.com',           cls:'ti-brand-jira'},
+    {name:'Confluence',    key:'confluence.com',     cls:'ti-file-description'},
+    {name:'Asana',         key:'asana.com',          cls:'ti-brand-asana'},
+  ]},
+  {group:'Media & entertainment',items:[
+    {name:'Spotify',       key:'spotify.exe',        cls:'ti-brand-spotify'},
+    {name:'VLC',           key:'vlc.exe',            cls:'ti-player-play'},
+    {name:'MPC-HC',        key:'mpc-hc.exe',         cls:'ti-player-play'},
+    {name:'MPV',           key:'mpv.exe',            cls:'ti-player-play'},
+    {name:'Windows Media', key:'wmplayer.exe',       cls:'ti-player-play'},
+    {name:'iTunes',        key:'itunes.exe',         cls:'ti-brand-apple'},
+    {name:'Foobar2000',    key:'foobar2000.exe',     cls:'ti-music'},
+    {name:'YouTube Music', key:'music.youtube.com',  cls:'ti-music'},
+    {name:'SoundCloud',    key:'soundcloud.com',     cls:'ti-brand-soundcloud'},
+  ]},
+  {group:'Games & launchers',items:[
+    {name:'Steam',         key:'steam.exe',          cls:'ti-brand-steam'},
+    {name:'Epic Games',    key:'epicgameslauncher.exe',cls:'ti-device-gamepad'},
+    {name:'GOG Galaxy',    key:'goggalaxy.exe',      cls:'ti-device-gamepad'},
+    {name:'Battle.net',    key:'battle.net.exe',     cls:'ti-device-gamepad'},
+    {name:'Unity',         key:'unity.exe',          cls:'ti-brand-unity'},
+    {name:'Unreal Engine', key:'ue4editor.exe',      cls:'ti-brand-unity'},
+    {name:'Godot',         key:'godot.exe',          cls:'ti-brand-godot'},
+  ]},
+  {group:'Cloud & storage',items:[
+    {name:'Dropbox',       key:'dropbox.exe',        cls:'ti-brand-dropbox'},
+    {name:'OneDrive',      key:'onedrive.exe',       cls:'ti-brand-onedrive'},
+    {name:'Google Drive',  key:'googledrivefs.exe',  cls:'ti-brand-google-drive'},
+    {name:'Box',           key:'box.exe',            cls:'ti-box'},
+    {name:'Mega',          key:'mega.exe',           cls:'ti-cloud'},
+    {name:'S3 / AWS',      key:'aws.amazon.com',     cls:'ti-brand-aws'},
+    {name:'Azure',         key:'portal.azure.com',   cls:'ti-brand-azure'},
+    {name:'GCP',           key:'console.cloud.google.com',cls:'ti-brand-google-cloud'},
+  ]},
+  {group:'System & utilities',items:[
+    {name:'File Explorer', key:'explorer.exe',       cls:'ti-folder'},
+    {name:'Task Manager',  key:'taskmgr.exe',        cls:'ti-activity'},
+    {name:'Registry',      key:'regedit.exe',        cls:'ti-settings'},
+    {name:'Control Panel', key:'control.exe',        cls:'ti-adjustments'},
+    {name:'Snipping Tool', key:'snippingtool.exe',   cls:'ti-scissors'},
+    {name:'Calculator',    key:'calculator.exe',     cls:'ti-calculator'},
+    {name:'Paint',         key:'mspaint.exe',        cls:'ti-brush'},
+    {name:'Paint 3D',      key:'paintdotnet.exe',    cls:'ti-brush'},
+    {name:'7-Zip',         key:'7zfm.exe',           cls:'ti-file-zip'},
+    {name:'WinRAR',        key:'winrar.exe',         cls:'ti-file-zip'},
+    {name:'Everything',    key:'everything.exe',     cls:'ti-search'},
+    {name:'PowerToys',     key:'powertoys.exe',      cls:'ti-tools'},
+    {name:'AutoHotkey',    key:'autohotkey.exe',     cls:'ti-script'},
+    {name:'Greenshot',     key:'greenshot.exe',      cls:'ti-camera'},
+    {name:'ShareX',        key:'sharex.exe',         cls:'ti-camera'},
+    {name:'Ditto',         key:'ditto.exe',          cls:'ti-clipboard'},
+    {name:'Flow Launcher', key:'flow-launcher.exe',  cls:'ti-search'},
+    {name:'Keypirinha',    key:'keypirinha.exe',      cls:'ti-search'},
+    {name:'Rainmeter',     key:'rainmeter.exe',      cls:'ti-device-desktop'},
+    {name:'f.lux',         key:'flux.exe',           cls:'ti-sun'},
+    {name:'ShellHost',     key:'shellexperiencehost.exe',cls:'ti-layout-dashboard'},
+    {name:'TimeLens',      key:'timelens.trayapp.exe',cls:'ti-clock-hour-4'},
+  ]},
+  {group:'Fallbacks by category',items:[
+    {name:'Unknown app',   key:'default',            cls:'ti-app'},
+    {name:'Development',   key:'cat-development',    cls:'ti-code'},
+    {name:'Browsing',      key:'cat-browsing',       cls:'ti-world'},
+    {name:'Communication', key:'cat-communication',  cls:'ti-message'},
+    {name:'Media',         key:'cat-media',          cls:'ti-player-play'},
+    {name:'Design',        key:'cat-design',         cls:'ti-vector'},
+    {name:'Documents',     key:'cat-documents',      cls:'ti-file-text'},
+    {name:'System',        key:'cat-system',         cls:'ti-settings-2'},
+    {name:'Games',         key:'cat-games',          cls:'ti-device-gamepad'},
+    {name:'Productivity',  key:'cat-productivity',   cls:'ti-checklist'},
+    {name:'Other',         key:'cat-other',          cls:'ti-dots'},
+    {name:'Idle',          key:'cat-idle',           cls:'ti-moon'},
+  ]},
+];
+
+let allItems = [];
+DATA.forEach(g => g.items.forEach(item => allItems.push({...item, group:g.group})));
+
+document.getElementById('count').textContent = allItems.length + ' icons — click any to copy the class name';
+
+function renderAll(items) {
+  const sections = document.getElementById('sections');
+  sections.innerHTML = '';
+  const groups = {};
+  items.forEach(item => {
+    if (!groups[item.group]) groups[item.group] = [];
+    groups[item.group].push(item);
+  });
+  Object.entries(groups).forEach(([gname, gitems]) => {
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = `<div class="section-hd">${gname}</div><div class="grid" id="grid-${gname.replace(/\W/g,'_')}"></div>`;
+    sections.appendChild(sec);
+    const grid = sec.querySelector('.grid');
+    gitems.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.innerHTML = `<i class="ti ${item.cls}" aria-hidden="true"></i><div class="item-text"><div class="item-name">${item.name}</div><div class="item-class">${item.cls}</div></div>`;
+      el.addEventListener('click', () => {
+        navigator.clipboard.writeText(item.cls).catch(()=>{});
+        const c = document.getElementById('copied');
+        c.textContent = 'Copied: ' + item.cls;
+        c.classList.add('show');
+        setTimeout(() => c.classList.remove('show'), 1500);
+      });
+      grid.appendChild(el);
+    });
+  });
+}
+
+function filterIcons() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  if (!q) { renderAll(allItems); document.getElementById('count').textContent = allItems.length + ' icons — click any to copy the class name'; return; }
+  const filtered = allItems.filter(i =>
+    i.name.toLowerCase().includes(q) ||
+    i.key.toLowerCase().includes(q) ||
+    i.cls.toLowerCase().includes(q) ||
+    i.group.toLowerCase().includes(q)
+  );
+  renderAll(filtered);
+  document.getElementById('count').textContent = filtered.length + ' results';
+}
+
+renderAll(allItems);
+</script>

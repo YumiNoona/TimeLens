@@ -16,6 +16,10 @@ public sealed class WinEventWatcher : IDisposable
 
     public event Action<string, string, int>? ForegroundChanged;
 
+    private string _lastExe = "";
+    private string _lastTitle = "";
+    private long _lastFireTicks;
+
     public WinEventWatcher()
     {
         _hookDelegate = OnWinEvent;
@@ -45,17 +49,6 @@ public sealed class WinEventWatcher : IDisposable
     {
         if (hwnd == IntPtr.Zero) return;
 
-        // For name-change events, only fire for top-level windows, and only if
-        // they belong to the same PID as the current foreground window.
-        if (eventType == EVENT_OBJECT_NAMECHANGE)
-        {
-            if (idObject != OBJID_WINDOW) return;
-            var fgHwnd = Win32.GetForegroundWindow();
-            Win32.GetWindowThreadProcessId(fgHwnd, out var fgPid);
-            Win32.GetWindowThreadProcessId(hwnd, out var changedPid);
-            if (fgPid != changedPid) return;
-        }
-
         var sb = new System.Text.StringBuilder(256);
         Win32.GetWindowText(hwnd, sb, sb.Capacity);
         var title = sb.ToString();
@@ -63,6 +56,29 @@ public sealed class WinEventWatcher : IDisposable
         Win32.GetWindowThreadProcessId(hwnd, out var pid);
 
         var exeName = ResolveExeName((int)pid);
+
+        // Debounce name-change events — VS Code fires hundreds per minute
+        // when switching files. Skip writes when title hasn't changed and
+        // less than 5 seconds have passed since the last write for this exe.
+        if (eventType == EVENT_OBJECT_NAMECHANGE)
+        {
+            if (idObject != OBJID_WINDOW) return;
+            var fgHwnd = Win32.GetForegroundWindow();
+            Win32.GetWindowThreadProcessId(fgHwnd, out var fgPid);
+            Win32.GetWindowThreadProcessId(hwnd, out var changedPid);
+            if (fgPid != changedPid) return;
+
+            if (string.Equals(exeName, _lastExe, StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(title, _lastTitle, StringComparison.Ordinal)) return;
+                var nowTicks = Environment.TickCount64;
+                if (nowTicks - _lastFireTicks < 5_000) return;
+                _lastFireTicks = nowTicks;
+            }
+        }
+
+        _lastExe = exeName;
+        _lastTitle = title;
 
         ForegroundChanged?.Invoke(exeName, title, (int)pid);
     }

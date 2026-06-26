@@ -138,6 +138,17 @@ public sealed class AnalyticsService
             """;
         var productiveSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
+        // Sum "other" time — unclassified, treated as neutral in focus score
+        cmd.CommandText = """
+            SELECT COALESCE(SUM(
+                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+            ), 0) FROM app_events
+            WHERE start_time >= $today AND start_time < $tomorrow
+              AND session_state = 'active'
+              AND (category = 'other' OR category IS NULL)
+            """;
+        var otherSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+
         cmd.Parameters.AddWithValue("$yday", yesterday.ToString("o"));
 
         cmd.CommandText = """
@@ -175,7 +186,14 @@ public sealed class AnalyticsService
             }
         }
 
-        var focusScore = activeSecs > 0 ? (int)Math.Round((double)productiveSecs / activeSecs * 100) : 0;
+        // "other" is unclassified and treated as neutral — excluded from denominator
+        // so it doesn't penalize the score. Edge: if everything is "other", score 50% (neutral).
+        var scoredSecs = activeSecs - otherSecs;
+        var focusScore = activeSecs > 0
+            ? scoredSecs <= 0
+                ? 50
+                : (int)Math.Round((double)productiveSecs / scoredSecs * 100)
+            : 0;
 
         // Input totals
         int totalKeys = 0, totalClicks = 0;
@@ -260,6 +278,7 @@ public sealed class AnalyticsService
 
             if (endHour <= startHour) continue; // skip broken rows with negative duration
             var durationSecs = (int)(end - start).TotalSeconds;
+            if (durationSecs < 5) continue; // skip sub-second noise / artifacts
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 

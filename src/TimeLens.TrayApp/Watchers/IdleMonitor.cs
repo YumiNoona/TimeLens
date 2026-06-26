@@ -18,6 +18,10 @@ public sealed class IdleMonitor
 
     public int IdleThresholdSeconds { get; set; } = 180;
 
+    // Maximum seconds audio can sustain "active" state without confirmed user input.
+    // Once exceeded, audio alone is not enough — the session is considered idle.
+    public int AudioSustainedMaxSeconds { get; set; } = 7200; // 2 hours
+
     public event Action<string, string>? StateChanged;
 
     private string _lastState = "active";
@@ -39,22 +43,35 @@ public sealed class IdleMonitor
 
     public bool IsIdle()
     {
-        if (IsAudioActive()) return false;
-
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return false;
+        var elapsedMs = ElapsedSince(lii.dwTime);
 
-        return ElapsedSince(lii.dwTime) >= IdleThresholdSeconds * 1000;
+        if (IsAudioActive())
+        {
+            // Audio keeps us "active" but only up to the sustained max.
+            // After 2h of no input, even audio playing is idle.
+            return elapsedMs >= AudioSustainedMaxSeconds * 1000;
+        }
+
+        return elapsedMs >= IdleThresholdSeconds * 1000;
     }
 
     public int IdleSeconds()
     {
-        if (IsAudioActive()) return 0;
-
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return 0;
 
-        return (int)(ElapsedSince(lii.dwTime) / 1000);
+        var elapsed = (int)(ElapsedSince(lii.dwTime) / 1000);
+
+        if (IsAudioActive())
+        {
+            // Audio masks idle below AudioSustainedMaxSeconds; bail at zero
+            // so consumers don't see accumulating idle seconds while audio plays.
+            return elapsed >= AudioSustainedMaxSeconds ? elapsed : 0;
+        }
+
+        return elapsed;
     }
 
     internal void ResetLastState()

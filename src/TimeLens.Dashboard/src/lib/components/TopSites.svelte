@@ -5,6 +5,9 @@
 
   let { sites }: { sites: BrowserEntry[] } = $props();
 
+  const strippedDomains = $derived(
+    sites.map(s => ({ ...s, displayDomain: s.domain.replace(/^www\./, '') }))
+  );
   const maxVisits = $derived(sites.length > 0 ? sites[0].visits : 1);
 </script>
 
@@ -18,7 +21,7 @@
     <p class="empty-msg">No browsing activity today.</p>
   {:else}
     <div class="site-list">
-      {#each sites as site, i}
+      {#each strippedDomains as site, i}
         {@const icon = appIcon(site.domain)}
         <div class="site-row">
           {#if icon}
@@ -26,7 +29,7 @@
           {:else}
             <span class="site-icon" style="background: {colorForApp(i)}">{site.domain.charAt(0).toUpperCase()}</span>
           {/if}
-          <span class="site-name" title={site.domain}>{site.domain}</span>
+          <span class="site-name" title={site.domain}>{site.displayDomain}</span>
           <div class="site-bar-track">
             <div class="site-bar-fill" style="width: {Math.round(site.visits / maxVisits * 100)}%"></div>
           </div>
@@ -73,8 +76,8 @@
   }
 
   .site-name {
-    width: 112px;
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 0;
     font-size: var(--text-sm);
     color: var(--clr-text-pri);
     white-space: nowrap;

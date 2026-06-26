@@ -310,8 +310,22 @@ internal static class Program
             catch { }
         }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
 
+        // Browser exes for which we skip app-level rows when the extension is active.
+        // Without this, every tab switch also creates an app row → redundant Browsing entries.
+        var browserExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome.exe", "msedge.exe", "microsoftedge.exe", "firefox.exe",
+            "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe"
+        };
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
+            // Skip app-level rows for browsers when the extension is connected.
+            // The extension handles tab-level granularity; an app row is redundant.
+            if (browserExes.Contains(exe) &&
+                (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2)
+                return;
+
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();
             var project = CategoryClassifier.ExtractProject(exe, title);

@@ -44,6 +44,9 @@
 
   const isActiveType = (t: string) => t !== 'idle' && t !== 'away' && t !== 'gap';
 
+  // Filter out sub-10s noise blocks from display (but keep for window calculations)
+  const displayBlocks = $derived(blocks.filter(b => b.durationSeconds >= 10 || !isActiveType(b.type)));
+
   let trackEl: HTMLDivElement;
 
   // Tooltip left position — clamped to card bounds
@@ -67,7 +70,7 @@
       role="img"
       aria-label="Activity timeline from {minHour.toFixed(1)}h to {maxHour.toFixed(1)}h"
     >
-      {#each blocks as block}
+      {#each displayBlocks as block}
         {@const active = isActiveType(block.type)}
         <div
           class="tl-block"

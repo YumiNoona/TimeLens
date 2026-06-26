@@ -54,17 +54,19 @@
     let nodeId = 0;
 
     for (const cat of cats) {
-      // Level 1: group by exeName (merge adjacent same-exe runs)
-      const appGroups: { exe: string; startHour: number; endHour: number; blocks: TimelineBlock[] }[] = [];
+      // Level 1: group ALL blocks for the same exe into one parent (not split by time)
+      const appMap = new Map<string, { exe: string; startHour: number; endHour: number; blocks: TimelineBlock[] }>();
       for (const b of cat.blocks) {
-        const last = appGroups[appGroups.length - 1];
-        if (last && last.exe === b.exeName && Math.abs(last.endHour - b.startHour) < 0.1) {
-          last.endHour = b.endHour;
-          last.blocks.push(b);
-        } else {
-          appGroups.push({ exe: b.exeName, startHour: b.startHour, endHour: b.endHour, blocks: [b] });
+        if (b.durationSeconds < 5) continue; // skip sub-5s noise inside groups
+        if (!appMap.has(b.exeName)) {
+          appMap.set(b.exeName, { exe: b.exeName, startHour: b.startHour, endHour: b.endHour, blocks: [] });
         }
+        const ag = appMap.get(b.exeName)!;
+        ag.startHour = Math.min(ag.startHour, b.startHour);
+        ag.endHour = Math.max(ag.endHour, b.endHour);
+        ag.blocks.push(b);
       }
+      const appGroups = [...appMap.values()].sort((a, b) => a.startHour - b.startHour);
 
       const catChildren: TreeNode[] = [];
       for (const ag of appGroups) {

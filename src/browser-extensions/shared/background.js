@@ -26,14 +26,12 @@ setInterval(sendHeartbeat, 30_000);
 sendHeartbeat();
 
 // --- Tab heartbeat: bounds duration miscalculation to ~45s ---
-var _lastTabHeartbeatId = null;
 function sendTabHeartbeat() {
+  if (!trackingEnabled) return;
   api.tabs.query({ active: true, currentWindow: true }, function(tabs) {
     if (!tabs || !tabs.length || !tabs[0].url || tabs[0].url.indexOf('http') !== 0) return;
     var tab = tabs[0];
-    // Only send heartbeat if we have a tracked tab
     if (!lastUrl[tab.id]) return;
-    _lastTabHeartbeatId = tab.id;
     try {
       var u = new URL(tab.url);
       fetch(TAB_HEARTBEAT_API, {
@@ -265,7 +263,7 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
 
 api.tabs.onRemoved.addListener(function(tabId) {
   if (lastUrl[tabId]) {
-    var body = { tabId: tabId, _leave: true };
+    var body = { tabId: tabId, browser: BROWSER, _leave: true };
     fetch(LEAVE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

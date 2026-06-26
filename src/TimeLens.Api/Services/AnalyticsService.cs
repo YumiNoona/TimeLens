@@ -325,6 +325,22 @@ public sealed class AnalyticsService
         // Sort merged app-event and idle-span blocks by start time
         blocks.Sort((a, b) => a.StartHour.CompareTo(b.StartHour));
 
+        // Merge consecutive same-category blocks separated by <30s gaps.
+        // Collapses the Browsing ↔ Development ping-pong from rapid alt-tabbing.
+        for (int i = blocks.Count - 1; i >= 1; i--)
+        {
+            if (blocks[i].Type == blocks[i - 1].Type &&
+                blocks[i].StartHour - blocks[i - 1].EndHour < 30.0 / 3600)
+            {
+                blocks[i - 1] = blocks[i - 1] with
+                {
+                    EndHour = blocks[i].EndHour,
+                    DurationSeconds = blocks[i - 1].DurationSeconds + blocks[i].DurationSeconds
+                };
+                blocks.RemoveAt(i);
+            }
+        }
+
         return blocks.ToArray();
     }
 

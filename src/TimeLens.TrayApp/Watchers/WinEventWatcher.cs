@@ -53,6 +53,17 @@ public sealed class WinEventWatcher : IDisposable
         Win32.GetWindowText(hwnd, sb, sb.Capacity);
         var title = sb.ToString();
 
+        // Sanitize noise titles before firing
+        if (title.StartsWith("About:Blank", StringComparison.OrdinalIgnoreCase) ||
+            (title.Contains("?CreateFlags=", StringComparison.OrdinalIgnoreCase) && title.Contains("&Pid=", StringComparison.OrdinalIgnoreCase)))
+        {
+            title = "";
+        }
+        else if (title.StartsWith("Address: ", StringComparison.OrdinalIgnoreCase))
+        {
+            title = title["Address: ".Length..];
+        }
+
         Win32.GetWindowThreadProcessId(hwnd, out var pid);
 
         var exeName = ResolveExeName((int)pid);
@@ -75,6 +86,17 @@ public sealed class WinEventWatcher : IDisposable
                 if (nowTicks - _lastFireTicks < 5_000) return;
                 _lastFireTicks = nowTicks;
             }
+        }
+
+        // Debounce rapid same-exe foreground switches (e.g. alt-tab browser ↔ editor).
+        // Each switch fires ForegroundChanged → OpenAppEvent, creating alternating
+        // sub-second rows. 2s floor prevents this flash noise.
+        if (eventType == EVENT_SYSTEM_FOREGROUND &&
+            string.Equals(exeName, _lastExe, StringComparison.OrdinalIgnoreCase))
+        {
+            var nowTicks = Environment.TickCount64;
+            if (nowTicks - _lastFireTicks < 2_000) return;
+            _lastFireTicks = nowTicks;
         }
 
         _lastExe = exeName;

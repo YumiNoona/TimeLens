@@ -209,12 +209,12 @@
       </div>
       <label class="setting-row">
         <div class="setting-info">
-          <span class="setting-label">Grouped Timeline</span>
+          <span class="setting-label">{timelineGrouped ? 'Grouped' : 'Flat'}</span>
           <span class="setting-desc">Collapse same-category runs. Turn off to show every event flat.</span>
         </div>
         <div class="control">
           <input type="checkbox" class="toggle" checked={timelineGrouped}
-            onchange={() => save('timelineGrouped', timelineGrouped)} />
+            onchange={(e) => save('timelineGrouped', (e.currentTarget as HTMLInputElement).checked)} />
         </div>
       </label>
       <label class="setting-row last">

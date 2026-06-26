@@ -18,7 +18,9 @@ public static class ApiHost
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     public const int DefaultPort = 47821;
-    private static readonly ConcurrentDictionary<int, long> OpenBrowserEvents = new();
+    private static readonly ConcurrentDictionary<string, long> OpenBrowserEvents = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
@@ -28,8 +30,9 @@ public static class ApiHost
         "conhost", "fontdrvhost",
         "svchost", "dwm", "csrss", "smss", "wininit", "winlogon", "services",
         "lsass", "spoolsv", "taskhostw", "sihost",
-        "TimeLens.TrayApp", "NVDisplay.Container", "NVIDIA Share", "nvsphelper64",
+        "TimeLens.TrayApp", "TimeLens", "NVDisplay.Container", "NVIDIA Share", "nvsphelper64",
         "explorer", "CalculatorApp",
+        "steamwebhelper", "SteamWebHelper", "SteamService", "SteamClientBootstrapper",
     };
     public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
 
@@ -569,7 +572,7 @@ public static class ApiHost
             await conn.OpenAsync();
 
             // Close previous event for this tab (if any)
-            if (evt.TabId > 0 && OpenBrowserEvents.TryRemove(evt.TabId, out var prevEventId))
+            if (evt.TabId > 0 && OpenBrowserEvents.TryRemove(TabKey(evt.Browser, evt.TabId), out var prevEventId))
             {
                 using var closeCmd = conn.CreateCommand();
                 closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
@@ -598,7 +601,7 @@ public static class ApiHost
                 using var getIdCmd = conn.CreateCommand();
                 getIdCmd.CommandText = "SELECT last_insert_rowid()";
                 var newEventId = (long)(await getIdCmd.ExecuteScalarAsync())!;
-                OpenBrowserEvents[evt.TabId] = newEventId;
+                OpenBrowserEvents[TabKey(evt.Browser, evt.TabId)] = newEventId;
             }
 
             ctx.Response.StatusCode = 200;
@@ -612,7 +615,8 @@ public static class ApiHost
             var root = doc.RootElement;
             if (root.TryGetProperty("tabId", out var tabProp) && tabProp.TryGetInt32(out var tabId) && tabId > 0)
             {
-                if (OpenBrowserEvents.TryRemove(tabId, out var eventId))
+                var browser = root.TryGetProperty("browser", out var b) ? b.GetString() ?? "browser" : "browser";
+                if (OpenBrowserEvents.TryRemove(TabKey(browser, tabId), out var eventId))
                 {
                     using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
                     await conn.OpenAsync();
@@ -647,7 +651,7 @@ public static class ApiHost
             await conn.OpenAsync();
 
             // Close the current open row for this tab
-            if (OpenBrowserEvents.TryRemove(tabId, out var prevEventId))
+            if (OpenBrowserEvents.TryRemove(TabKey(browser, tabId), out var prevEventId))
             {
                 using var closeCmd = conn.CreateCommand();
                 closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
@@ -673,7 +677,7 @@ public static class ApiHost
 
             using var getIdCmd = conn.CreateCommand();
             getIdCmd.CommandText = "SELECT last_insert_rowid()";
-            OpenBrowserEvents[tabId] = (long)(await getIdCmd.ExecuteScalarAsync())!;
+            OpenBrowserEvents[TabKey(browser, tabId)] = (long)(await getIdCmd.ExecuteScalarAsync())!;
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";

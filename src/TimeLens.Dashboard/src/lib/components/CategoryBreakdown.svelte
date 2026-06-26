@@ -7,9 +7,10 @@
 
   const total = $derived(categories.reduce((a, c) => a + c.minutes, 0) || 1);
   const sorted = $derived([...categories].sort((a, b) => b.minutes - a.minutes));
-  const top = $derived(sorted.slice(0, 5));
+  const top5 = $derived(sorted.slice(0, 5));
 
-  const CIR = 2 * Math.PI * 28;
+  const R = 42;
+  const CIR = 2 * Math.PI * R;
   const slices = $derived.by(() => {
     let off = 0;
     return sorted.map(cat => {
@@ -23,34 +24,50 @@
 </script>
 
 <div class="card">
-  <div class="card-title">
-    <i class="ti ti-chart-bar" aria-hidden="true"></i>
-    Categories
+  <div class="card-header">
+    <i class="ti ti-chart-pie" aria-hidden="true"></i>
+    <div class="card-title">Categories</div>
   </div>
 
-  <div class="donut-row">
-    <svg viewBox="0 0 80 80" class="donut-svg" aria-label="Category breakdown donut">
-      <circle cx="40" cy="40" r="28" fill="none" stroke="var(--clr-bg-ter)" stroke-width="12" />
-      {#each slices as slice}
-        <circle
-          cx="40" cy="40" r="28"
-          fill="none"
-          stroke={slice.color}
-          stroke-width="12"
-          stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
-          stroke-dashoffset={slice.dashOffset}
-          transform="rotate(-90 40 40)"
-        />
+  <div class="cat-body">
+    <div class="cat-left">
+      {#each top5 as cat}
+        <div class="cat-tag">
+          <span class="cat-dot" style="background: {colorForCategory(cat.name)}"></span>
+          <span class="cat-tag-name">{cat.name}</span>
+        </div>
       {/each}
-    </svg>
+    </div>
 
-    <div class="cat-list">
-      {#each top as cat}
-        <div class="cat-dot-row">
-          <div class="cat-dot" style="background: {colorForCategory(cat.name)}"></div>
-          <span class="cat-dot-name">{cat.name}</span>
-          <span class="cat-dot-pct" style="color: {colorForCategory(cat.name)}">{cat.percentage}%</span>
-          <span class="cat-dot-time">{fmtTime(cat.minutes)}</span>
+    <div class="cat-center">
+      <div class="cat-donut">
+        <svg viewBox="0 0 100 100" aria-label="Category breakdown donut chart">
+          <circle cx="50" cy="50" r={R} fill="none" stroke="var(--clr-bg-ter)" stroke-width="14" />
+          {#each slices as slice}
+            <circle
+              cx="50" cy="50" r={R}
+              fill="none"
+              stroke={slice.color}
+              stroke-width="14"
+              stroke-dasharray="{slice.dashArray} {CIR - slice.dashArray}"
+              stroke-dashoffset={slice.dashOffset}
+              transform="rotate(-90 50 50)"
+              stroke-linecap="butt"
+            />
+          {/each}
+        </svg>
+        <div class="cat-donut-center">
+          <span class="cat-total">{sorted.length}</span>
+          <span class="cat-total-label">categories</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cat-right">
+      {#each top5 as cat}
+        <div class="cat-stat">
+          <span class="cat-pct">{cat.percentage}%</span>
+          <span class="cat-time">{fmtTime(cat.minutes)}</span>
         </div>
       {/each}
     </div>
@@ -58,37 +75,115 @@
 </div>
 
 <style>
-  .donut-row {
-    display: flex; align-items: flex-start; gap: 12px;
-    font-size: 13px;
+  .cat-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-5);
   }
 
-  .donut-svg {
-    width: 60px; height: 60px; flex-shrink: 0;
+  .cat-left {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    align-items: flex-end;
+    flex: 1;
   }
 
-  .cat-list { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-
-  .cat-dot-row {
-    display: flex; align-items: center; gap: 6px;
+  .cat-tag {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
   }
 
   .cat-dot {
-    width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
   }
 
-  .cat-dot-name {
-    width: 64px; font-size: 13px; color: var(--clr-text-pri);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+  .cat-tag-name {
+    font-size: var(--text-sm);
+    color: var(--clr-text-pri);
+    font-weight: var(--weight-medium);
+    text-transform: capitalize;
   }
 
-  .cat-dot-pct {
-    width: 32px; text-align: right; font-weight: 500;
-    font-family: var(--font-mono); flex-shrink: 0;
+  .cat-center {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .cat-dot-time {
-    font-size: 11px; color: var(--clr-text-sec);
-    font-family: var(--font-mono); text-align: right; flex: 1;
+  .cat-donut {
+    position: relative;
+    width: 160px;
+    height: 160px;
+  }
+
+  .cat-donut svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .cat-donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cat-total {
+    font-size: var(--text-2xl);
+    font-weight: var(--weight-bold);
+    color: var(--clr-text-pri);
+    line-height: 1;
+    font-family: var(--font-mono);
+  }
+
+  .cat-total-label {
+    font-size: 10px;
+    color: var(--clr-text-ter);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: var(--weight-medium);
+    margin-top: 4px;
+  }
+
+  .cat-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    flex: 1;
+  }
+
+  .cat-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+  }
+
+  .cat-pct {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+    font-family: var(--font-mono);
+    font-feature-settings: 'tnum';
+    min-width: 32px;
+    text-align: right;
+  }
+
+  .cat-time {
+    font-size: var(--text-xs);
+    color: var(--clr-text-sec);
+    font-family: var(--font-mono);
+    font-feature-settings: 'tnum';
+    min-width: 48px;
+    text-align: right;
   }
 </style>

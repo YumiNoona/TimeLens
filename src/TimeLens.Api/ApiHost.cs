@@ -307,6 +307,20 @@ public static class ApiHost
 
             upsertRule?.Invoke(pattern, category, ruleType, target, priority);
 
+            // Backfill existing uncategorized events matching this pattern
+            using (var bfCmd = conn.CreateCommand())
+            {
+                bfCmd.CommandText = """
+                    UPDATE app_events SET category = $cat
+                    WHERE (category = 'other' OR category IS NULL)
+                      AND session_state = 'active'
+                      AND exe_name = $pattern
+                    """;
+                bfCmd.Parameters.AddWithValue("$cat", category);
+                bfCmd.Parameters.AddWithValue("$pattern", pattern);
+                await bfCmd.ExecuteNonQueryAsync();
+            }
+
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");

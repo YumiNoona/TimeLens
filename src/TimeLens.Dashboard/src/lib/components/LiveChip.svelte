@@ -24,49 +24,62 @@
   .live-chip {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(200,232,106,0.12);
-    border: 0.5px solid rgba(200,232,106,0.4);
-    font-size: 11px;
-    font-weight: 500;
-    color: #7a9a00;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    background: rgba(200,232,106,0.1);
+    border: 1px solid rgba(200,232,106,0.2);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--md-primary);
+    backdrop-filter: blur(8px);
+    transition: border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .live-chip:hover {
+    border-color: rgba(200,232,106,0.35);
   }
 
   .live-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: #8ab800;
-    animation: pulse 1.8s ease-in-out infinite;
+    background: var(--md-primary);
+    box-shadow: 0 0 8px rgba(200,232,106,0.4);
+    animation: pulse 2s ease-in-out infinite;
   }
 
   .live-dot.idle {
     background: var(--md-secondary);
+    box-shadow: 0 0 8px rgba(232,162,58,0.4);
   }
 
   @keyframes pulse {
-    0%, 100% { opacity: 1 }
-    50% { opacity: 0.4 }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
   }
 
   .audio-icon {
-    font-size: 13px;
+    font-size: var(--text-base);
     color: var(--md-tertiary);
   }
 
   .live-app {
     font-family: var(--font-mono);
-    font-size: 11px;
-    color: #7a9a00;
+    font-size: var(--text-sm);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .live-sep { color: rgba(122,154,0,0.4); }
+  .live-sep {
+    opacity: 0.3;
+  }
 
   .live-idle {
-    color: rgba(122,154,0,0.7);
+    opacity: 0.7;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-sm);
   }
 </style>

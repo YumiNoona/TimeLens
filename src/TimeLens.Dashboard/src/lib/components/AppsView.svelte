@@ -17,6 +17,8 @@
   let inputData = $state<InputEntry[]>([]);
   let uncategorized = $state<{ exe: string; seconds: number }[]>([]);
   let assigningFor = $state<string | null>(null);
+  let saving = $state<string | null>(null);
+  let saveError = $state<string | null>(null);
 
   const CATEGORIES = [
     'development', 'work', 'documents', 'communication', 'design',
@@ -32,15 +34,22 @@
   }
 
   async function assignCategory(exe: string, category: string) {
+    saving = exe;
+    saveError = null;
     try {
-      await fetch('http://127.0.0.1:47821/api/rules', {
+      const r = await fetch('http://127.0.0.1:47821/api/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pattern: exe, category, ruleType: 'substring', target: 'exe', priority: 0 })
       });
-    } catch { }
-    uncategorized = uncategorized.filter(u => u.exe !== exe);
-    assigningFor = null;
+      if (!r.ok) throw new Error(`Server returned ${r.status}`);
+      assigningFor = null;
+      await loadUncategorized();
+    } catch (e) {
+      saveError = e instanceof Error ? e.message : 'Failed to save';
+    } finally {
+      saving = null;
+    }
   }
 
   onMount(async () => {
@@ -131,8 +140,12 @@
       <h2 class="section-title">
         <i class="ti ti-tag-off" aria-hidden="true"></i>
         Uncategorized ({uncategorized.length})
-        <span class="section-hint">Click to assign a category — creates a rule</span>
+        <span class="section-hint">Click Assign to add a category rule</span>
       </h2>
+
+      {#if saveError}
+        <div class="save-error">{saveError}</div>
+      {/if}
 
       <div class="uncat-list" role="list">
         {#each uncategorized as item}
@@ -140,12 +153,14 @@
             <span class="uncat-exe">{item.exe}</span>
             <span class="uncat-time">{Math.floor(item.seconds / 60)}m</span>
 
-            {#if assigningFor === item.exe}
+            {#if saving === item.exe}
+              <span class="uncat-saving">Saving…</span>
+            {:else if assigningFor === item.exe}
               <div class="uncat-picker">
                 {#each CATEGORIES as cat}
                   <button class="cat-pill" onclick={() => assignCategory(item.exe, cat)}>{cat}</button>
                 {/each}
-                <button class="cat-cancel" onclick={() => assigningFor = null}>x</button>
+                <button class="cat-cancel" onclick={() => assigningFor = null} aria-label="Cancel">x</button>
               </div>
             {:else}
               <button class="uncat-assign" onclick={() => assigningFor = item.exe}>Assign</button>
@@ -261,5 +276,26 @@
     font-size: 11px; padding: 2px 8px;
     border: 1px solid var(--clr-border); border-radius: var(--shape-full);
     background: none; color: var(--clr-text-ter); cursor: pointer; font-family: inherit;
+  }
+  .cat-cancel:hover { color: var(--md-error); border-color: var(--md-error); }
+
+  .uncat-saving {
+    font-size: 11px; color: var(--md-primary); font-weight: 500; flex-shrink: 0;
+    animation: saving-pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes saving-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .save-error {
+    background: var(--md-err-cont);
+    color: var(--md-error);
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--shape-sm);
+    font-size: 12px;
+    margin-bottom: var(--sp-2);
+    border: 1px solid rgba(224,112,112,0.2);
   }
 </style>

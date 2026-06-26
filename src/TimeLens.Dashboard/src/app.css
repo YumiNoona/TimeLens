@@ -11,6 +11,7 @@ html, body, #app {
 }
 
 :root {
+  /* ── Surface colors ── */
   --md-surface:       #0D0F0A;
   --md-surface-1:     #141810;
   --md-surface-2:     #1C2118;
@@ -18,47 +19,109 @@ html, body, #app {
   --md-outline:       rgba(255,255,255,0.08);
   --md-outline-var:   rgba(255,255,255,0.14);
 
+  /* ── Primary (green) ── */
   --md-primary:       #C8E86A;
   --md-on-primary:    #151E00;
   --md-primary-cont:  #1E2E00;
   --md-on-pri-cont:   #D6F572;
 
+  /* ── Secondary (amber) ── */
   --md-secondary:     #E8A23A;
   --md-on-secondary:  #211500;
   --md-sec-cont:      #2C1E00;
 
+  /* ── Tertiary (teal) ── */
   --md-tertiary:      #7ECFA8;
   --md-on-tertiary:   #00331F;
   --md-ter-cont:      #00472B;
 
+  /* ── Error ── */
   --md-error:         #E07070;
   --md-err-cont:      #3B1212;
 
+  /* ── On-surface ── */
   --md-on-surf:       #E4E8DC;
   --md-on-surf-var:   #8A9283;
   --md-on-surf-dim:   #4A5145;
 
+  /* ── Semantic aliases ── */
   --clr-bg-pri:   #0D0F0A;
   --clr-bg-sec:   #141810;
   --clr-bg-ter:   #1C2118;
+  --clr-bg-hov:   rgba(255,255,255,0.04);
   --clr-text-pri: #E4E8DC;
   --clr-text-sec: #8A9283;
   --clr-text-ter: #4A5145;
   --clr-border:   rgba(255,255,255,0.08);
+  --clr-border-strong: rgba(255,255,255,0.12);
 
-  --shape-xs:   4px;
-  --shape-sm:   8px;
-  --shape-md:   12px;
-  --shape-lg:   16px;
+  /* ── Type scale (1.25 ratio based on 14px) ── */
+  --text-2xs:  0.625rem;   /* 10px */
+  --text-xs:   0.75rem;    /* 12px */
+  --text-sm:   0.8125rem;  /* 13px */
+  --text-base: 0.875rem;   /* 14px */
+  --text-md:   1rem;       /* 16px */
+  --text-lg:   1.25rem;    /* 20px */
+  --text-xl:   1.5rem;     /* 24px */
+  --text-2xl:  1.875rem;   /* 30px */
+  --text-3xl:  2.25rem;    /* 36px */
+
+  /* ── Font weights ── */
+  --weight-normal:   400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* ── Spacing (4px base unit) ── */
+  --space-1:  0.25rem;  /*  4px */
+  --space-2:  0.5rem;   /*  8px */
+  --space-3:  0.75rem;  /* 12px */
+  --space-4:  1rem;     /* 16px */
+  --space-5:  1.25rem;  /* 20px */
+  --space-6:  1.5rem;   /* 24px */
+  --space-8:  2rem;     /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+
+  /* ── Border radius ── */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-xs:  0 1px 2px rgba(0,0,0,0.3);
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md:  0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+  --shadow-lg:  0 10px 15px rgba(0,0,0,0.3), 0 4px 6px rgba(0,0,0,0.2);
+
+  /* ── Transitions ── */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+
+  /* ── Legacy aliases (keep existing code working) ── */
+  --shape-xs:   var(--radius-xs);
+  --shape-sm:   var(--radius-md);
+  --shape-md:   var(--radius-lg);
+  --shape-lg:   var(--radius-xl);
   --shape-xl:   28px;
-  --shape-full: 9999px;
+  --shape-full: var(--radius-full);
+  --sp-1: var(--space-1); --sp-2: var(--space-2); --sp-3: var(--space-3);
+  --sp-4: var(--space-4); --sp-5: var(--space-5); --sp-6: var(--space-6);
+  --sp-7: 28px; --sp-8: var(--space-8); --sp-10: var(--space-10);
 
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
-  --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px; --sp-10: 40px;
-
-  --font-display: 'Inter', sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
+  /* ── Font families ── */
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
 }
+
+/* ── Theme overrides ── */
 
 .theme-terminal {
   --md-surface:       #080F08;
@@ -114,35 +177,185 @@ html, body, #app {
   --clr-bg-pri:#090C0E;--clr-bg-sec:#10161A;--clr-bg-ter:#161E22;--clr-text-pri:#E4E8DC;--clr-text-sec:#8A9283;--clr-text-ter:#4A5145;--clr-border:rgba(255,255,255,0.08);
 }
 
+.theme-crimson {
+  --md-surface:       #100808;
+  --md-surface-1:     #1A0D0D;
+  --md-surface-2:     #241313;
+  --md-surface-3:     #2E1919;
+  --md-primary:       #E07070;
+  --md-on-primary:    #1A0000;
+  --md-primary-cont:  #2E0A0A;
+  --md-on-pri-cont:   #F09090;
+  --md-secondary:     #D45050;
+  --md-on-secondary:  #1A0000;
+  --md-sec-cont:      #2E0A0A;
+  --md-tertiary:      #F0A0A0;
+  --md-on-tertiary:   #1A0000;
+  --md-ter-cont:      #2E0A0A;
+  --clr-bg-pri:#100808;--clr-bg-sec:#1A0D0D;--clr-bg-ter:#241313;--clr-text-pri:#F0E0E0;--clr-text-sec:#A08080;--clr-text-ter:#604040;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-moss {
+  --md-surface:       #0C0F08;
+  --md-surface-1:     #12180C;
+  --md-surface-2:     #192010;
+  --md-surface-3:     #202814;
+  --md-primary:       #8CB84A;
+  --md-on-primary:    #121E00;
+  --md-primary-cont:  #1C2E0A;
+  --md-on-pri-cont:   #A8D468;
+  --md-secondary:     #6A9E30;
+  --md-on-secondary:  #0E1A00;
+  --md-sec-cont:      #18280A;
+  --md-tertiary:      #B8D480;
+  --md-on-tertiary:   #121E00;
+  --md-ter-cont:      #1C2E0A;
+  --clr-bg-pri:#0C0F08;--clr-bg-sec:#12180C;--clr-bg-ter:#192010;--clr-text-pri:#E4E8DC;--clr-text-sec:#8A9283;--clr-text-ter:#4A5145;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-gold {
+  --md-surface:       #100E08;
+  --md-surface-1:     #1A160C;
+  --md-surface-2:     #241E10;
+  --md-surface-3:     #2E2614;
+  --md-primary:       #F0C040;
+  --md-on-primary:    #1E1400;
+  --md-primary-cont:  #2E2000;
+  --md-on-pri-cont:   #F5D060;
+  --md-secondary:     #E0A830;
+  --md-on-secondary:  #1A1000;
+  --md-sec-cont:      #2A1A00;
+  --md-tertiary:      #F5D880;
+  --md-on-tertiary:   #1E1400;
+  --md-ter-cont:      #2E2000;
+  --clr-bg-pri:#100E08;--clr-bg-sec:#1A160C;--clr-bg-ter:#241E10;--clr-text-pri:#F0E8D0;--clr-text-sec:#A09880;--clr-text-ter:#605840;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-ember {
+  --md-surface:       #100A08;
+  --md-surface-1:     #1A100C;
+  --md-surface-2:     #241610;
+  --md-surface-3:     #2E1C14;
+  --md-primary:       #F08050;
+  --md-on-primary:    #1E0A00;
+  --md-primary-cont:  #2E1400;
+  --md-on-pri-cont:   #F5A070;
+  --md-secondary:     #E06830;
+  --md-on-secondary:  #1A0800;
+  --md-sec-cont:      #2A1000;
+  --md-tertiary:      #F5B090;
+  --md-on-tertiary:   #1E0A00;
+  --md-ter-cont:      #2E1400;
+  --clr-bg-pri:#100A08;--clr-bg-sec:#1A100C;--clr-bg-ter:#241610;--clr-text-pri:#F0E0D8;--clr-text-sec:#A08880;--clr-text-ter:#605048;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-rose {
+  --md-surface:       #0F0A0C;
+  --md-surface-1:     #181014;
+  --md-surface-2:     #22161C;
+  --md-surface-3:     #2C1C24;
+  --md-primary:       #F080A0;
+  --md-on-primary:    #1E0010;
+  --md-primary-cont:  #2E0A1A;
+  --md-on-pri-cont:   #F5A0B8;
+  --md-secondary:     #E06080;
+  --md-on-secondary:  #1A0008;
+  --md-sec-cont:      #2A0818;
+  --md-tertiary:      #F5B0C8;
+  --md-on-tertiary:   #1E0010;
+  --md-ter-cont:      #2E0A1A;
+  --clr-bg-pri:#0F0A0C;--clr-bg-sec:#181014;--clr-bg-ter:#22161C;--clr-text-pri:#F0E0E4;--clr-text-sec:#A08088;--clr-text-ter:#604050;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-clay {
+  --md-surface:       #0E0C0A;
+  --md-surface-1:     #161310;
+  --md-surface-2:     #1E1A16;
+  --md-surface-3:     #26221C;
+  --md-primary:       #C8A080;
+  --md-on-primary:    #1E1000;
+  --md-primary-cont:  #2E1A0A;
+  --md-on-pri-cont:   #E0C0A0;
+  --md-secondary:     #B08860;
+  --md-on-secondary:  #1A0C00;
+  --md-sec-cont:      #2A1608;
+  --md-tertiary:      #E0C8A0;
+  --md-on-tertiary:   #1E1000;
+  --md-ter-cont:      #2E1A0A;
+  --clr-bg-pri:#0E0C0A;--clr-bg-sec:#161310;--clr-bg-ter:#1E1A16;--clr-text-pri:#F0E8E0;--clr-text-sec:#A09890;--clr-text-ter:#605850;--clr-border:rgba(255,255,255,0.08);
+}
+
+.theme-sunset {
+  --md-surface:       #100A08;
+  --md-surface-1:     #1A100C;
+  --md-surface-2:     #241610;
+  --md-surface-3:     #2E1C14;
+  --md-primary:       #F0A060;
+  --md-on-primary:    #1E0E00;
+  --md-primary-cont:  #2E1800;
+  --md-on-pri-cont:   #F5C080;
+  --md-secondary:     #C870A0;
+  --md-on-secondary:  #1A0010;
+  --md-sec-cont:      #2E0A20;
+  --md-tertiary:      #F0C8A0;
+  --md-on-tertiary:   #1E0E00;
+  --md-ter-cont:      #2E1800;
+  --clr-bg-pri:#100A08;--clr-bg-sec:#1A100C;--clr-bg-ter:#241610;--clr-text-pri:#F0E8D8;--clr-text-sec:#A09888;--clr-text-ter:#605848;--clr-border:rgba(255,255,255,0.08);
+}
+
+/* ── Base styles ── */
+
 body {
   background: var(--clr-bg-pri);
   color: var(--clr-text-pri);
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--text-base);
+  font-weight: var(--weight-normal);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--clr-border-strong); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--clr-text-ter); }
+
+/* ── Selection ── */
+::selection {
+  background: rgba(200,232,106,0.2);
+  color: var(--clr-text-pri);
+}
+
+/* ── Utility classes ── */
 
 .card {
   background: var(--clr-bg-sec);
   border: 1px solid var(--clr-border);
-  border-radius: var(--shape-md);
-  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .card-title {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--clr-text-sec);
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.card-title i { font-size: 14px; color: var(--clr-text-sec); }
+.card-title i {
+  font-size: var(--text-md);
+  opacity: 0.7;
+}
 
 .metric-val {
   font-size: 28px;
@@ -154,7 +367,7 @@ body {
 }
 
 .body-text {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 400;
   color: var(--clr-text-pri);
 }
@@ -171,7 +384,7 @@ body {
 .chip-button {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--space-1);
   padding: 5px 12px;
   border: 0.5px solid var(--clr-border);
   border-radius: 999px;

@@ -10,9 +10,9 @@
 </script>
 
 <div class="card">
-  <div class="card-title">
+  <div class="card-header">
     <i class="ti ti-apps" aria-hidden="true"></i>
-    Top apps
+    <div class="card-title">Top apps</div>
   </div>
 
   <div class="app-list">
@@ -22,11 +22,11 @@
         {#if icon}
           <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
         {:else}
-          <div class="app-icon" style="background: {colorForApp(i)}">{app.name.charAt(0).toUpperCase()}</div>
+          <span class="app-icon" style="background: {colorForApp(i)}">{app.name.charAt(0).toUpperCase()}</span>
         {/if}
-        <span class="app-name">{app.name}</span>
-        <div class="app-bar">
-          <div class="app-fill" style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
+        <span class="app-name" title={app.name}>{app.name}</span>
+        <div class="app-bar-track">
+          <div class="app-bar-fill" style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
         </div>
         <span class="app-time">{fmtTime(app.minutes)}</span>
       </div>
@@ -35,42 +35,75 @@
 </div>
 
 <style>
-  .app-list { display: flex; flex-direction: column; gap: 6px; }
+  .app-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
 
   .app-row {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
   }
 
   .app-icon {
-    width: 16px; height: 16px; border-radius: 3px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 9px; color: #0D0F0A; font-weight: 700; flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #0D0F0A;
+    font-weight: var(--weight-bold);
+    flex-shrink: 0;
   }
 
   .app-icon-tabler {
-    font-size: 16px; color: var(--md-on-surf-var); flex-shrink: 0; width: 16px;
+    font-size: var(--text-lg);
+    color: var(--clr-text-sec);
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
   }
 
   .app-name {
-    width: 100px; flex-shrink: 0;
+    width: 260px;
+    flex-shrink: 0;
+    font-size: var(--text-sm);
     color: var(--clr-text-pri);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: var(--weight-medium);
   }
 
-  .app-bar {
-    flex: 1; height: 8px;
+  .app-bar-track {
+    flex: 1;
+    height: 6px;
     background: var(--clr-bg-ter);
-    border-radius: 999px; overflow: hidden;
+    border-radius: var(--radius-full);
+    overflow: hidden;
   }
 
-  .app-fill {
-    height: 100%; border-radius: 999px;
-    background: var(--md-primary); opacity: 0.6;
+  .app-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--md-primary);
+    opacity: 0.55;
+    min-width: 2px;
+    transition: width var(--duration-slow) var(--ease-out);
   }
 
   .app-time {
-    width: 44px; text-align: right;
-    font-size: 11px; font-family: var(--font-mono); color: var(--clr-text-sec);
+    width: 50px;
+    text-align: right;
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
+    color: var(--clr-text-sec);
+    font-feature-settings: 'tnum';
+    font-weight: var(--weight-medium);
   }
 </style>

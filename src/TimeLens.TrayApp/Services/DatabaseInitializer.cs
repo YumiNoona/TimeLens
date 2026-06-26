@@ -33,6 +33,7 @@ public static class DatabaseInitializer
                 title TEXT,
                 category TEXT,
                 tab_id INTEGER,
+                local_date TEXT,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 browser TEXT NOT NULL
@@ -132,6 +133,7 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "app_events", "local_date", "TEXT");
         MigrateAddColumn(conn, "app_events", "project", "TEXT");
         MigrateAddColumn(conn, "browser_events", "tab_id", "INTEGER");
+        MigrateAddColumn(conn, "browser_events", "local_date", "TEXT");
         MigrateAddColumn(conn, "custom_rules", "rule_type", "TEXT NOT NULL DEFAULT 'substring'");
         MigrateAddColumn(conn, "custom_rules", "target", "TEXT NOT NULL DEFAULT 'exe'");
         MigrateAddColumn(conn, "custom_rules", "priority", "INTEGER NOT NULL DEFAULT 0");

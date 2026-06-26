@@ -7,6 +7,7 @@ const API = 'http://127.0.0.1:47821/api/browser-event';
 const AUDIBLE_API = 'http://127.0.0.1:47821/api/audible-status';
 const SETTINGS_API = 'http://127.0.0.1:47821/api/settings';
 const HEARTBEAT_API = 'http://127.0.0.1:47821/api/extension-heartbeat';
+const TAB_HEARTBEAT_API = 'http://127.0.0.1:47821/api/browser-heartbeat';
 const DASHBOARD = 'http://127.0.0.1:47821/';
 const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
 const QUEUE_KEY = 'timelens_queue';
@@ -17,12 +18,39 @@ let blockedDomains = [];
 var ACTIVE_RULE_IDS = [];
 var _scheduledRefresh = null;
 
-// --- Heartbeat ---
+// --- Extension heartbeat ---
 function sendHeartbeat() {
   fetch(HEARTBEAT_API + '?ts=' + Date.now(), { method: 'POST' }).catch(function() {});
 }
 setInterval(sendHeartbeat, 30_000);
 sendHeartbeat();
+
+// --- Tab heartbeat: bounds duration miscalculation to ~45s ---
+var _lastTabHeartbeatId = null;
+function sendTabHeartbeat() {
+  api.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+    if (!tabs || !tabs.length || !tabs[0].url || tabs[0].url.indexOf('http') !== 0) return;
+    var tab = tabs[0];
+    // Only send heartbeat if we have a tracked tab
+    if (!lastUrl[tab.id]) return;
+    _lastTabHeartbeatId = tab.id;
+    try {
+      var u = new URL(tab.url);
+      fetch(TAB_HEARTBEAT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tabId: tab.id,
+          domain: u.hostname,
+          url: tab.url,
+          title: tab.title || '',
+          browser: BROWSER
+        }),
+      }).catch(function() {});
+    } catch(e) {}
+  });
+}
+setInterval(sendTabHeartbeat, 45_000);
 
 // --- Block rule application ---
 function applyBlockRules(domains) {
@@ -114,8 +142,19 @@ function fetchSettings() {
     })
     .catch(function() {});
 }
-fetchSettings();
 setInterval(fetchSettings, 15_000);
+
+// Recover persisted rule IDs on Chrome MV3 service worker restart
+(function initBlockState() {
+  if (BROWSER === 'chrome') {
+    chrome.declarativeNetRequest.getDynamicRules(function(existing) {
+      ACTIVE_RULE_IDS = existing.map(function(r) { return r.id; });
+      fetchSettings();
+    });
+  } else {
+    fetchSettings();
+  }
+})();
 
 // --- Tracking ---
 const LEAVE_API = 'http://127.0.0.1:47821/api/browser-leave';
@@ -206,7 +245,7 @@ actionApi.onClicked.addListener(function() {
 
 api.tabs.onActivated.addListener(function(info) {
   api.tabs.get(info.tabId, function(tab) {
-    if (tab && tab.url && tab.url.indexOf('http') === 0) {
+    if (tab && tab.url && tab.url.indexOf('http') === 0 && lastUrl[info.tabId] !== tab.url) {
       lastUrl[info.tabId] = tab.url;
       sendTab(info.tabId, tab.url, tab.title, tab.audible);
     }
@@ -218,6 +257,7 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
     reportAudible(!!changeInfo.audible);
   }
   if (changeInfo.status === 'complete' && tab && tab.url && tab.url.indexOf('http') === 0 && lastUrl[tabId] !== tab.url) {
+    if (!tab.active) return; // skip background tabs — only track what you see
     lastUrl[tabId] = tab.url;
     sendTab(tabId, tab.url, tab.title, tab.audible);
   }

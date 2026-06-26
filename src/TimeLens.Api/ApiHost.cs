@@ -515,19 +515,53 @@ public static class ApiHost
 
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
         {
-            if (!LiveStatusStore.Settings.TrackBrowser)
-            {
-                ctx.Response.StatusCode = 200;
-                ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync("{\"ok\":true}");
-                return;
-            }
-
             var evt = await ctx.Request.ReadFromJsonAsync<BrowserEventDto>(AppJsonContext.Default.BrowserEventDto);
             if (evt is null)
             {
                 ctx.Response.StatusCode = 400;
                 ctx.Response.ContentType = "application/json";
+                return;
+            }
+
+            // Focus mode block check — runs regardless of TrackBrowser setting
+            var domainBlocked = false;
+            if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
+            {
+                var blocklist = LiveStatusStore.Settings.FocusBlocklist;
+                if (!string.IsNullOrEmpty(blocklist) && blocklist != "[]")
+                {
+                    try
+                    {
+                        var items = BlockEntryHelper.TryParseBlockEntries(blocklist);
+                        if (items is not null)
+                        {
+                            var host = evt.Domain.ToLowerInvariant();
+                            var url = (evt.Url ?? "").ToLowerInvariant();
+                            foreach (var be in items)
+                            {
+                                if (string.IsNullOrEmpty(be.I)) continue;
+                                if (be.M == "t" && be.E is not null &&
+                                    DateTime.TryParse(be.E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
+                                    DateTime.UtcNow >= exp) continue;
+                                var pat = be.I.ToLowerInvariant();
+                                if (host.Contains(pat) || url.Contains(pat))
+                                {
+                                    domainBlocked = true;
+                                    LiveStatusStore.PendingFocusBlock = evt.Domain;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            if (!LiveStatusStore.Settings.TrackBrowser)
+            {
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync(domainBlocked ? "{\"blocked\":true}" : "{\"ok\":true}");
                 return;
             }
 
@@ -546,8 +580,8 @@ public static class ApiHost
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id)
-                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId)
+                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id, local_date)
+                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId, $localDate)
                 """;
             cmd.Parameters.AddWithValue("$domain", evt.Domain);
             cmd.Parameters.AddWithValue("$url", evt.Url);
@@ -555,6 +589,7 @@ public static class ApiHost
             cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
             cmd.Parameters.AddWithValue("$browser", evt.Browser);
             cmd.Parameters.AddWithValue("$tabId", evt.TabId);
+            cmd.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             await cmd.ExecuteNonQueryAsync();
 
             // Track the new event ID for this tab for duration tracking
@@ -564,39 +599,6 @@ public static class ApiHost
                 getIdCmd.CommandText = "SELECT last_insert_rowid()";
                 var newEventId = (long)(await getIdCmd.ExecuteScalarAsync())!;
                 OpenBrowserEvents[evt.TabId] = newEventId;
-            }
-
-            // Focus mode check — blocklist match against domain or URL
-            var domainBlocked = false;
-            if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
-            {
-                var blocklist = LiveStatusStore.Settings.FocusBlocklist;
-                if (!string.IsNullOrEmpty(blocklist) && blocklist != "[]")
-                {
-                    try
-                    {
-                        var items = BlockEntryHelper.TryParseBlockEntries(blocklist);
-                        if (items is not null)
-                        {
-                            var host = evt.Domain.ToLowerInvariant();
-                            var url = (evt.Url ?? "").ToLowerInvariant();
-                            foreach (var be in items)
-                            {
-                                if (be.M == "t" && be.E is not null &&
-                                    DateTime.TryParse(be.E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
-                                    DateTime.UtcNow >= exp) continue;
-                                var pattern = be.I.ToLowerInvariant();
-                                if (host.Contains(pattern) || host.EndsWith("." + pattern) || url.Contains(pattern))
-                                {
-                                    LiveStatusStore.PendingFocusBlock = evt.Domain;
-                                    domainBlocked = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                }
             }
 
             ctx.Response.StatusCode = 200;
@@ -657,8 +659,8 @@ public static class ApiHost
             // Open a new row — bounds max miscalculation to heartbeat interval
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id)
-                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId)
+                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id, local_date)
+                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId, $localDate)
                 """;
             cmd.Parameters.AddWithValue("$domain", domain);
             cmd.Parameters.AddWithValue("$url", url ?? (object)DBNull.Value);
@@ -666,6 +668,7 @@ public static class ApiHost
             cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
             cmd.Parameters.AddWithValue("$browser", browser);
             cmd.Parameters.AddWithValue("$tabId", tabId);
+            cmd.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
             await cmd.ExecuteNonQueryAsync();
 
             using var getIdCmd = conn.CreateCommand();
@@ -751,14 +754,12 @@ public static class ApiHost
             DateTime queryDate = DateTime.Now;
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
-            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
-            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            var dateStr = localDate.ToString("yyyy-MM-dd");
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT domain, COUNT(*), MAX(start_time) FROM browser_events WHERE start_time>=$t0 AND start_time<$t1 GROUP BY domain ORDER BY 2 DESC LIMIT 20";
-            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
-            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
+            cmd.CommandText = "SELECT domain, COUNT(*), MAX(start_time) FROM browser_events WHERE local_date = $date GROUP BY domain ORDER BY 2 DESC LIMIT 20";
+            cmd.Parameters.AddWithValue("$date", dateStr);
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             arr.WriteStartArray();
             using var r = await cmd.ExecuteReaderAsync();
@@ -775,23 +776,21 @@ public static class ApiHost
             DateTime queryDate = DateTime.Now;
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
-            var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
-            var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            var dateStr = localDate.ToString("yyyy-MM-dd");
+            var eodUtc = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            // Estimate time per domain by assuming each event covers until the next event (or end of day)
             cmd.CommandText = """
                 SELECT domain, start_time,
-                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (PARTITION BY SUBSTR(start_time, 1, 10) ORDER BY start_time)) AS next_time
+                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (ORDER BY start_time)) AS next_time
                 FROM browser_events
-                WHERE start_time >= $t0 AND start_time < $t1
+                WHERE local_date = $date
                 ORDER BY start_time
                 """;
-            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
-            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
-            cmd.Parameters.AddWithValue("$eod", today.AddDays(1).ToString("o"));
+            cmd.Parameters.AddWithValue("$date", dateStr);
+            cmd.Parameters.AddWithValue("$eod", eodUtc.ToString("o"));
 
             var domainSecs = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             using var r = await cmd.ExecuteReaderAsync();
@@ -829,8 +828,6 @@ public static class ApiHost
         {
             var localNow = DateTime.Now;
             var localDate = localNow.Date;
-            var utcStart = TimeZoneInfo.ConvertTimeToUtc(localDate);
-            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
             var offsetHours = (int)Math.Round((localNow - DateTime.UtcNow).TotalHours);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
@@ -838,11 +835,10 @@ public static class ApiHost
             cmd.CommandText = """
                 SELECT CAST(strftime('%H', start_time) AS INTEGER) AS h, COUNT(*) AS cnt
                 FROM browser_events
-                WHERE start_time >= $t0 AND start_time < $t1
+                WHERE local_date = $date
                 GROUP BY h ORDER BY h
                 """;
-            cmd.Parameters.AddWithValue("$t0", utcStart.ToString("o"));
-            cmd.Parameters.AddWithValue("$t1", utcEnd.ToString("o"));
+            cmd.Parameters.AddWithValue("$date", localDate.ToString("yyyy-MM-dd"));
             var counts = new int[24];
             using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())

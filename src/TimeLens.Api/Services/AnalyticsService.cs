@@ -66,7 +66,7 @@ public sealed class AnalyticsService
                 LiveStatusStore.PendingIdleReturn
             );
 
-            var browserSites = isToday ? await GetBrowserSummaryAsync(conn, today, tomorrow) : [];
+            var browserSites = isToday ? await GetBrowserSummaryAsync(conn, localDate.ToString("yyyy-MM-dd")) : [];
             var audioSessions = isToday ? await GetAudioSummaryAsync(conn, today, tomorrow) : [];
 
             var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live, browserSites, audioSessions);
@@ -470,7 +470,7 @@ public sealed class AnalyticsService
     }
 
     private static async Task<BrowserEntryDto[]> GetBrowserSummaryAsync(
-        SqliteConnection conn, DateTime today, DateTime tomorrow)
+        SqliteConnection conn, string localDate)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -478,11 +478,10 @@ public sealed class AnalyticsService
                    COUNT(*) AS visits,
                    MAX(start_time) AS last_visit
             FROM browser_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
             GROUP BY domain ORDER BY visits DESC LIMIT 20
             """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$date", localDate);
 
         var list = new List<BrowserEntryDto>();
         using var r = await cmd.ExecuteReaderAsync();

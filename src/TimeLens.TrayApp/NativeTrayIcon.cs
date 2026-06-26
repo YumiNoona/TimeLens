@@ -192,7 +192,7 @@ public sealed class NativeTrayIcon : IDisposable
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
 
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "TimeLens.ico");
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "runtime", "TimeLens.ico");
         var hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
         if (hIcon == IntPtr.Zero)
             hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION

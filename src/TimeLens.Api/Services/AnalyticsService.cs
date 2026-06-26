@@ -330,6 +330,7 @@ public sealed class AnalyticsService
         for (int i = blocks.Count - 1; i >= 1; i--)
         {
             if (blocks[i].Type == blocks[i - 1].Type &&
+                blocks[i].ExeName == blocks[i - 1].ExeName &&
                 blocks[i].StartHour - blocks[i - 1].EndHour < 30.0 / 3600)
             {
                 blocks[i - 1] = blocks[i - 1] with

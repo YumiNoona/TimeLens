@@ -27,6 +27,9 @@ internal static class Program
     {
         try
         {
+            // Pre-load native SQLite library from runtime subfolder before any DB code runs
+            NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "runtime", "e_sqlite3.dll"));
+
             MainImpl();
         }
         catch (Exception ex)
@@ -73,7 +76,7 @@ internal static class Program
         var userCsvPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TimeLens", "categories.csv");
-        var builtinCsvPath = Path.Combine(AppContext.BaseDirectory, "categories.csv");
+        var builtinCsvPath = Path.Combine(AppContext.BaseDirectory, "runtime", "categories.csv");
         var csvPath = File.Exists(userCsvPath) ? userCsvPath : builtinCsvPath;
         classifier.LoadBuiltins(csvPath);
 
@@ -99,6 +102,7 @@ internal static class Program
         void WriteAppEvent()
         {
             var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+            if (ShouldSkipBrowserAppRow(exe)) return;
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();
             var project = CategoryClassifier.ExtractProject(exe, title);
@@ -318,13 +322,13 @@ internal static class Program
             "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe"
         };
 
+        bool ShouldSkipBrowserAppRow(string exe) =>
+            browserExes.Contains(exe) &&
+            (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2;
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
-            // Skip app-level rows for browsers when the extension is connected.
-            // The extension handles tab-level granularity; an app row is redundant.
-            if (browserExes.Contains(exe) &&
-                (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2)
-                return;
+            if (ShouldSkipBrowserAppRow(exe)) return;
 
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();
@@ -433,6 +437,7 @@ internal static class Program
 
                 lastSystemState = curState;
                 var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+                if (ShouldSkipBrowserAppRow(exe)) return;
                 var cat = classifier.Classify(exe, title);
                 var project = CategoryClassifier.ExtractProject(exe, title);
                 writer.OpenAppEvent(exe, title, pid, curState, cat, project);

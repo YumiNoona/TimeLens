@@ -73,12 +73,19 @@ function applyBlockRules(domains) {
     chrome.declarativeNetRequest.updateDynamicRules({
       removeRuleIds: oldIds,
       addRules: newRules
-    }).catch(function() {
+    }).then(function() {
+      console.log('TimeLens: installed ' + newRules.length + ' block rules, removed ' + oldIds.length);
+    }).catch(function(err) {
+      console.error('TimeLens: updateDynamicRules failed:', err.message || err);
       if (newRules.length > 5000) {
         chrome.declarativeNetRequest.updateDynamicRules({
           removeRuleIds: oldIds,
           addRules: newRules.slice(0, 5000)
-        }).catch(function() {});
+        }).then(function() {
+          console.log('TimeLens: retry with 5000 rules succeeded');
+        }).catch(function(err2) {
+          console.error('TimeLens: retry also failed:', err2.message || err2);
+        });
       }
     });
   }
@@ -147,6 +154,7 @@ setInterval(fetchSettings, 15_000);
   if (BROWSER === 'chrome') {
     chrome.declarativeNetRequest.getDynamicRules(function(existing) {
       ACTIVE_RULE_IDS = existing.map(function(r) { return r.id; });
+      console.log('TimeLens: recovered ' + ACTIVE_RULE_IDS.length + ' existing dynamic rules');
       fetchSettings();
     });
   } else {

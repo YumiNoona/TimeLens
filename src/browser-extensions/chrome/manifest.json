@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "TimeLens Tracker",
-  "version": "7.0.0",
+  "version": "8.0.0",
   "description": "Tracks and blocks distracting websites — part of the TimeLens activity tracker",
-  "permissions": ["tabs", "storage", "declarativeNetRequest"],
+  "permissions": ["tabs", "storage", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

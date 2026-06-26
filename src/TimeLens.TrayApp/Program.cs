@@ -173,6 +173,36 @@ internal static class Program
             catch { }
         }
 
+        // Resolve conhost/OpenConsole to the actual console process (cmd/powershell/pwsh).
+        // NOTE: This is a heuristic based on English window titles. It will silently
+        // fail for non-English Windows installs or if Microsoft changes console title strings.
+        // A more robust approach would be walking the process tree, but title-matching
+        // covers the common cases well enough for now.
+        string? ResolveConsoleExe(string? title)
+        {
+            if (string.IsNullOrEmpty(title)) return null;
+            var t = title;
+            // Strip "Administrator: " prefix
+            if (t.StartsWith("Administrator:", StringComparison.OrdinalIgnoreCase))
+                t = t["Administrator:".Length..].TrimStart();
+            if (t.StartsWith("Select", StringComparison.OrdinalIgnoreCase))
+                t = t["Select".Length..].TrimStart();
+
+            if (t.StartsWith("Command Prompt", StringComparison.OrdinalIgnoreCase) ||
+                t.StartsWith("cmd", StringComparison.OrdinalIgnoreCase))
+                return "cmd.exe";
+            if (t.Contains("PowerShell", StringComparison.OrdinalIgnoreCase))
+            {
+                if (t.Contains("7", StringComparison.Ordinal) || t.Contains("pwsh", StringComparison.OrdinalIgnoreCase))
+                    return "pwsh.exe";
+                return "powershell.exe";
+            }
+            if (t.Contains("Windows Terminal", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("wt", StringComparison.OrdinalIgnoreCase))
+                return "wt.exe";
+            return null;
+        }
+
         void PersistBlocklist()
         {
             var json = System.Text.Json.JsonSerializer.Serialize(focusBlocked.ToArray());
@@ -192,7 +222,7 @@ internal static class Program
             if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
             {
                 lastFocusToast = DateTime.UtcNow;
-                tray?.ShowBalloon("Focus Mode", $"'{exeName}' is blocked — get back to work!", true);
+                try { tray?.ShowBalloon("Focus Mode", $"'{exeName}' is blocked — get back to work!", true); } catch { }
             }
 
             if (action == "notify") return; // toast only, no further enforcement
@@ -237,16 +267,23 @@ internal static class Program
         // Timer to periodically enforce blocks + auto-remove expired
         var blockTimer = new Timer(_ =>
         {
-            if (!LiveStatusStore.Settings.FocusMode) return;
-
-            // Check for expired entries and remove them
-            var removed = focusBlocked.RemoveAll(be => be.IsExpired());
-            if (removed > 0) PersistBlocklist();
-
-            foreach (var blocked in focusBlocked)
+            try
             {
-                if (!blocked.I.Contains(".exe")) continue;
-                EnforceBlock(blocked.I);
+                if (!LiveStatusStore.Settings.FocusMode) return;
+
+                var removed = focusBlocked.RemoveAll(be => be.IsExpired());
+                if (removed > 0) PersistBlocklist();
+
+                foreach (var blocked in focusBlocked)
+                {
+                    if (!blocked.I.Contains(".exe")) continue;
+                    EnforceBlock(blocked.I);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never let an unhandled exception kill the periodic timer silently
+                LogCrash($"blockTimer: {ex}");
             }
         }, null, 5_000, 5_000);
 
@@ -329,6 +366,15 @@ internal static class Program
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             if (ShouldSkipBrowserAppRow(exe)) return;
+
+            // Resolve conhost/OpenConsole to the actual console process (cmd/powershell/pwsh).
+            // conhost.exe is the window owner for all console windows — the real target
+            // is the shell process attached to it. Resolve by title to match blocklist entries.
+            if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                exe = ResolveConsoleExe(title) ?? exe;
+            }
 
             var cat = classifier.Classify(exe, title);
             var state = idleMonitor.GetState();

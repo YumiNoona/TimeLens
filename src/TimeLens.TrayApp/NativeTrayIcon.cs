@@ -229,18 +229,11 @@ public sealed class NativeTrayIcon : IDisposable
 
     public void ShowBalloon(string title, string text, bool warning = false)
     {
-        if (_hWnd == IntPtr.Zero) return;
-        var nid = new NOTIFYICONDATAW
+        try
         {
-            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
-            hWnd = _hWnd,
-            uID = TrayIconId,
-            uFlags = NIF_INFO,
-            szInfoTitle = title,
-            szInfo = text,
-            dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO,
-        };
-        Shell_NotifyIconW(NIM_MODIFY, ref nid);
+            _ = new ToastWindow(title, text);
+        }
+        catch { }
     }
 
     private IntPtr WindowProcedure(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)

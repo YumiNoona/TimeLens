@@ -133,7 +133,7 @@
           <span class="setting-desc">Prevent idle while playing media</span>
         </div>
         <div class="control">
-          <input type="checkbox" class="toggle" checked={trackAudio} onchange={() => save('trackAudio', trackAudio)} />
+          <input type="checkbox" class="toggle" checked={trackAudio} onchange={(e) => save('trackAudio', (e.currentTarget as HTMLInputElement).checked)} />
                   </div>
       </label>
       <label class="setting-row">
@@ -142,7 +142,7 @@
           <span class="setting-desc">Record browsing via the browser extension</span>
         </div>
         <div class="control">
-          <input type="checkbox" class="toggle" checked={trackBrowser} onchange={() => save('trackBrowser', trackBrowser)} />
+          <input type="checkbox" class="toggle" checked={trackBrowser} onchange={(e) => save('trackBrowser', (e.currentTarget as HTMLInputElement).checked)} />
         </div>
       </label>
       <label class="setting-row last">

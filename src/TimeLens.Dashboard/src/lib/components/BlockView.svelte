@@ -6,7 +6,7 @@
 
   let items = $state<BlockEntry[]>([]);
   let newItem = $state('');
-  let blockAction = $state('notify');
+  let blockAction = $state('hide');
   let focusMode = $state(false);
   let apiOk = $state(true);
   let showAddDropdown = $state(false);
@@ -30,7 +30,7 @@
     try {
       const r = await fetch(`${API}/api/settings`);
       const s = await r.json();
-      blockAction = s.blockAction || 'notify';
+      blockAction = s.blockAction || 'hide';
       focusMode = s.focusMode ?? false;
       const raw = s.focusBlocklist || '[]';
       try { items = JSON.parse(raw); } catch { items = []; }
@@ -86,9 +86,22 @@
     } catch { apiOk = false; }
   }
 
+  function sanitizeEntry(raw: string): string {
+    // Strip URLs down to just the hostname (e.g. https://learn.microsoft.com/en-us → learn.microsoft.com)
+    try {
+      const u = new URL(raw);
+      return u.hostname || raw;
+    } catch {
+      // Not a URL — strip common noise
+      return raw.replace(/\/.*/, '').replace(/^https?:\/\//, '');
+    }
+  }
+
   function add() {
-    const val = newItem.trim().toLowerCase();
-    if (!val || items.some(e => e.i === val)) return;
+    let val = newItem.trim().toLowerCase();
+    if (!val) return;
+    val = sanitizeEntry(val);
+    if (items.some(e => e.i === val)) { newItem = ''; return; }
     let entry: BlockEntry;
     if (addingDuration > 0) {
       const exp = new Date(Date.now() + addingDuration * 60_000).toISOString();
@@ -142,6 +155,7 @@
   });
 
   function selectProc(exe: string) {
+    exe = sanitizeEntry(exe);
     if (items.some(e => e.i === exe)) { newItem = ''; showAddDropdown = false; return; }
     let entry: BlockEntry;
     if (addingDuration > 0) {
@@ -229,11 +243,18 @@
   </div>
 
   <!-- Blocklist -->
-  <div class="card">
+  <div class="card" class:card-disabled={!focusMode}>
     <div class="card-header flex-between">
       <h2 class="title-small">Blocklist ({items.length})</h2>
       <button class="scanner-btn" onclick={loadRunning} title="Scan running apps"><i class="ti ti-search"></i> Scan</button>
     </div>
+
+    {#if !focusMode}
+      <div class="block-banner">
+        <i class="ti ti-alert-circle"></i>
+        Blocklist won't be enforced until <strong>Focus Mode</strong> is enabled above
+      </div>
+    {/if}
 
     <div class="add-row">
       <div class="combo-wrapper">
@@ -481,6 +502,17 @@
     font-size: 15px; transition: all 0.15s;
   }
   .bl-remove:hover { color: var(--md-error); background: var(--md-err-cont); }
+
+  .card-disabled { opacity: 0.45; pointer-events: none; }
+  .block-banner {
+    display: flex; align-items: center; gap: var(--sp-2);
+    margin: 0 var(--sp-4) var(--sp-3); padding: var(--sp-2) var(--sp-3);
+    background: color-mix(in srgb, var(--md-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--md-primary) 25%, transparent);
+    border-radius: var(--shape-sm); color: var(--md-primary);
+    font-size: 12px; font-weight: 500;
+  }
+  .block-banner i { font-size: 15px; flex-shrink: 0; }
 
   .stats-list { display: flex; flex-direction: column; }
   .stat-row {

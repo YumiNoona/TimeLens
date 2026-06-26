@@ -4,7 +4,7 @@
   import { fmtHourFull, fmtDuration } from '../utils';
   import { timeFormat } from '../stores/settings';
 
-  let { data, timelineGrouped = false }: { data: DashboardData; timelineGrouped?: boolean } = $props();
+  let { data, timelineGrouped = false, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
 
   let selectedTypes = $state<string[]>([]);
   let groupedMode = $state(timelineGrouped ?? true);
@@ -75,7 +75,9 @@
           startHour: b.startHour,
           endHour: b.endHour,
           type: b.type,
-          label: b.project ? `${b.windowTitle || b.exeName} · ${b.project}` : (b.windowTitle || b.exeName),
+          label: showTitles
+            ? (b.project ? `${b.windowTitle || b.exeName} · ${b.project}` : (b.windowTitle || b.exeName))
+            : b.exeName,
           depth: 2,
           children: [],
           durationSeconds: b.durationSeconds,

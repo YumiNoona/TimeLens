@@ -40,7 +40,7 @@ public sealed class SettingsService
             FocusBlocklist = dict.GetValueOrDefault("focus_blocklist", "[]"),
             TimeFormat = dict.GetValueOrDefault("time_format", "12h"),
             PollIntervalSeconds = int.TryParse(dict.GetValueOrDefault("poll_interval_seconds", "30"), out var pis) ? pis : 30,
-            BlockAction = dict.GetValueOrDefault("block_action", "notify"),
+            BlockAction = dict.GetValueOrDefault("block_action", "hide"),
         };
     }
 

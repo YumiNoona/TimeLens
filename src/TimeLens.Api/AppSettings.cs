@@ -44,7 +44,7 @@ public record AppSettings
     public string FocusBlocklist { get; init; } = "[]";
 
     [JsonPropertyName("blockAction")]
-    public string BlockAction { get; init; } = "notify";
+    public string BlockAction { get; init; } = "hide";
 
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; init; } = "12h";

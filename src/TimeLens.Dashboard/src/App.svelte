@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade } from 'svelte/transition';
   import NavRail from './lib/components/NavRail.svelte';
   import LiveChip from './lib/components/LiveChip.svelte';
   import StatCard from './lib/components/StatCard.svelte';
@@ -13,6 +14,9 @@
   import SettingsView from './lib/components/SettingsView.svelte';
   import BlockView from './lib/components/BlockView.svelte';
   import TopSites from './lib/components/TopSites.svelte';
+  import SiteTimeCard from './lib/components/SiteTimeCard.svelte';
+  import BrowserHourlyCard from './lib/components/BrowserHourlyCard.svelte';
+  import MediaCard from './lib/components/MediaCard.svelte';
   import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { data, loading, error, live, refresh } from './lib/stores/activity';
@@ -27,10 +31,13 @@
     return Array.from({ length: 24 }, (_, i) => ({ hour: i, visits: map.get(i) ?? 0 }));
   });
   let timelineGrouped = $state(true);
+  let showTitles = $state(false);
 
   let view = $state('today');
   let currentTheme = $state('default');
   let pollInterval = $state(30);
+
+  function goTo(id: string) { view = id; }
 
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-US', {
@@ -74,6 +81,7 @@
       const s = await r.json();
       if (s.theme) applyTheme(s.theme);
       timelineGrouped = s.timelineGrouped ?? true;
+      showTitles = s.showTitles ?? false;
       if (s.timeFormat) timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
       if (s.pollIntervalSeconds) pollInterval = s.pollIntervalSeconds;
     } catch { }
@@ -98,13 +106,15 @@
       <div class="error-banner">{$error}</div>
     {/if}
 
-    {#if view === 'today'}
-      {#if $loading}
-        <div class="today-loading">
-          <div class="today-loading-pulse"></div>
-          <p>Loading your activity…</p>
-        </div>
-      {:else if $data}
+    {#key view}
+    <div class="view-pane" in:fade={{ duration: 150 }} out:fade={{ duration: 100 }}>
+    {#if $loading}
+      <div class="view-loading">
+        <div class="view-loading-pulse"></div>
+        <p>Loading…</p>
+      </div>
+    {:else if view === 'today'}
+      {#if $data}
         <div class="today-header">
           <div class="today-header-left">
             <p class="today-greeting">{greeting}</p>
@@ -178,49 +188,19 @@
             <CategoryBreakdown categories={$data.categories} />
           </div>
 
-          {#if browserSites.length > 0 || browserTime.length > 0}
-            <div class="today-grid">
-              <TopSites sites={browserSites} />
-              {#if browserTime.length > 0}
-                <div class="card">
-                  <div class="card-header">
-                    <i class="ti ti-clock" aria-hidden="true"></i>
-                    <div class="card-title">Time on sites</div>
-                  </div>
-                  <div class="browser-time-list">
-                    {#each browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com') as bt}
-                      <div class="bt-row">
-                        <span class="bt-domain">{bt.domain.replace(/^www\./, '')}</span>
-                        <span class="bt-time">{bt.totalMinutes}m</span>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          {#if browserHourly.length > 0}
+          {#if browserSites.length > 0}
             <div class="card">
               <div class="card-header">
-                <i class="ti ti-chart-bar" aria-hidden="true"></i>
-                <div class="card-title">Browser visits by hour</div>
+                <i class="ti ti-world" aria-hidden="true"></i>
+                <div class="card-title">Top sites</div>
+                <button class="view-all-link" onclick={() => goTo('browser')}>View all <i class="ti ti-arrow-right"></i></button>
               </div>
-              <div class="browser-hourly-chart">
-                {#each browserHourly as h}
-                  <div
-                    class="bh-bar"
-                    class:zero={h.visits === 0}
-                    style="height:{h.visits > 0 ? Math.max(3, h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 64) : 2}px"
-                    title="{h.hour}:00 — {h.visits} visits"
-                  ></div>
-                {/each}
-              </div>
-              <div class="bh-labels">
-                {#each [0, 6, 12, 18] as hr}
-                  <span>{$timeFormatStore === '24h'
-                    ? String(hr).padStart(2, '0') + ':00'
-                    : (hr === 12 ? '12p' : hr === 0 ? '12a' : hr > 12 ? (hr - 12) + 'p' : hr + 'a')}</span>
+              <div class="teaser-list">
+                {#each browserSites.slice(0, 3) as site}
+                  <div class="teaser-row">
+                    <span class="teaser-domain">{site.domain.replace(/^www\./, '')}</span>
+                    <span class="teaser-count">{site.visits} visit{site.visits !== 1 ? 's' : ''}</span>
+                  </div>
                 {/each}
               </div>
             </div>
@@ -230,13 +210,13 @@
             <div class="card">
               <div class="card-header">
                 <i class="ti ti-volume-2" aria-hidden="true"></i>
-                <div class="card-title">Media sessions</div>
+                <div class="card-title">Media active</div>
               </div>
-              <div class="media-list">
+              <div class="teaser-list">
                 {#each audioSessions as a}
-                  <div class="media-row">
-                    <span class="media-name">{a.exeName}</span>
-                    <span class="media-count">{a.sessions} session{a.sessions !== 1 ? 's' : ''}</span>
+                  <div class="teaser-row">
+                    <span class="teaser-domain">{a.exeName}</span>
+                    <span class="teaser-count">{a.sessions} session{a.sessions !== 1 ? 's' : ''}</span>
                   </div>
                 {/each}
               </div>
@@ -265,49 +245,11 @@
           </div>
         {:else}
           <div class="two-col">
-            <TopSites sites={browserSites} />
-             {#if browserTime.length > 0}
-               <div class="card">
-                 <div class="card-header">
-                   <i class="ti ti-clock" aria-hidden="true"></i>
-                   <div class="card-title">Time on sites</div>
-                 </div>
-                 <div class="browser-time-list">
-                   {#each browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com') as bt}
-                     <div class="bt-row">
-                       <span class="bt-domain">{bt.domain.replace(/^www\./, '')}</span>
-                       <span class="bt-time">{bt.totalMinutes}m</span>
-                     </div>
-                   {/each}
-                 </div>
-               </div>
-             {/if}
-          </div>
-           {#if browserHourly.length > 0}
-             <div class="card">
-               <div class="card-header">
-                 <i class="ti ti-chart-bar" aria-hidden="true"></i>
-                 <div class="card-title">Browser visits by hour</div>
-               </div>
-               <div class="browser-hourly-chart">
-                 {#each browserHourly as h}
-                   <div
-                     class="bh-bar"
-                     class:zero={h.visits === 0}
-                     style="height:{h.visits > 0 ? Math.max(3, h.visits / Math.max(...browserHourly.map(x => x.visits), 1) * 64) : 2}px"
-                     title="{h.hour}:00 — {h.visits} visits"
-                   ></div>
-                 {/each}
-               </div>
-               <div class="bh-labels">
-                 {#each [0, 6, 12, 18] as hr}
-                   <span>{$timeFormatStore === '24h'
-                     ? String(hr).padStart(2, '0') + ':00'
-                     : (hr === 12 ? '12p' : hr === 0 ? '12a' : hr > 12 ? (hr - 12) + 'p' : hr + 'a')}</span>
-                 {/each}
-               </div>
-             </div>
-           {/if}
+           <TopSites sites={browserSites} />
+             <SiteTimeCard {browserTime} />
+           </div>
+            <BrowserHourlyCard {browserHourly} />
+            <MediaCard {audioSessions} />
         {/if}
       </div>
     {:else if view === 'apps' && $data}
@@ -323,7 +265,7 @@
           <h1 class="page-title">Timeline</h1>
         </div>
       </div>
-      <div class="content"><TimelineView data={$data} timelineGrouped={timelineGrouped} /></div>
+      <div class="content"><TimelineView data={$data} timelineGrouped={timelineGrouped} {showTitles} /></div>
     {:else if view === 'rules'}
       <div class="topbar">
         <div class="topbar-left">
@@ -351,10 +293,13 @@
         <p class="title-small" style="margin-top: var(--sp-2)">Loading…</p>
       </div>
     {/if}
+    </div>
+    {/key}
   </main>
 </div>
 
 <style>
+  .view-pane { width: 100%; }
   .shell {
     display: flex;
     height: 100vh;
@@ -371,8 +316,8 @@
     padding: 0 var(--space-8);
   }
 
-  /* ── Today: Loading ── */
-  .today-loading {
+  /* ── View Loading Skeleton ── */
+  .view-loading {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -380,9 +325,10 @@
     flex: 1;
     gap: var(--space-4);
     color: var(--clr-text-sec);
+    min-height: 200px;
   }
 
-  .today-loading-pulse {
+  .view-loading-pulse {
     width: 32px;
     height: 32px;
     border-radius: var(--radius-full);
@@ -396,7 +342,7 @@
     50% { transform: scale(1.2); opacity: 0.5; }
   }
 
-  .today-loading p {
+  .view-loading p {
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     color: var(--clr-text-ter);
@@ -454,24 +400,39 @@
     gap: var(--space-4);
   }
 
-  /* ── Browser time on sites ── */
-  .browser-time-list {
+  /* ── Today teaser cards ── */
+  .view-all-link {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    color: var(--md-primary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 2px 0;
+    transition: opacity 0.15s;
+  }
+  .view-all-link:hover { opacity: 0.7; }
+  .view-all-link i { font-size: 12px; }
+
+  .teaser-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
   }
 
-  .bt-row {
+  .teaser-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--clr-border);
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--clr-border);
   }
 
-  .bt-row:last-child { border-bottom: none; }
-
-  .bt-domain {
+  .teaser-domain {
     font-size: var(--text-sm);
     font-family: var(--font-mono);
     color: var(--clr-text-pri);
@@ -482,69 +443,7 @@
     margin-right: var(--space-3);
   }
 
-  .bt-time {
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    color: var(--clr-text-sec);
-    font-feature-settings: 'tnum';
-    font-weight: var(--weight-medium);
-    flex-shrink: 0;
-  }
-
-  /* ── Browser hourly chart ── */
-  .browser-hourly-chart {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 64px;
-    margin-bottom: var(--space-2);
-  }
-
-  .bh-bar {
-    flex: 1;
-    border-radius: 2px 2px 0 0;
-    background: var(--md-primary);
-    opacity: 0.45;
-    min-height: 2px;
-    cursor: pointer;
-    transition: opacity var(--duration-fast) var(--ease-out);
-  }
-
-  .bh-bar:hover { opacity: 0.7; }
-  .bh-bar.zero { opacity: 0.06; }
-
-  .bh-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: var(--text-2xs);
-    color: var(--clr-text-ter);
-    font-family: var(--font-mono);
-  }
-
-  /* ── Media sessions ── */
-  .media-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .media-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--clr-border);
-  }
-
-  .media-row:last-child { border-bottom: none; }
-
-  .media-name {
-    font-size: var(--text-sm);
-    color: var(--clr-text-pri);
-    font-weight: var(--weight-medium);
-  }
-
-  .media-count {
+  .teaser-count {
     font-size: var(--text-xs);
     font-family: var(--font-mono);
     color: var(--clr-text-sec);

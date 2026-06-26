@@ -9,7 +9,7 @@ public sealed class AudioMonitor : IDisposable
     private SessionNotificationSink? _notificationSink;
     private IntPtr _notificationSinkPtr;
     private readonly HashSet<(int pid, string exe)> _activeSessions = [];
-    private readonly List<(SessionEventsSink sink, IntPtr ptr)> _sessionSinks = [];
+    private readonly List<(SessionEventsSink sink, IntPtr ptr, IAudioSessionControl2 ctl2)> _sessionSinks = [];
 
     // COM callbacks must fire on the thread that registered them (must be STA).
     // Capture the main thread context on first Start() and marshal subsequent calls.
@@ -71,10 +71,16 @@ public sealed class AudioMonitor : IDisposable
                 if (ctl2 == null) { Marshal.ReleaseComObject(session); continue; }
 
                 ctl2.GetState(out var state);
-                if (state == 1) // Active
+                if (state == 1)
+                {
+                    // TrackSession stores ctl2 — do NOT release it here
                     TrackSession(ctl2);
+                }
+                else
+                {
+                    Marshal.ReleaseComObject(ctl2);
+                }
 
-                Marshal.ReleaseComObject(ctl2);
                 Marshal.ReleaseComObject(session);
             }
 
@@ -85,16 +91,22 @@ public sealed class AudioMonitor : IDisposable
 
     private void OnSessionCreated(IAudioSessionControl session)
     {
-        var ctl2 = session as IAudioSessionControl2;
-        if (ctl2 == null) return;
-
         try
         {
+            var ctl2 = session as IAudioSessionControl2;
+            if (ctl2 == null) return;
+
             ctl2.GetState(out var state);
             if (state == 1)
                 TrackSession(ctl2);
+            else
+                Marshal.ReleaseComObject(ctl2);
         }
         catch { }
+        finally
+        {
+            Marshal.ReleaseComObject(session);
+        }
     }
 
     private void TrackSession(IAudioSessionControl2 ctl2)
@@ -102,14 +114,14 @@ public sealed class AudioMonitor : IDisposable
         var (pid, exe) = GetSessionInfo(ctl2);
         var key = (pid, exe);
 
-        if (!_activeSessions.Add(key)) return;
+        if (!_activeSessions.Add(key)) { Marshal.ReleaseComObject(ctl2); return; }
 
         var sink = new SessionEventsSink(key, OnSessionStateChanged, OnSessionDisconnected);
         var ptr = Marshal.GetComInterfaceForObject(sink, typeof(IAudioSessionEvents));
         ctl2.RegisterAudioSessionNotification(ptr);
 
         lock (_sessionSinks)
-            _sessionSinks.Add((sink, ptr));
+            _sessionSinks.Add((sink, ptr, ctl2));
 
         SessionAudioChanged?.Invoke(pid, exe, true);
     }
@@ -132,6 +144,19 @@ public sealed class AudioMonitor : IDisposable
     {
         if (_activeSessions.Remove(key))
             SessionAudioChanged?.Invoke(key.pid, key.exe, false);
+
+        lock (_sessionSinks)
+        {
+            var idx = _sessionSinks.FindIndex(s => s.sink.Matches(key));
+            if (idx >= 0)
+            {
+                var (_, ptr, ctl2) = _sessionSinks[idx];
+                _sessionSinks.RemoveAt(idx);
+                try { ctl2.UnregisterAudioSessionNotification(ptr); } catch { }
+                try { Marshal.Release(ptr); } catch { }
+                try { Marshal.ReleaseComObject(ctl2); } catch { }
+            }
+        }
     }
 
     private static (int pid, string exe) GetSessionInfo(IAudioSessionControl2 ctl2)
@@ -159,9 +184,11 @@ public sealed class AudioMonitor : IDisposable
 
     public void Stop()
     {
-        foreach (var (sink, ptr) in _sessionSinks)
+        foreach (var (sink, ptr, ctl2) in _sessionSinks)
         {
+            try { ctl2.UnregisterAudioSessionNotification(ptr); } catch { }
             try { Marshal.Release(ptr); } catch { }
+            try { Marshal.ReleaseComObject(ctl2); } catch { }
         }
         _sessionSinks.Clear();
         _activeSessions.Clear();
@@ -246,6 +273,7 @@ internal sealed class SessionEventsSink : IAudioSessionEvents
     public void OnGroupingParamChanged(Guid newGroupingParam, Guid eventContext) { }
     public void OnStateChanged(AudioSessionState newState) => _onStateChanged(_key, newState);
     public void OnSessionDisconnected(AudioSessionDisconnectReason disconnectReason) => _onDisconnected(_key);
+    public bool Matches((int pid, string exe) key) => _key.pid == key.pid && _key.exe == key.exe;
 }
 
 // --- COM CLSID ---

@@ -17,6 +17,7 @@ public static class ApiHost
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
+    public const int DefaultPort = 47821;
     private static readonly ConcurrentDictionary<int, long> OpenBrowserEvents = new();
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -46,7 +47,7 @@ public static class ApiHost
         var analytics = new AnalyticsService(dbPath);
 
         var builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.UseUrls("http://127.0.0.1:47821");
+        builder.WebHost.UseUrls($"http://127.0.0.1:{DefaultPort}");
 
         builder.Services.ConfigureHttpJsonOptions(o =>
         {
@@ -620,6 +621,57 @@ public static class ApiHost
                     await cmd.ExecuteNonQueryAsync();
                 }
             }
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        app.MapPost("/api/browser-heartbeat", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("tabId", out var tabProp) || !tabProp.TryGetInt32(out var tabId) || tabId <= 0)
+            {
+                ctx.Response.StatusCode = 400;
+                return;
+            }
+
+            var domain = root.TryGetProperty("domain", out var d) ? d.GetString() ?? "" : "";
+            var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+            var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
+            var browser = root.TryGetProperty("browser", out var b) ? b.GetString() ?? "browser" : "browser";
+
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+
+            // Close the current open row for this tab
+            if (OpenBrowserEvents.TryRemove(tabId, out var prevEventId))
+            {
+                using var closeCmd = conn.CreateCommand();
+                closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
+                closeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                closeCmd.Parameters.AddWithValue("$id", prevEventId);
+                await closeCmd.ExecuteNonQueryAsync();
+            }
+
+            // Open a new row — bounds max miscalculation to heartbeat interval
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id)
+                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId)
+                """;
+            cmd.Parameters.AddWithValue("$domain", domain);
+            cmd.Parameters.AddWithValue("$url", url ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("$title", title ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("$browser", browser);
+            cmd.Parameters.AddWithValue("$tabId", tabId);
+            await cmd.ExecuteNonQueryAsync();
+
+            using var getIdCmd = conn.CreateCommand();
+            getIdCmd.CommandText = "SELECT last_insert_rowid()";
+            OpenBrowserEvents[tabId] = (long)(await getIdCmd.ExecuteScalarAsync())!;
+
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -1255,7 +1307,7 @@ body{
 </main>
 
 <script>
-  fetch('http://127.0.0.1:47821/api/settings')
+  fetch('/api/settings')
     .then(function(r){ return r.ok ? r.json() : null })
     .then(function(s){
       if(s && s.theme && s.theme !== 'default')

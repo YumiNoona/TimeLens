@@ -32,7 +32,7 @@
 
   const retentionOpts = [30, 60, 90, 180, 365];
 
-  const API = 'http://127.0.0.1:47821/api/settings';
+  const API = '/api/settings';
 
   function fmtSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
@@ -69,13 +69,13 @@
     }
     // Fetch DB size
     try {
-      const sz = await fetch('http://127.0.0.1:47821/api/db-size');
+      const sz = await fetch('/api/db-size');
       const j = await sz.json();
       dbSizeBytes = j.sizeBytes ?? 0;
     } catch { }
     // Load goals
     try {
-      const gr = await fetch('http://127.0.0.1:47821/api/goals');
+      const gr = await fetch('/api/goals');
       goals = await gr.json();
     } catch { }
   }
@@ -92,14 +92,14 @@
   }
 
   function exportCsv(range: string = 'today') {
-    window.open(`http://127.0.0.1:47821/api/export?format=csv&range=${range}`, '_blank');
+    window.open(`/api/export?format=csv&range=${range}`, '_blank');
   }
 
   async function addGoal() {
     const t = goalTarget.trim();
     if (!t) return;
     try {
-      await fetch('http://127.0.0.1:47821/api/goals', {
+      await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goalType, target: t, thresholdMinutes: goalMinutes, notifyAt: 80 }),
@@ -111,7 +111,7 @@
 
   async function removeGoal(id: number) {
     try {
-      await fetch(`http://127.0.0.1:47821/api/goals/${id}`, { method: 'DELETE' });
+      await fetch(`/api/goals/${id}`, { method: 'DELETE' });
       await load();
     } catch { apiReachable = false; }
   }
@@ -357,7 +357,7 @@
           <span class="setting-label">Dashboard</span>
           <span class="setting-desc">Local server, no data leaves your machine</span>
         </div>
-        <code class="path">http://127.0.0.1:47821</code>
+        <code class="path"></code>
       </div>
     </div>
 

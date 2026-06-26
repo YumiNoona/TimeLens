@@ -68,7 +68,16 @@ public sealed class WriterQueue : IDisposable
         while (_queue.TryDequeue(out var op))
             batch.Add(op);
         if (batch.Count == 0) return;
-        ExecuteBatch(batch);
+        try
+        {
+            ExecuteBatch(batch);
+        }
+        catch
+        {
+            // Re-enqueue lost items so they aren't silently dropped
+            foreach (var op in batch) _queue.Enqueue(op);
+            throw;
+        }
     }
 
     private void ExecuteBatch(List<Action<SqliteCommand>> batch)
@@ -98,7 +107,16 @@ public sealed class WriterQueue : IDisposable
 
                 lock (_syncLock)
                 {
-                    ExecuteBatch(batch);
+                    try
+                    {
+                        ExecuteBatch(batch);
+                    }
+                    catch
+                    {
+                        // Re-enqueue — don't silently drop operations
+                        foreach (var op in batch) _queue.Enqueue(op);
+                        throw;
+                    }
                 }
             }
             catch (OperationCanceledException) { break; }

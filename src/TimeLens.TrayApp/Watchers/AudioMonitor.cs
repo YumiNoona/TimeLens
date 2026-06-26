@@ -11,11 +11,31 @@ public sealed class AudioMonitor : IDisposable
     private readonly HashSet<(int pid, string exe)> _activeSessions = [];
     private readonly List<(SessionEventsSink sink, IntPtr ptr)> _sessionSinks = [];
 
+    // COM callbacks must fire on the thread that registered them (must be STA).
+    // Capture the main thread context on first Start() and marshal subsequent calls.
+    private System.Threading.SynchronizationContext? _mainCtx;
+
     public bool AnyAudioPlaying => _activeSessions.Count > 0;
     public event Action<int, string, bool>? SessionAudioChanged;
 
     public void Start()
     {
+        if (System.Threading.Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+        {
+            // Marshal back to the main STA thread if we have a captured context
+            if (_mainCtx is not null)
+            {
+                _mainCtx.Post(_ => StartOnStaThread(), null);
+                return;
+            }
+            throw new InvalidOperationException("AudioMonitor must be started from an STA thread");
+        }
+        StartOnStaThread();
+    }
+
+    private void StartOnStaThread()
+    {
+        _mainCtx = System.Threading.SynchronizationContext.Current;
         try
         {
             var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(

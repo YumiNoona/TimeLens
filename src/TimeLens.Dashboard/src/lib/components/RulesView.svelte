@@ -78,13 +78,13 @@
       apiOk = true;
     } catch { apiOk = false; }
     try {
-      const b = await fetch('http://127.0.0.1:47821/api/builtin-rules');
+      const b = await fetch('/api/builtin-rules');
       const j = await b.json();
       builtinExe = j.exeRules || {};
       builtinDomains = j.domainRules || {};
     } catch { }
     try {
-      const p = await fetch('http://127.0.0.1:47821/api/running-processes');
+      const p = await fetch('/api/running-processes');
       runningProcs = await p.json();
     } catch { }
   }

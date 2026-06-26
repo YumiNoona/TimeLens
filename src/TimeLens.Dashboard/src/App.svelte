@@ -58,10 +58,10 @@
     const interval = Math.max(5, pollInterval) * 1000;
     pollTimer = setInterval(async () => {
       await refresh(true);
-      try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { }
-      try { const bt = await fetch('http://127.0.0.1:47821/api/browser-time-summary'); browserTime = await bt.json(); } catch { }
-      try { const ar = await fetch('http://127.0.0.1:47821/api/audio-summary'); audioSessions = await ar.json(); } catch { }
-      try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { }
+      try { const br = await fetch('/api/browser-summary'); browserSites = await br.json(); } catch { }
+      try { const bt = await fetch('/api/browser-time-summary'); browserTime = await bt.json(); } catch { }
+      try { const ar = await fetch('/api/audio-summary'); audioSessions = await ar.json(); } catch { }
+      try { const hr = await fetch('/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { }
     }, interval);
   }
 
@@ -70,17 +70,17 @@
   onMount(async () => {
     refresh();
     try {
-      const r = await fetch('http://127.0.0.1:47821/api/settings');
+      const r = await fetch('/api/settings');
       const s = await r.json();
       if (s.theme) applyTheme(s.theme);
       timelineGrouped = s.timelineGrouped ?? true;
       if (s.timeFormat) timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
       if (s.pollIntervalSeconds) pollInterval = s.pollIntervalSeconds;
     } catch { }
-    try { const br = await fetch('http://127.0.0.1:47821/api/browser-summary'); browserSites = await br.json(); } catch { browserSites = []; }
-    try { const ar = await fetch('http://127.0.0.1:47821/api/audio-summary'); audioSessions = await ar.json(); } catch { audioSessions = []; }
-    try { const hr = await fetch('http://127.0.0.1:47821/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { browserHourlyRaw = []; }
-    try { const bt = await fetch('http://127.0.0.1:47821/api/browser-time-summary'); browserTime = await bt.json(); } catch { browserTime = []; }
+    try { const br = await fetch('/api/browser-summary'); browserSites = await br.json(); } catch { browserSites = []; }
+    try { const ar = await fetch('/api/audio-summary'); audioSessions = await ar.json(); } catch { audioSessions = []; }
+    try { const hr = await fetch('/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { browserHourlyRaw = []; }
+    try { const bt = await fetch('/api/browser-time-summary'); browserTime = await bt.json(); } catch { browserTime = []; }
 
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) startPoll();

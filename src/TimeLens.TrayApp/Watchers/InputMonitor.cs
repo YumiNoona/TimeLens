@@ -13,8 +13,9 @@ public sealed class InputMonitor : IDisposable
     private static readonly LowLevelKeyboardProc KeyboardProc = KeyboardHookCallback;
     private static readonly LowLevelMouseProc MouseProc = MouseHookCallback;
 
-    private static int _keyCount;
-    private static int _clickCount;
+    private int _keyCount;
+    private int _clickCount;
+    private static InputMonitor? _instance;
 
     private IntPtr _keyboardHook;
     private IntPtr _mouseHook;
@@ -44,6 +45,7 @@ public sealed class InputMonitor : IDisposable
 
     public void Start()
     {
+        _instance = this;
         using var curProc = System.Diagnostics.Process.GetCurrentProcess();
         using var mainModule = curProc.MainModule!;
         var moduleHandle = GetModuleHandle(mainModule.ModuleName);
@@ -70,18 +72,18 @@ public sealed class InputMonitor : IDisposable
 
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
-            Interlocked.Increment(ref _keyCount);
+        if (nCode >= 0 && _instance is { } inst)
+            Interlocked.Increment(ref inst._keyCount);
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
     private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        if (nCode >= 0 && _instance is { } inst)
         {
             var msg = wParam.ToInt32();
             if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
-                Interlocked.Increment(ref _clickCount);
+                Interlocked.Increment(ref inst._clickCount);
         }
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
@@ -94,6 +96,7 @@ public sealed class InputMonitor : IDisposable
         if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
         _keyCount = 0;
         _clickCount = 0;
+        _instance = null;
     }
 
     public void Dispose()
@@ -101,5 +104,6 @@ public sealed class InputMonitor : IDisposable
         _flushTimer?.Dispose();
         if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
         if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
+        _instance = null;
     }
 }

@@ -86,7 +86,18 @@ public sealed class WinEventWatcher : IDisposable
     private string ResolveExeName(int pid)
     {
         if (_pidCache.TryGetValue(pid, out var cached))
-            return cached;
+        {
+            // PID reuse: cached "unknown" means the old process exited
+            // and a new process is now using this PID. Evict and retry.
+            if (cached == "unknown")
+            {
+                _pidCache.Remove(pid);
+            }
+            else
+            {
+                return cached;
+            }
+        }
 
         string name;
         try

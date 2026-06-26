@@ -5,6 +5,7 @@ namespace TimeLens.TrayApp.Services;
 public sealed class EventWriter
 {
     private readonly WriterQueue _queue;
+    private long? _lastOpenEventId;
 
     public EventWriter(string dbPath)
     {
@@ -13,17 +14,30 @@ public sealed class EventWriter
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
-        _queue.ExecuteSync(conn =>
+        _lastOpenEventId = _queue.ExecuteSyncWithRowId(conn =>
         {
             var now = DateTime.UtcNow.ToString("o");
             var since = DateTime.UtcNow.AddHours(-48).ToString("o");
 
-            // Close ALL orphaned rows — idempotent, handles any chaining failures
-            using var closeAll = conn.CreateCommand();
-            closeAll.CommandText = "UPDATE app_events SET end_time = $now WHERE end_time IS NULL AND start_time >= $since";
-            closeAll.Parameters.AddWithValue("$now", now);
-            closeAll.Parameters.AddWithValue("$since", since);
-            closeAll.ExecuteNonQuery();
+            if (_lastOpenEventId is not (long prevId))
+            {
+                // First call after startup — clean up any orphans from a previous crash
+                using var closeAll = conn.CreateCommand();
+                closeAll.CommandText = "UPDATE app_events SET end_time = $now WHERE end_time IS NULL AND start_time >= $since";
+                closeAll.Parameters.AddWithValue("$now", now);
+                closeAll.Parameters.AddWithValue("$since", since);
+                closeAll.ExecuteNonQuery();
+            }
+            else
+            {
+                // Close only the previous row we created — avoids race killing
+                // freshly-inserted rows during rapid foreground switches.
+                using var closePrev = conn.CreateCommand();
+                closePrev.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
+                closePrev.Parameters.AddWithValue("$now", now);
+                closePrev.Parameters.AddWithValue("$id", prevId);
+                closePrev.ExecuteNonQuery();
+            }
 
             // Insert new row
             using var insert = conn.CreateCommand();
@@ -88,6 +102,21 @@ public sealed class EventWriter
             cmd.Parameters.AddWithValue("$type", eventType);
                 cmd.Parameters.AddWithValue("$ts", ts);
             });
+    }
+
+    public void InsertBlockLog(string exeName, string action)
+    {
+        var ts = DateTime.UtcNow.ToString("o");
+        _queue.Enqueue(cmd =>
+        {
+            cmd.CommandText = """
+                INSERT INTO block_log (blocked_exe, blocked_action, timestamp)
+                VALUES ($exe, $action, $ts)
+                """;
+            cmd.Parameters.AddWithValue("$exe", exeName);
+            cmd.Parameters.AddWithValue("$action", action);
+            cmd.Parameters.AddWithValue("$ts", ts);
+        });
     }
 
     private long? _idleSpanId;

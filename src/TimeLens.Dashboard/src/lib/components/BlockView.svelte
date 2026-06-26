@@ -16,7 +16,7 @@
   let addingDuration = $state(0);
   let confirmRemove = $state<number | null>(null);
 
-  const API = 'http://127.0.0.1:47821';
+  const API = '';
   const DURATIONS = [
     { value: 0, label: 'Until unblocked' },
     { value: 15, label: '15 min' },

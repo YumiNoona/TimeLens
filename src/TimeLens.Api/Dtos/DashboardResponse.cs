@@ -54,7 +54,9 @@ public sealed record TimelineBlockDto(
 
 public sealed record TopAppDto(
     string Name,
-    int Minutes
+    int Minutes,
+    int Keystrokes = 0,
+    int Clicks = 0
 );
 
 public sealed record HeatmapEntryDto(

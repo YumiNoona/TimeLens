@@ -7,6 +7,10 @@
   let { apps }: { apps: AppEntry[] } = $props();
 
   const maxMins = $derived(apps.length > 0 ? apps[0].minutes : 1);
+
+  function isPassive(app: AppEntry): boolean {
+    return app.keystrokes === 0 && app.clicks === 0;
+  }
 </script>
 
 <div class="card">
@@ -18,7 +22,8 @@
   <div class="app-list">
     {#each apps as app, i}
       {@const icon = appIcon(app.name)}
-      <div class="app-row">
+      {@const passive = isPassive(app)}
+      <div class="app-row" class:app-passive={passive}>
         {#if icon}
           <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
         {:else}
@@ -26,9 +31,14 @@
         {/if}
         <span class="app-name" title={app.name}>{app.name}</span>
         <div class="app-bar-track">
-          <div class="app-bar-fill" style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
+          <div class="app-bar-fill" class:bar-passive={passive} style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
         </div>
-        <span class="app-time">{fmtTime(app.minutes)}</span>
+        <span class="app-time">
+          {fmtTime(app.minutes)}
+          {#if passive}
+            <span class="app-passive-badge">no input</span>
+          {/if}
+        </span>
       </div>
     {/each}
   </div>
@@ -105,5 +115,19 @@
     color: var(--clr-text-sec);
     font-feature-settings: 'tnum';
     font-weight: var(--weight-medium);
+  }
+  .app-row.app-passive .app-name { color: var(--clr-text-ter); }
+  .app-bar-fill.bar-passive { opacity: 0.25; }
+  .app-passive-badge {
+    display: block;
+    font-size: 9px;
+    color: var(--clr-text-ter);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: var(--weight-normal);
+  }
+
+  .app-passive {
+    opacity: 0.55;
   }
 </style>

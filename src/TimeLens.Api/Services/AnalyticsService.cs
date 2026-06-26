@@ -50,13 +50,12 @@ public sealed class AnalyticsService
 
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
-            var yesterday = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(-1));
 
-            var summary = await GetSummaryAsync(conn, today, tomorrow, yesterday);
-            var timeline = await GetTimelineAsync(conn, today, tomorrow);
-            var topApps = await GetTopAppsAsync(conn, today, tomorrow);
-            var heatmap = await GetHeatmapAsync(conn, today);
-            var categories = await GetCategoriesAsync(conn, today, tomorrow);
+            var summary = await GetSummaryAsync(conn, localDate.ToString("yyyy-MM-dd"), localDate.AddDays(-1).ToString("yyyy-MM-dd"));
+            var timeline = await GetTimelineAsync(conn, localDate.ToString("yyyy-MM-dd"), tomorrow);
+            var topApps = await GetTopAppsAsync(conn, localDate.ToString("yyyy-MM-dd"));
+            var heatmap = await GetHeatmapAsync(conn, localDate);
+            var categories = await GetCategoriesAsync(conn, localDate.ToString("yyyy-MM-dd"));
             var live = new LiveStatusDto(
                 LiveStatusStore.CurrentApp,
                 LiveStatusStore.IdleSeconds / 60,
@@ -98,8 +97,10 @@ public sealed class AnalyticsService
     }
 
     private static async Task<SummaryDto> GetSummaryAsync(
-        SqliteConnection conn, DateTime today, DateTime tomorrow, DateTime yesterday)
+        SqliteConnection conn, string localDate, string yesterdayDate)
     {
+        var now = DateTime.UtcNow.ToString("o");
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT
@@ -110,11 +111,9 @@ public sealed class AnalyticsService
                     (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS idle_secs
             FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
             """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
-        var now = DateTime.UtcNow.ToString("o");
+        cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$now", now);
 
         int activeSecs = 0, idleSecs = 0;
@@ -132,7 +131,7 @@ public sealed class AnalyticsService
             SELECT COALESCE(SUM(
                 (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
               AND session_state = 'active'
               AND category IN ('development', 'work', 'documents', 'communication', 'design')
             """;
@@ -143,18 +142,17 @@ public sealed class AnalyticsService
             SELECT COALESCE(SUM(
                 (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
               AND session_state = 'active'
               AND (category = 'other' OR category IS NULL)
             """;
         var otherSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-        cmd.Parameters.AddWithValue("$yday", yesterday.ToString("o"));
-
         cmd.CommandText = """
             SELECT COUNT(*) FROM app_events
-            WHERE start_time >= $yday AND start_time < $today AND session_state = 'active'
+            WHERE local_date = $yday AND session_state = 'active'
             """;
+        cmd.Parameters.AddWithValue("$yday", yesterdayDate);
         var hadYesterdayData = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
 
         if (hadYesterdayData)
@@ -163,7 +161,7 @@ public sealed class AnalyticsService
                 SELECT COALESCE(SUM(
                     (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
                 ), 0) FROM app_events
-                WHERE start_time >= $yday AND start_time < $today AND session_state = 'active'
+                WHERE local_date = $yday AND session_state = 'active'
                 """;
         }
         var yesterdaySecs = hadYesterdayData ? Convert.ToInt32(await cmd.ExecuteScalarAsync()) : -1;
@@ -172,7 +170,7 @@ public sealed class AnalyticsService
             SELECT category, COALESCE(SUM(
                 (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow AND session_state = 'active' AND category != 'system'
+            WHERE local_date = $date AND session_state = 'active' AND category != 'system'
             GROUP BY category ORDER BY secs DESC LIMIT 1
             """;
         string topCat = "—";
@@ -236,18 +234,17 @@ public sealed class AnalyticsService
     }
 
     private static async Task<TimelineBlockDto[]> GetTimelineAsync(
-        SqliteConnection conn, DateTime today, DateTime tomorrow)
+        SqliteConnection conn, string localDate, DateTime localEndOfDayUtc)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT exe_name, window_title, category, start_time, end_time, was_idle, session_state, COALESCE(project,'')
             FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
               AND COALESCE(category, '') != 'system'
             ORDER BY start_time
             """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$date", localDate);
 
         var blocks = new List<TimelineBlockDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -263,10 +260,7 @@ public sealed class AnalyticsService
             var endRaw = isOngoing
                 ? DateTime.UtcNow
                 : DateTime.Parse(endStr!, null, DateTimeStyles.RoundtripKind);
-            // Cap ongoing sessions to the query boundary so cross-midnight
-            // sessions don't create a block that stretches to the edge based
-            // on current UTC time instead of the queried day.
-            var end = endRaw > tomorrow ? tomorrow : endRaw;
+            var end = endRaw > localEndOfDayUtc ? localEndOfDayUtc : endRaw;
             var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
             var project = r.IsDBNull(7) ? null : r.GetString(7);
 
@@ -276,15 +270,12 @@ public sealed class AnalyticsService
             var startHour = localStart.TimeOfDay.TotalHours;
             var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
 
-            if (endHour <= startHour) continue; // skip broken rows with negative duration
+            if (endHour <= startHour) continue;
             var durationSecs = (int)(end - start).TotalSeconds;
-            if (durationSecs < 5) continue; // skip sub-second noise / artifacts
+            if (durationSecs < 5) continue;
 
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 
-            // Don't merge ongoing sessions (no end_time) with preceding blocks —
-            // their endHour is an approximation and would create a giant merged
-            // block that silently fills the timeline edge.
             if (!isOngoing && blocks.Count > 0 && blocks[^1].Type == type &&
                 Math.Abs(blocks[^1].EndHour - startHour) < 0.01)
             {
@@ -296,39 +287,93 @@ public sealed class AnalyticsService
             }
         }
 
+        // Query idle spans so they appear as "idle" blocks in the timeline
+        using var idleCmd = conn.CreateCommand();
+        idleCmd.CommandText = """
+            SELECT start_time, COALESCE(end_time, $eod), COALESCE(idle_reason, 'idle')
+            FROM idle_spans
+            WHERE start_time >= $t0 AND start_time < $t1
+            ORDER BY start_time
+            """;
+        var localEndOfDayStr = localEndOfDayUtc.ToString("o");
+        var localStartOfDayUtc = TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.ParseExact(localDate, "yyyy-MM-dd", null));
+        idleCmd.Parameters.AddWithValue("$t0", localStartOfDayUtc.ToString("o"));
+        idleCmd.Parameters.AddWithValue("$t1", localEndOfDayStr);
+        idleCmd.Parameters.AddWithValue("$eod", localEndOfDayStr);
+
+        using var ir = await idleCmd.ExecuteReaderAsync();
+        while (await ir.ReadAsync())
+        {
+            var idleStart = DateTime.Parse(ir.GetString(0), null, DateTimeStyles.RoundtripKind);
+            var idleEnd = DateTime.Parse(ir.GetString(1), null, DateTimeStyles.RoundtripKind);
+            var reason = ir.GetString(2);
+
+            var localStart = TimeZoneInfo.ConvertTimeFromUtc(idleStart, TimeZoneInfo.Local);
+            var localEnd = TimeZoneInfo.ConvertTimeFromUtc(idleEnd, TimeZoneInfo.Local);
+
+            var startHour = localStart.TimeOfDay.TotalHours;
+            var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
+
+            if (endHour <= startHour) continue;
+            var durationSecs = (int)(idleEnd - idleStart).TotalSeconds;
+            if (durationSecs < 5) continue;
+
+            blocks.Add(new TimelineBlockDto(startHour, endHour, "idle", reason, null, durationSecs));
+        }
+
+        // Sort merged app-event and idle-span blocks by start time
+        blocks.Sort((a, b) => a.StartHour.CompareTo(b.StartHour));
+
         return blocks.ToArray();
     }
 
     private static async Task<TopAppDto[]> GetTopAppsAsync(
-        SqliteConnection conn, DateTime today, DateTime tomorrow)
+        SqliteConnection conn, string localDate)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT exe_name, COALESCE(SUM(
-                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
-            ), 0) AS secs FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
-              AND session_state = 'active' AND COALESCE(category, '') != 'system'
-            GROUP BY exe_name ORDER BY secs DESC LIMIT 8
+            SELECT ae.exe_name, COALESCE(SUM(
+                (julianday(COALESCE(ae.end_time, $now)) - julianday(ae.start_time)) * 86400
+            ), 0) AS secs,
+            COALESCE(ia.keys, 0) AS keys,
+            COALESCE(ia.clicks, 0) AS clicks
+            FROM app_events ae
+            LEFT JOIN (
+                SELECT exe_name,
+                       COALESCE(SUM(keystroke_count), 0) AS keys,
+                       COALESCE(SUM(click_count), 0) AS clicks
+                FROM input_activity
+                WHERE timestamp >= $t0 AND timestamp < $t1 AND exe_name IS NOT NULL
+                GROUP BY exe_name
+            ) ia ON ia.exe_name = ae.exe_name
+            WHERE ae.local_date = $date
+              AND ae.session_state = 'active' AND COALESCE(ae.category, '') != 'system'
+            GROUP BY ae.exe_name ORDER BY secs DESC LIMIT 8
             """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+        var localTomorrow = DateTime.ParseExact(localDate, "yyyy-MM-dd", null).AddDays(1);
+        cmd.Parameters.AddWithValue("$t0", localDate);
+        cmd.Parameters.AddWithValue("$t1", localTomorrow.ToString("yyyy-MM-dd"));
 
         var apps = new List<TopAppDto>();
         using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
         {
             var secs = Convert.ToInt32(r["secs"]);
-            apps.Add(new TopAppDto(r.GetString(0), secs / 60));
+            var keys = Convert.ToInt32(r["keys"]);
+            var clicks = Convert.ToInt32(r["clicks"]);
+            apps.Add(new TopAppDto(r.GetString(0), secs / 60, keys, clicks));
         }
         return apps.ToArray();
     }
 
     private static async Task<HeatmapEntryDto[]> GetHeatmapAsync(
-        SqliteConnection conn, DateTime today)
+        SqliteConnection conn, DateTime localDate)
     {
-        var startDate = today.AddDays(-27);
+        var startDate = localDate.AddDays(-27);
+        var startDateStr = startDate.ToString("yyyy-MM-dd");
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -338,11 +383,11 @@ public sealed class AnalyticsService
                         julianday(start_time)) * 86400
                    ELSE 0 END), 0) AS secs
             FROM app_events
-            WHERE start_time >= $start
+            WHERE local_date >= $start
             GROUP BY day
             ORDER BY day
             """;
-        cmd.Parameters.AddWithValue("$start", startDate.ToString("o"));
+        cmd.Parameters.AddWithValue("$start", startDateStr);
 
         var map = new Dictionary<string, int>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -363,19 +408,18 @@ public sealed class AnalyticsService
     }
 
     private static async Task<CategoryEntryDto[]> GetCategoriesAsync(
-        SqliteConnection conn, DateTime today, DateTime tomorrow)
+        SqliteConnection conn, string localDate)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT COALESCE(category, 'other') AS cat, COALESCE(SUM(
                 (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
-            WHERE start_time >= $today AND start_time < $tomorrow
+            WHERE local_date = $date
               AND session_state = 'active' AND COALESCE(category, '') != 'system'
             GROUP BY cat ORDER BY secs DESC
             """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
+        cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
         var cats = new List<CategoryEntryDto>();

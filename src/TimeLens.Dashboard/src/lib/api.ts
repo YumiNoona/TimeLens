@@ -1,6 +1,6 @@
 import type { DashboardData } from './types';
 
-const API = 'http://127.0.0.1:47821';
+const API = '';
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);

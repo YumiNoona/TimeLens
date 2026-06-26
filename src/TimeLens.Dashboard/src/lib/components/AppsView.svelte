@@ -28,7 +28,7 @@
 
   async function loadUncategorized() {
     try {
-      const r = await fetch('http://127.0.0.1:47821/api/uncategorized');
+      const r = await fetch('/api/uncategorized');
       uncategorized = await r.json();
     } catch { uncategorized = []; }
   }
@@ -37,7 +37,7 @@
     saving = exe;
     saveError = null;
     try {
-      const r = await fetch('http://127.0.0.1:47821/api/rules', {
+      const r = await fetch('/api/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pattern: exe, category, ruleType: 'substring', target: 'exe', priority: 0 })
@@ -54,7 +54,7 @@
 
   onMount(async () => {
     try {
-      const r = await fetch('http://127.0.0.1:47821/api/input-summary');
+      const r = await fetch('/api/input-summary');
       inputData = await r.json();
     } catch { inputData = []; }
     loadUncategorized();

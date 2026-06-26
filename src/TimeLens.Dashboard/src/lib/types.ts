@@ -24,6 +24,8 @@ export interface TimelineBlock {
 export interface AppEntry {
   name: string;
   minutes: number;
+  keystrokes: number;
+  clicks: number;
 }
 
 export interface InputEntry {

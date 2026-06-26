@@ -156,6 +156,19 @@ internal static class Program
 
         string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
 
+        void LogCrash(string message)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "TimeLens", "crash.log"),
+                    $"{DateTime.UtcNow:o} {message}{Environment.NewLine}");
+            }
+            catch { }
+        }
+
         void PersistBlocklist()
         {
             var json = System.Text.Json.JsonSerializer.Serialize(focusBlocked.ToArray());
@@ -192,22 +205,13 @@ internal static class Program
                         if (action == "kill" || action == "strict")
                         {
                             proc.Kill(entireProcessTree: true);
-                            // Log the block action
-                            try
-                            {
-                                using var logConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                                logConn.Open();
-                                using var logCmd = logConn.CreateCommand();
-                                logCmd.CommandText = "INSERT INTO block_log (blocked_exe, blocked_action, timestamp) VALUES ($exe, $action, $ts)";
-                                logCmd.Parameters.AddWithValue("$exe", exeName);
-                                logCmd.Parameters.AddWithValue("$action", action);
-                                logCmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.ToString("o"));
-                                logCmd.ExecuteNonQuery();
-                            }
-                            catch { }
+                            writer.InsertBlockLog(exeName, action);
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogCrash($"EnforceBlock kill '{exeName}' pid={proc.Id}: {ex}");
+                    }
                 }
 
                 if (action == "hide" || action == "strict")
@@ -220,7 +224,10 @@ internal static class Program
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogCrash($"EnforceBlock '{exeName}': {ex}");
+            }
         }
 
         // Timer to periodically enforce blocks + auto-remove expired
@@ -239,12 +246,13 @@ internal static class Program
             }
         }, null, 5_000, 5_000);
 
+        var goalDbPath = $"Data Source={dbPath}";
         var goalTimer = new Timer(_ =>
         {
             try
             {
-                var today = DateTime.UtcNow.Date;
-                using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                var today = DateTime.UtcNow.Date.ToString("o");
+                using var conn = new Microsoft.Data.Sqlite.SqliteConnection(goalDbPath);
                 conn.Open();
 
                 // Query today's active time per app and category
@@ -255,7 +263,7 @@ internal static class Program
                     WHERE start_time >= $t0 AND session_state = 'active'
                     GROUP BY 1, 2
                     """;
-                timeCmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+                timeCmd.Parameters.AddWithValue("$t0", today);
                 timeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
                 var times = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var catTimes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -360,9 +368,19 @@ internal static class Program
                 writer.InsertInputActivity(keys, clicks, pid, exe);
             };
 
+        // Browser processes — audio from these is already tracked by the extension's
+        // audible-status endpoint, so skip Core Audio logging to avoid duplicate entries.
+        var browserAudioExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome.exe", "msedge.exe", "microsoftedge.exe", "firefox.exe",
+            "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe", "thorium.exe"
+        };
+
         if (settings.TrackAudio)
             audioMonitor.SessionAudioChanged += (pid, exe, playing) =>
             {
+                if (browserAudioExes.Contains(exe ?? "") && !string.IsNullOrEmpty(LiveStatusStore.AudibleTab))
+                    return;
                 writer.InsertAudioActivity(pid, exe, playing);
                 LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
             };
@@ -460,6 +478,8 @@ internal static class Program
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {
+            if (browserAudioExes.Contains(exe) && !string.IsNullOrEmpty(LiveStatusStore.AudibleTab))
+                return;
             writer.InsertAudioActivity(pid, exe, playing);
             LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
         }
@@ -538,7 +558,7 @@ internal static class Program
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "http://127.0.0.1:47821/",
+                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/",
                 UseShellExecute = true
             });
         };
@@ -546,7 +566,7 @@ internal static class Program
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "http://127.0.0.1:47821/extension-setup",
+                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/extension-setup",
                 UseShellExecute = true
             });
         };

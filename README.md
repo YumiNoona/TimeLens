@@ -16,7 +16,7 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 
 **~18 MB** standalone Native AOT executable · zero runtime dependencies · copy and run
 
-[**Visit the TimeLens website**](https://yuminoona.github.io/TimeLens/) · [**Download TimeLens.exe**](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe) · [Support development](https://yuminoona.github.io/TimeLens/#support)
+[**Download TimeLens.exe**](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe) · [View releases](https://github.com/YumiNoona/TimeLens/releases/latest)
 
 </div>
 

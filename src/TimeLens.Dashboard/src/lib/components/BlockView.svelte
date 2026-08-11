@@ -3,6 +3,7 @@
   import { appIcon } from '../appIcons';
 
   type BlockEntry = { i: string; m: 'u' | 't'; e?: string };
+  type RetryAction = () => Promise<void>;
 
   let items = $state<BlockEntry[]>([]);
   let newItem = $state('');
@@ -17,6 +18,13 @@
   let confirmRemove = $state<number | null>(null);
   let errorMessage = $state<string | null>(null);
   let saving = $state(false);
+  let blockProtectionEnabled = $state(false);
+  let unlockToken = $state('');
+  let showUnlock = $state(false);
+  let unlockPassword = $state('');
+  let unlockError = $state('');
+  let unlocking = $state(false);
+  let pendingAction: (() => Promise<void>) | null = null;
 
   const API = '';
   const DURATIONS = [
@@ -35,6 +43,7 @@
       const s = await r.json();
       blockAction = s.blockAction || 'hide';
       focusMode = s.focusMode ?? false;
+      blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       const raw = s.focusBlocklist || '[]';
       try {
         const parsed = JSON.parse(raw);
@@ -66,14 +75,58 @@
     } catch { blockStats = []; }
   }
 
-  async function saveAll(list: BlockEntry[]): Promise<boolean> {
-    saving = true;
+  async function postProtectedSetting(payload: Record<string, unknown>, retry: RetryAction | null): Promise<Response | null> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (unlockToken) headers['X-TimeLens-Unlock'] = unlockToken;
+    const response = await fetch(`${API}/api/settings`, {
+      method: 'POST', headers, body: JSON.stringify(payload),
+    });
+    if (response.status === 423) {
+      unlockToken = '';
+      pendingAction = retry ?? null;
+      unlockPassword = '';
+      unlockError = '';
+      showUnlock = true;
+      return null;
+    }
+    return response;
+  }
+
+  async function unlockProtection() {
+    if (!unlockPassword || unlocking) return;
+    unlocking = true;
+    unlockError = '';
     try {
-      const response = await fetch(`${API}/api/settings`, {
+      const response = await fetch(`${API}/api/block/protection/unlock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focusBlocklist: JSON.stringify(list) }),
+        body: JSON.stringify({ password: unlockPassword }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not unlock protected blocks');
+      unlockToken = result.token || '';
+      showUnlock = false;
+      unlockPassword = '';
+      const action = pendingAction;
+      pendingAction = null;
+      if (action) await action();
+    } catch (error) {
+      unlockError = error instanceof Error ? error.message : 'Could not unlock protected blocks';
+    } finally { unlocking = false; }
+  }
+
+  function closeUnlock() {
+    showUnlock = false;
+    unlockPassword = '';
+    unlockError = '';
+    pendingAction = null;
+  }
+
+  async function saveAll(list: BlockEntry[], retry: RetryAction | null): Promise<boolean> {
+    saving = true;
+    try {
+      const response = await postProtectedSetting({ focusBlocklist: JSON.stringify(list) }, retry);
+      if (response === null) return false;
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || `Save failed (${response.status})`);
       apiOk = true;
       errorMessage = null;
@@ -89,11 +142,8 @@
     const previous = focusMode;
     focusMode = val;
     try {
-      const response = await fetch(`${API}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focusMode: val }),
-      });
+      const response = await postProtectedSetting({ focusMode: val }, () => saveFocus(val));
+      if (response === null) { focusMode = previous; return; }
       if (!response.ok) throw new Error(`Save failed (${response.status})`);
       apiOk = true;
       errorMessage = null;
@@ -108,11 +158,8 @@
     const previous = blockAction;
     blockAction = action;
     try {
-      const response = await fetch(`${API}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blockAction: action }),
-      });
+      const response = await postProtectedSetting({ blockAction: action }, () => setAction(action));
+      if (response === null) { blockAction = previous; return; }
       if (!response.ok) throw new Error(`Save failed (${response.status})`);
       apiOk = true;
       errorMessage = null;
@@ -156,7 +203,7 @@
     newItem = '';
     addingDuration = 0;
     showAddDropdown = false;
-    if (!await saveAll(next)) items = previous;
+    if (!await saveAll(next, null)) items = previous;
   }
 
   async function remove(i: number) {
@@ -164,7 +211,10 @@
     const next = items.filter((_, idx) => idx !== i);
     items = next;
     confirmRemove = null;
-    if (!await saveAll(next)) items = previous;
+    if (!await saveAll(next, async () => {
+      items = next;
+      if (!await saveAll(next, null)) items = previous;
+    })) items = previous;
   }
 
   function requestRemove(i: number) {
@@ -219,7 +269,7 @@
     newItem = '';
     addingDuration = 0;
     showAddDropdown = false;
-    if (!await saveAll(next)) items = previous;
+    if (!await saveAll(next, null)) items = previous;
   }
 
   function isBlocked(exe: string): boolean {
@@ -266,6 +316,12 @@
         <div><span class="eyebrow">Focus control</span><h2>{focusMode ? 'Protection is active' : 'Protection is paused'}</h2><p>Your list stays editable even while enforcement is off.</p></div>
       </div>
       <div class="workflow-actions">
+        {#if blockProtectionEnabled}
+          <span class="protection-badge" class:unlocked={!!unlockToken} title="Protected changes require your password">
+            <i class="ti {unlockToken ? 'ti-lock-open' : 'ti-lock'}" aria-hidden="true"></i>
+            {unlockToken ? 'Unlocked' : 'Password protected'}
+          </span>
+        {/if}
         <button class="refresh-btn" onclick={() => { loadStats(); loadRunning(); }} title="Refresh block activity"><i class="ti ti-refresh" aria-hidden="true"></i><span>Refresh</span></button>
         <label class="master-switch">
           <span>{focusMode ? 'On' : 'Off'}</span>
@@ -390,6 +446,31 @@
             <span class="stat-count">{stat.count} time{stat.count === 1 ? '' : 's'}</span>
           </div>
         {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if showUnlock}
+    <div class="unlock-backdrop" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) closeUnlock(); }}>
+      <div class="unlock-dialog" role="dialog" aria-modal="true" aria-labelledby="unlock-title">
+        <button class="dialog-close" type="button" onclick={closeUnlock} aria-label="Close"><i class="ti ti-x"></i></button>
+        <span class="unlock-icon"><i class="ti ti-lock-password" aria-hidden="true"></i></span>
+        <div class="unlock-copy">
+          <span class="eyebrow">Protected change</span>
+          <h2 id="unlock-title">Enter your block password</h2>
+          <p>This action would disable or weaken an active restriction. Unlocking lasts five minutes.</p>
+        </div>
+        <label class="password-field">
+          <span>Password</span>
+          <input type="password" bind:value={unlockPassword} onkeydown={(event) => { if (event.key === 'Enter') unlockProtection(); }} autocomplete="current-password" />
+        </label>
+        {#if unlockError}<div class="unlock-error" role="alert"><i class="ti ti-alert-circle"></i>{unlockError}</div>{/if}
+        <div class="dialog-actions">
+          <button class="dialog-secondary" type="button" onclick={closeUnlock}>Cancel</button>
+          <button class="dialog-primary" type="button" onclick={unlockProtection} disabled={!unlockPassword || unlocking}>
+            <i class="ti ti-lock-open" aria-hidden="true"></i>{unlocking ? 'Checking…' : 'Unlock change'}
+          </button>
+        </div>
       </div>
     </div>
   {/if}
@@ -599,6 +680,8 @@
   .eyebrow { color: var(--md-primary); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .step-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 22%, transparent); font-size: 19px; }
   .workflow-actions { gap: 9px; }
+  .protection-badge { height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 25%, transparent); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; white-space: nowrap; }
+  .protection-badge.unlocked { color: var(--md-tertiary); background: color-mix(in srgb, var(--md-tertiary) 10%, var(--clr-bg-ter)); border-color: color-mix(in srgb, var(--md-tertiary) 25%, transparent); }
   .refresh-btn { height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: var(--shape-sm); border: 1px solid var(--clr-border); background: var(--clr-bg-ter); color: var(--clr-text-sec); font: 11px inherit; cursor: pointer; }
   .refresh-btn:hover { color: var(--md-primary); border-color: var(--md-primary); }
   .master-switch { height: 34px; gap: 8px; padding: 0 7px 0 11px; border-radius: var(--shape-full); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); color: var(--clr-text-pri); font-size: 11px; font-weight: 600; cursor: pointer; }
@@ -646,6 +729,23 @@
   .stat-exe { width: auto; overflow: hidden; text-overflow: ellipsis; }
   .stat-action { width: auto; padding: 3px 6px; border-radius: var(--shape-full); background: var(--clr-bg-sec); font-size: 9px; }
   .stat-count { width: auto; color: var(--clr-text-sec); }
+  .unlock-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(4, 6, 3, .74); backdrop-filter: blur(8px); }
+  .unlock-dialog { width: min(440px, 100%); position: relative; display: flex; flex-direction: column; gap: 16px; padding: 24px; color: var(--clr-text-pri); background: var(--clr-bg-sec); border: 1px solid var(--clr-border-strong); border-radius: 18px; box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+  .dialog-close { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; display: grid; place-items: center; color: var(--clr-text-sec); background: transparent; border: 0; border-radius: 8px; cursor: pointer; }
+  .dialog-close:hover { color: var(--clr-text-pri); background: var(--clr-bg-ter); }
+  .unlock-icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 25%, transparent); border-radius: 13px; font-size: 20px; }
+  .unlock-copy { display: flex; flex-direction: column; gap: 4px; }
+  .unlock-copy h2 { margin: 0; font-size: 18px; }
+  .unlock-copy p { margin: 0; color: var(--clr-text-sec); font-size: 12px; line-height: 1.5; }
+  .password-field { display: flex; flex-direction: column; gap: 7px; color: var(--clr-text-sec); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .password-field input { height: 40px; padding: 0 12px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 14px var(--font-mono); outline: none; }
+  .password-field input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
+  .unlock-error { display: flex; align-items: center; gap: 7px; padding: 9px 10px; color: var(--md-error); background: color-mix(in srgb, var(--md-error) 9%, transparent); border-radius: var(--shape-sm); font-size: 11px; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog-secondary, .dialog-primary { height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
+  .dialog-secondary { color: var(--clr-text-sec); background: transparent; border: 1px solid var(--clr-border); }
+  .dialog-primary { color: var(--md-on-primary); background: var(--md-primary); border: 1px solid var(--md-primary); font-weight: 600; }
+  .dialog-primary:disabled { opacity: .4; cursor: not-allowed; }
   @media (max-width: 1180px) {
     .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .add-row { grid-template-columns: 1fr auto; }

@@ -24,6 +24,43 @@ public static class ApiHost
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, byte[]> ExtensionPackageCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static bool HasBlockUnlock(HttpContext ctx) =>
+        BlockProtectionService.IsAuthorized(ctx.Request.Headers["X-TimeLens-Unlock"].FirstOrDefault());
+
+    private static int BlockActionStrength(string action) => action switch
+    {
+        "strict" => 3,
+        "kill" => 2,
+        "hide" => 1,
+        _ => 0
+    };
+
+    private static bool WeakensBlocklist(string currentJson, string nextJson)
+    {
+        var current = BlockEntryHelper.TryParseBlockEntries(currentJson) ?? [];
+        var next = BlockEntryHelper.TryParseBlockEntries(nextJson) ?? [];
+        var nextById = next.ToDictionary(entry => entry.I, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var existing in current.Where(entry => !entry.IsExpired()))
+        {
+            if (!nextById.TryGetValue(existing.I, out var replacement)) return true;
+            if (existing.M == "u" && replacement.M != "u") return true;
+            if (existing.M == "t" && replacement.M == "t" &&
+                DateTime.TryParse(existing.E, null, DateTimeStyles.RoundtripKind, out var existingExpiry) &&
+                DateTime.TryParse(replacement.E, null, DateTimeStyles.RoundtripKind, out var replacementExpiry) &&
+                replacementExpiry < existingExpiry) return true;
+        }
+        return false;
+    }
+
+    private static bool RequiresBlockUnlock(string name, string value) => name switch
+    {
+        "focusMode" => LiveStatusStore.Settings.FocusMode && value == "false",
+        "blockAction" => BlockActionStrength(value) < BlockActionStrength(LiveStatusStore.Settings.BlockAction),
+        "focusBlocklist" => WeakensBlocklist(LiveStatusStore.Settings.FocusBlocklist, value),
+        _ => false
+    };
+
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
     {
         "ApplicationFrameHost", "TextInputHost", "SystemSettings", "RuntimeBroker",
@@ -161,6 +198,96 @@ public static class ApiHost
                 LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
         });
 
+        app.MapPost("/api/block/protection/setup", async (HttpContext ctx) =>
+        {
+            if (BlockProtectionService.IsEnabled(dbPath))
+            {
+                ctx.Response.StatusCode = 409;
+                await ctx.Response.WriteAsync("{\"error\":\"Block protection is already enabled\"}");
+                return;
+            }
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var password = doc.RootElement.TryGetProperty("password", out var prop) ? prop.GetString() ?? "" : "";
+            try
+            {
+                BlockProtectionService.SetPassword(dbPath, password);
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockProtectionEnabled = true };
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"ok\":true}");
+            }
+            catch (ArgumentException ex)
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync($"{{\"error\":\"{ex.Message}\"}}");
+            }
+        });
+
+        app.MapPost("/api/block/protection/unlock", async (HttpContext ctx) =>
+        {
+            if (!BlockProtectionService.IsEnabled(dbPath))
+            {
+                ctx.Response.StatusCode = 409;
+                await ctx.Response.WriteAsync("{\"error\":\"Block protection is not enabled\"}");
+                return;
+            }
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var password = doc.RootElement.TryGetProperty("password", out var prop) ? prop.GetString() ?? "" : "";
+            var token = BlockProtectionService.TryUnlock(dbPath, password, out var retryAfter);
+            if (token is null)
+            {
+                ctx.Response.StatusCode = retryAfter > 0 ? 429 : 401;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync(retryAfter > 0
+                    ? $"{{\"error\":\"Too many attempts. Try again in {retryAfter} seconds\",\"retryAfterSeconds\":{retryAfter}}}"
+                    : "{\"error\":\"Incorrect password\"}");
+                return;
+            }
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync($"{{\"token\":\"{token}\",\"expiresInSeconds\":300}}");
+        });
+
+        app.MapPost("/api/block/protection/change", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var currentPassword = doc.RootElement.TryGetProperty("currentPassword", out var currentProp) ? currentProp.GetString() ?? "" : "";
+            var newPassword = doc.RootElement.TryGetProperty("newPassword", out var newProp) ? newProp.GetString() ?? "" : "";
+            var verified = BlockProtectionService.TryUnlock(dbPath, currentPassword, out var retryAfter);
+            if (verified is null)
+            {
+                ctx.Response.StatusCode = retryAfter > 0 ? 429 : 401;
+                await ctx.Response.WriteAsync("{\"error\":\"Current password is incorrect\"}");
+                return;
+            }
+            try
+            {
+                BlockProtectionService.SetPassword(dbPath, newPassword);
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"ok\":true}");
+            }
+            catch (ArgumentException ex)
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync($"{{\"error\":\"{ex.Message}\"}}");
+            }
+        });
+
+        app.MapPost("/api/block/protection/disable", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var password = doc.RootElement.TryGetProperty("password", out var prop) ? prop.GetString() ?? "" : "";
+            var verified = BlockProtectionService.TryUnlock(dbPath, password, out var retryAfter);
+            if (verified is null)
+            {
+                ctx.Response.StatusCode = retryAfter > 0 ? 429 : 401;
+                await ctx.Response.WriteAsync("{\"error\":\"Password is incorrect\"}");
+                return;
+            }
+            BlockProtectionService.Disable(dbPath);
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockProtectionEnabled = false };
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         app.MapPost("/api/settings", async (HttpContext ctx) =>
         {
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
@@ -237,6 +364,19 @@ public static class ApiHost
                         return;
                     }
                     value = BlockEntryHelper.Serialize(entries);
+                }
+                if (prop.Name == "blockProtectionEnabled")
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Use the block protection endpoints\"}");
+                    return;
+                }
+                if (LiveStatusStore.Settings.BlockProtectionEnabled && RequiresBlockUnlock(prop.Name, value) && !HasBlockUnlock(ctx))
+                {
+                    ctx.Response.StatusCode = 423;
+                    ctx.Response.ContentType = "application/json";
+                    await ctx.Response.WriteAsync("{\"error\":\"Password required to weaken protected blocks\",\"code\":\"block_locked\"}");
+                    return;
                 }
                 saveSetting?.Invoke(prop.Name switch
                 {
@@ -1222,8 +1362,8 @@ public static class ApiHost
             var package = ExtensionPackageCache.GetOrAdd(family,
                 key => ExtensionPackageProvider.CreateZip(entryAsm, key));
             var fileName = family == "chromium"
-                ? "TimeLens-extension-chromium.zip"
-                : "TimeLens-extension-firefox.zip";
+                ? "TimeLens-v9.0.0-extension-chromium.zip"
+                : "TimeLens-v9.0.0-extension-firefox.zip";
             ctx.Response.ContentType = "application/zip";
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
             ctx.Response.ContentLength = package.Length;

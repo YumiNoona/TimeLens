@@ -36,6 +36,13 @@
   let motionEnabled = $state(true);
   let timelineMinSegmentSeconds = $state(60);
   let heatmapDays = $state(182);
+  let blockProtectionEnabled = $state(false);
+  let protectionCurrentPassword = $state('');
+  let protectionNewPassword = $state('');
+  let protectionConfirmPassword = $state('');
+  let protectionMessage = $state('');
+  let protectionError = $state('');
+  let protectionBusy = $state(false);
   let apiReachable = $state(true);
   let savingKey = $state('');
   let saveMessage = $state('');
@@ -97,6 +104,7 @@
       motionEnabled = s.motionEnabled ?? true;
       timelineMinSegmentSeconds = s.timelineMinSegmentSeconds ?? 60;
       heatmapDays = s.heatmapDays ?? 182;
+      blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
       timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds);
       heatmapDaysStore.set(heatmapDays);
@@ -171,6 +179,56 @@
       if (!response.ok) throw new Error();
       await load();
     } catch { apiReachable = false; }
+  }
+
+  function clearProtectionFields() {
+    protectionCurrentPassword = '';
+    protectionNewPassword = '';
+    protectionConfirmPassword = '';
+  }
+
+  async function protectionRequest(path: string, body: Record<string, string>) {
+    protectionBusy = true;
+    protectionMessage = '';
+    protectionError = '';
+    try {
+      const response = await fetch(`/api/block/protection/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not update block protection');
+      clearProtectionFields();
+      await load();
+      return true;
+    } catch (error) {
+      protectionError = error instanceof Error ? error.message : 'Could not update block protection';
+      return false;
+    } finally { protectionBusy = false; }
+  }
+
+  async function enableProtection() {
+    if (protectionNewPassword !== protectionConfirmPassword) {
+      protectionError = 'Passwords do not match';
+      return;
+    }
+    if (await protectionRequest('setup', { password: protectionNewPassword }))
+      protectionMessage = 'Password protection enabled';
+  }
+
+  async function changeProtectionPassword() {
+    if (protectionNewPassword !== protectionConfirmPassword) {
+      protectionError = 'New passwords do not match';
+      return;
+    }
+    if (await protectionRequest('change', { currentPassword: protectionCurrentPassword, newPassword: protectionNewPassword }))
+      protectionMessage = 'Block password changed';
+  }
+
+  async function disableProtection() {
+    if (await protectionRequest('disable', { password: protectionCurrentPassword }))
+      protectionMessage = 'Password protection disabled';
   }
 
   onMount(() => { void load(); });
@@ -323,8 +381,50 @@
     </div>
     <label class="setting-row">
       <div class="setting-info"><span class="setting-label">Focus mode</span><span class="setting-desc">Enforce the targets configured in Block</span></div>
-      <input type="checkbox" class="toggle" checked={focusMode} onchange={(e) => setToggle('focusMode', e, value => focusMode = value)} />
+      {#if blockProtectionEnabled && focusMode}
+        <span class="protected-value"><i class="ti ti-lock" aria-hidden="true"></i> On · protected</span>
+      {:else}
+        <input type="checkbox" class="toggle" checked={focusMode} onchange={(e) => setToggle('focusMode', e, value => focusMode = value)} />
+      {/if}
     </label>
+  </section>
+
+  <section class="card card-wide protection-card">
+    <div class="card-header protection-header">
+      <span class="section-icon"><i class="ti ti-lock-password" aria-hidden="true"></i></span>
+      <div><h2>Block password</h2><p>Require a password before restrictions can be disabled, downgraded, or removed.</p></div>
+      <span class="protection-state" class:enabled={blockProtectionEnabled}><i class="ti {blockProtectionEnabled ? 'ti-shield-lock' : 'ti-shield-off'}" aria-hidden="true"></i>{blockProtectionEnabled ? 'Protected' : 'Optional'}</span>
+    </div>
+    <div class="protection-body">
+      <div class="protection-explainer">
+        <strong>{blockProtectionEnabled ? 'Your blocklist is protected' : 'Prevent casual bypasses on a shared PC'}</strong>
+        <span>{blockProtectionEnabled
+          ? 'Turning off Focus, weakening the action, or removing an active target now requires your password. Successful unlocks last five minutes.'
+          : 'The password is hashed locally and never shown or sent outside this computer. Use at least 6 characters.'}</span>
+        <div class="protection-points">
+          <span><i class="ti ti-check"></i> Salted PBKDF2 hash</span>
+          <span><i class="ti ti-check"></i> Attempt throttling</span>
+          <span><i class="ti ti-check"></i> Server-enforced changes</span>
+        </div>
+      </div>
+      <div class="protection-form">
+        {#if blockProtectionEnabled}
+          <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
+        {/if}
+        <label><span>{blockProtectionEnabled ? 'New password' : 'Password'}</span><input type="password" bind:value={protectionNewPassword} autocomplete="new-password" placeholder="6–128 characters" /></label>
+        <label><span>Confirm password</span><input type="password" bind:value={protectionConfirmPassword} autocomplete="new-password" placeholder="Type it again" /></label>
+        {#if protectionError}<div class="protection-feedback error" role="alert"><i class="ti ti-alert-circle"></i>{protectionError}</div>{/if}
+        {#if protectionMessage}<div class="protection-feedback success"><i class="ti ti-circle-check"></i>{protectionMessage}</div>{/if}
+        <div class="protection-actions">
+          {#if blockProtectionEnabled}
+            <button class="danger-btn" type="button" onclick={disableProtection} disabled={!protectionCurrentPassword || protectionBusy}>Disable protection</button>
+            <button class="primary-btn" type="button" onclick={changeProtectionPassword} disabled={!protectionCurrentPassword || protectionNewPassword.length < 6 || !protectionConfirmPassword || protectionBusy}>Change password</button>
+          {:else}
+            <button class="primary-btn" type="button" onclick={enableProtection} disabled={protectionNewPassword.length < 6 || !protectionConfirmPassword || protectionBusy}><i class="ti ti-lock"></i>Enable protection</button>
+          {/if}
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="card">
@@ -385,7 +485,7 @@
   <section class="about card-wide">
     <i class="ti ti-shield-lock" aria-hidden="true"></i>
     <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
-    <span class="version">TimeLens 1.0</span>
+    <span class="version">TimeLens 9.0.0</span>
   </section>
 </div>
 
@@ -411,6 +511,7 @@
   .card-header p { margin: 0; font-size: 11px; color: var(--clr-text-sec); }
   .setting-row { min-height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--clr-border); }
   .setting-row.muted { opacity: .48; }
+  .protected-value { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
   .setting-desc { color: var(--clr-text-sec); font-size: 11px; line-height: 1.35; }
@@ -454,12 +555,35 @@
   .about strong { color: var(--clr-text-pri); font-size: 13px; }
   .about span { color: var(--clr-text-sec); font-size: 11px; }
   .about .version { margin-left: auto; white-space: nowrap; color: var(--clr-text-ter); font-family: var(--font-mono); }
+  .protection-header { border-bottom: 1px solid var(--clr-border); }
+  .protection-header > div { flex: 1; }
+  .protection-state { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
+  .protection-state.enabled { color: var(--md-primary); background: var(--md-primary-cont); }
+  .protection-body { display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr); gap: 20px; padding: 18px; }
+  .protection-explainer { display: flex; flex-direction: column; gap: 7px; padding: 16px; background: linear-gradient(145deg, color-mix(in srgb, var(--md-primary) 8%, var(--clr-bg-ter)), var(--clr-bg-ter)); border: 1px solid color-mix(in srgb, var(--md-primary) 14%, var(--clr-border)); border-radius: var(--shape-md); }
+  .protection-explainer strong { color: var(--clr-text-pri); font-size: 13px; }
+  .protection-explainer > span { color: var(--clr-text-sec); font-size: 11px; line-height: 1.55; }
+  .protection-points { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: auto; padding-top: 8px; }
+  .protection-points span { display: inline-flex; align-items: center; gap: 4px; color: var(--clr-text-sec); font-size: 10px; }
+  .protection-points i { color: var(--md-primary); }
+  .protection-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+  .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
+  .protection-form label:first-child:nth-last-child(3) { grid-column: 1 / -1; }
+  .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
+  .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
+  .protection-feedback { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 8px 9px; border-radius: var(--shape-sm); font-size: 10px; }
+  .protection-feedback.error { color: var(--md-error); background: color-mix(in srgb, var(--md-error) 9%, transparent); }
+  .protection-feedback.success { color: var(--md-tertiary); background: color-mix(in srgb, var(--md-tertiary) 9%, transparent); }
+  .protection-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+  .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
+  .danger-btn:hover { background: var(--md-err-cont); }
   @media (max-width: 960px) {
     .settings { grid-template-columns: 1fr; }
     .card-wide, .settings-status, .warning, .about { grid-column: 1; }
     .settings-columns { grid-template-columns: 1fr; }
     .settings-columns .setting-row:nth-child(even) { border-left: 0; }
     .theme-grid { grid-template-columns: repeat(2, 1fr); }
+    .protection-body { grid-template-columns: 1fr; }
   }
   @media (max-width: 620px) {
     .settings-status { align-items: flex-start; flex-direction: column; }

@@ -66,4 +66,7 @@ public record AppSettings
 
     [JsonPropertyName("heatmapDays")]
     public int HeatmapDays { get; init; } = 182;
+
+    [JsonPropertyName("blockProtectionEnabled")]
+    public bool BlockProtectionEnabled { get; init; } = false;
 }

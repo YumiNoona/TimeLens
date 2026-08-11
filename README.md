@@ -27,6 +27,7 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 | **Foreground tracking** | Logs active window (exe, title, PID) via WinEvent hook |
 | **Browser integration** | Chrome, Edge, Brave, Firefox, Zen extensions — tracks domains, URLs, audible tabs |
 | **Focus Mode** | Blocks exact app and domain matches with notify, minimize, terminate, and strict actions |
+| **Block password** | Optional salted password protection for disabling Focus, weakening enforcement, or removing active targets |
 | **Input monitoring** | Keyboard & mouse event counts per app in 1-minute buckets (no keylogging) |
 | **Audio detection** | Core Audio COM enumeration — bypasses idle detection during media playback |
 | **Idle detection** | `GetLastInputInfo` with configurable threshold, exempted during audio |

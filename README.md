@@ -16,6 +16,8 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 
 **~18 MB** standalone Native AOT executable · zero runtime dependencies · copy and run
 
+[**Visit the TimeLens website**](https://yuminoona.github.io/TimeLens/) · [**Download TimeLens.exe**](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe) · [Support development](https://yuminoona.github.io/TimeLens/#support)
+
 </div>
 
 ---
@@ -47,7 +49,7 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 
 ### Download (recommended)
 
-[Download the latest release](https://github.com/YumiNoona/TimeLens/releases/latest), place `TimeLens.exe` anywhere, and run it. TimeLens starts in the system tray and serves the dashboard at [http://127.0.0.1:47821/](http://127.0.0.1:47821/).
+[Download the latest standalone EXE](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe), place `TimeLens.exe` anywhere, and run it. TimeLens starts in the system tray and serves the dashboard at [http://127.0.0.1:47821/](http://127.0.0.1:47821/).
 
 The executable is self-contained. On first launch it extracts only the native SQLite runtime and built-in category/icon resources to `%LOCALAPPDATA%\TimeLens\runtime`. Activity data remains in `%LOCALAPPDATA%\TimeLens`.
 

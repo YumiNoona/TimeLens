@@ -11,18 +11,32 @@ const TAB_HEARTBEAT_API = 'http://127.0.0.1:47821/api/browser-heartbeat';
 const DASHBOARD = 'http://127.0.0.1:47821/';
 const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
 const QUEUE_KEY = 'timelens_queue';
+const MAX_QUEUE_SIZE = 500;
+const EXTENSION_VERSION = api.runtime.getManifest().version;
 
 // --- Block state ---
 let trackingEnabled = true;
+let blockingEnabled = false;
 let blockedDomains = [];
 var ACTIVE_RULE_IDS = [];
 var _scheduledRefresh = null;
+var _ruleUpdate = Promise.resolve();
+
+function checkedFetch(url, options) {
+  return fetch(url, options).then(function(response) {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response;
+  });
+}
 
 // --- Extension heartbeat ---
 function sendHeartbeat() {
-  fetch(HEARTBEAT_API + '?ts=' + Date.now(), { method: 'POST' }).catch(function() {});
+  checkedFetch(
+    HEARTBEAT_API + '?browser=' + encodeURIComponent(BROWSER) +
+      '&version=' + encodeURIComponent(EXTENSION_VERSION) + '&ts=' + Date.now(),
+    { method: 'POST' }
+  ).catch(function() {});
 }
-setInterval(sendHeartbeat, 30_000);
 sendHeartbeat();
 
 // --- Tab heartbeat: bounds duration miscalculation to ~45s ---
@@ -48,17 +62,15 @@ function sendTabHeartbeat() {
     } catch(e) {}
   });
 }
-setInterval(sendTabHeartbeat, 45_000);
 
 // --- Block rule application ---
 function applyBlockRules(domains) {
-  blockedDomains = domains;
+  blockedDomains = blockingEnabled ? domains : [];
   if (BROWSER === 'chrome') {
-    var oldIds = ACTIVE_RULE_IDS.slice();
     var newRules = [];
     var nextId = 1;
-    for (var i = 0; i < domains.length; i++) {
-      var d = domains[i];
+    for (var i = 0; i < blockedDomains.length && newRules.length < 5000; i++) {
+      var d = blockedDomains[i];
       newRules.push({
         id: nextId++,
         priority: 1,
@@ -69,24 +81,18 @@ function applyBlockRules(domains) {
         }
       });
     }
-    ACTIVE_RULE_IDS = newRules.map(function(r) { return r.id; });
-    chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: oldIds,
-      addRules: newRules
-    }).then(function() {
-      console.log('TimeLens: installed ' + newRules.length + ' block rules, removed ' + oldIds.length);
+    _ruleUpdate = _ruleUpdate.then(function() {
+      return chrome.declarativeNetRequest.getDynamicRules().then(function(existing) {
+        var oldIds = existing.map(function(rule) { return rule.id; });
+        return chrome.declarativeNetRequest.updateDynamicRules({
+          removeRuleIds: oldIds,
+          addRules: newRules
+        });
+      }).then(function() {
+        ACTIVE_RULE_IDS = newRules.map(function(rule) { return rule.id; });
+      });
     }).catch(function(err) {
       console.error('TimeLens: updateDynamicRules failed:', err.message || err);
-      if (newRules.length > 5000) {
-        chrome.declarativeNetRequest.updateDynamicRules({
-          removeRuleIds: oldIds,
-          addRules: newRules.slice(0, 5000)
-        }).then(function() {
-          console.log('TimeLens: retry with 5000 rules succeeded');
-        }).catch(function(err2) {
-          console.error('TimeLens: retry also failed:', err2.message || err2);
-        });
-      }
     });
   }
 }
@@ -95,7 +101,7 @@ function applyBlockRules(domains) {
 if (BROWSER === 'firefox') {
   browser.webRequest.onBeforeRequest.addListener(
     function(details) {
-      if (!trackingEnabled) return;
+      if (!blockingEnabled) return;
       try {
         var url = new URL(details.url);
         var host = url.hostname.toLowerCase();
@@ -119,9 +125,13 @@ if (BROWSER === 'firefox') {
 function fetchSettings() {
   if (_scheduledRefresh) { clearTimeout(_scheduledRefresh); _scheduledRefresh = null; }
   fetch(SETTINGS_API)
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(s) {
       trackingEnabled = s.trackBrowser !== false;
+      blockingEnabled = s.focusMode === true;
       var raw = s.focusBlocklist || '[]';
       try { raw = JSON.parse(raw); } catch { raw = []; }
       if (!Array.isArray(raw)) raw = [];
@@ -129,9 +139,12 @@ function fetchSettings() {
       var earliestExpiry = Infinity;
       for (var i = 0; i < raw.length; i++) {
         var entry = raw[i];
-        var id = (entry && entry.i) || entry;
-        if (typeof id !== 'string') continue;
-        if (id.indexOf('.exe') !== -1) continue;
+        var rawId = (entry && entry.i) || entry;
+        if (typeof rawId !== 'string') continue;
+        var id = rawId.toLowerCase().trim();
+        if (!id || id.endsWith('.exe')) continue;
+        id = id.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').replace(/^\.+|\.+$/g, '');
+        if (!id || !/^[a-z0-9.-]+$/.test(id)) continue;
         if (entry && entry.m === 't' && entry.e) {
           var exp = new Date(entry.e).getTime();
           if (Date.now() >= exp) continue;
@@ -147,7 +160,6 @@ function fetchSettings() {
     })
     .catch(function() {});
 }
-setInterval(fetchSettings, 15_000);
 
 // Recover persisted rule IDs on Chrome MV3 service worker restart
 (function initBlockState() {
@@ -171,6 +183,7 @@ function enqueue(event) {
   api.storage.local.get(QUEUE_KEY, function(result) {
     var queue = result[QUEUE_KEY] || [];
     queue.push(event);
+    if (queue.length > MAX_QUEUE_SIZE) queue = queue.slice(queue.length - MAX_QUEUE_SIZE);
     var obj = {};
     obj[QUEUE_KEY] = queue;
     api.storage.local.set(obj);
@@ -187,9 +200,9 @@ function flushQueue() {
     api.storage.local.remove(QUEUE_KEY);
     var remaining = queue.length;
     for (var i = 0; i < queue.length; i++) {
-      var evt = queue[i];
+      let evt = queue[i];
       var target = evt._leave ? LEAVE_API : API;
-      fetch(target, {
+      checkedFetch(target, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evt),
@@ -210,7 +223,7 @@ function doSendTab(tabId, url, title, audible) {
   try {
     var u = new URL(url);
     var body = { tabId: tabId, domain: u.hostname, url: url, title: title || '', browser: BROWSER, audible: !!audible };
-    fetch(API, {
+    checkedFetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -237,7 +250,7 @@ function sendTab(tabId, url, title, audible) {
 
 function reportAudible(audible) {
   if (!trackingEnabled) return;
-  fetch(AUDIBLE_API, {
+  checkedFetch(AUDIBLE_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ audible: audible, browser: BROWSER }),
@@ -272,7 +285,7 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
 api.tabs.onRemoved.addListener(function(tabId) {
   if (lastUrl[tabId]) {
     var body = { tabId: tabId, browser: BROWSER, _leave: true };
-    fetch(LEAVE_API, {
+    checkedFetch(LEAVE_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -286,3 +299,23 @@ api.tabs.onRemoved.addListener(function(tabId) {
 });
 
 flushQueue();
+
+// Alarms wake Chrome MV3 service workers reliably; intervals alone stop when the
+// worker is suspended. Firefox supports the same API and benefits from one path.
+if (api.alarms) {
+  api.alarms.create('timelens-heartbeat', { periodInMinutes: 0.5 });
+  api.alarms.create('timelens-tab-heartbeat', { periodInMinutes: 0.75 });
+  api.alarms.create('timelens-settings', { periodInMinutes: 0.5 });
+  api.alarms.create('timelens-flush', { periodInMinutes: 1 });
+  api.alarms.onAlarm.addListener(function(alarm) {
+    if (alarm.name === 'timelens-heartbeat') sendHeartbeat();
+    else if (alarm.name === 'timelens-tab-heartbeat') sendTabHeartbeat();
+    else if (alarm.name === 'timelens-settings') fetchSettings();
+    else if (alarm.name === 'timelens-flush') flushQueue();
+  });
+} else {
+  setInterval(sendHeartbeat, 30_000);
+  setInterval(sendTabHeartbeat, 45_000);
+  setInterval(fetchSettings, 15_000);
+  setInterval(flushQueue, 60_000);
+}

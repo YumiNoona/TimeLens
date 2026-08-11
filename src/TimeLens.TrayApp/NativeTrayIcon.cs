@@ -7,6 +7,7 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint WM_USER = 0x0400;
     private const uint WM_APP = 0x8000;
     private const uint WM_COMMAND = 0x0111;
+    private const uint WM_CLOSE = 0x0010;
     private const uint WM_DESTROY = 0x0002;
     private const uint WM_RBUTTONUP = 0x0205;
     private const uint WM_LBUTTONUP = 0x0202;
@@ -14,6 +15,8 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint NIM_ADD = 0;
     private const uint NIM_MODIFY = 1;
     private const uint NIM_DELETE = 2;
+    private const uint NIM_SETVERSION = 4;
+    private const uint NOTIFYICON_VERSION_4 = 4;
     private const uint NIF_MESSAGE = 1;
     private const uint NIF_ICON = 2;
     private const uint NIF_TIP = 4;
@@ -39,6 +42,10 @@ public sealed class NativeTrayIcon : IDisposable
 
     private IntPtr _hWnd;
     private IntPtr _hMenu;
+    private IntPtr _hIcon;
+    private uint _taskbarCreatedMessage;
+    private WndProc? _wndProc;
+    private bool _iconAdded;
     private bool _disposed;
 
     public event Action? OpenDashboardRequested;
@@ -119,6 +126,12 @@ public sealed class NativeTrayIcon : IDisposable
     [DllImport("user32.dll")]
     private static extern bool DestroyWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessageW(string lpString);
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Shell_NotifyIconW(uint cmd, ref NOTIFYICONDATAW lpData);
 
@@ -163,7 +176,7 @@ public sealed class NativeTrayIcon : IDisposable
     private static extern IntPtr DispatchMessageW(ref MSG lpMsg);
 
     [DllImport("user32.dll")]
-    private static extern bool PostQuitMessage(int nExitCode);
+    private static extern void PostQuitMessage(int nExitCode);
 
     private const string WindowClass = "TimeLensHiddenWindow";
     private const uint TrayIconId = 100;
@@ -172,12 +185,12 @@ public sealed class NativeTrayIcon : IDisposable
     {
         var hInstance = GetModuleHandleW(null);
 
-        var wndProc = new WndProc(WindowProcedure);
+        _wndProc = new WndProc(WindowProcedure);
         var wcex = new WNDCLASSEXW
         {
             cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
             style = 0,
-            lpfnWndProc = wndProc,
+            lpfnWndProc = _wndProc,
             hInstance = hInstance,
             lpszClassName = WindowClass,
         };
@@ -192,23 +205,15 @@ public sealed class NativeTrayIcon : IDisposable
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
 
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "runtime", "TimeLens.ico");
-        var hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
-        if (hIcon == IntPtr.Zero)
-            hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION
+        var iconPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TimeLens", "runtime", "TimeLens.ico");
+        _hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
+        if (_hIcon == IntPtr.Zero)
+            _hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION
 
-        var nid = new NOTIFYICONDATAW
-        {
-            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
-            hWnd = _hWnd,
-            uID = TrayIconId,
-            uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
-            uCallbackMessage = WM_USER,
-            hIcon = hIcon,
-            szTip = "TimeLens",
-        };
-        if (!Shell_NotifyIconW(NIM_ADD, ref nid))
-            throw new InvalidOperationException("Failed to create tray icon.");
+        _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
+        AddTrayIcon();
 
         _hMenu = CreatePopupMenu();
         AppendMenuW(_hMenu, MF_STRING, ID_OPEN_DASHBOARD, "Open Dashboard");
@@ -236,15 +241,64 @@ public sealed class NativeTrayIcon : IDisposable
         catch { }
     }
 
+    public void Close()
+    {
+        if (_hWnd != IntPtr.Zero)
+            PostMessageW(_hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private void AddTrayIcon()
+    {
+        var nid = new NOTIFYICONDATAW
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
+            hWnd = _hWnd,
+            uID = TrayIconId,
+            uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
+            uCallbackMessage = WM_USER,
+            hIcon = _hIcon,
+            szTip = "TimeLens",
+        };
+        if (!Shell_NotifyIconW(NIM_ADD, ref nid))
+            throw new InvalidOperationException("Failed to create tray icon.");
+        _iconAdded = true;
+
+        nid.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, ref nid);
+    }
+
+    private void RemoveTrayIcon()
+    {
+        if (!_iconAdded || _hWnd == IntPtr.Zero) return;
+        var nid = new NOTIFYICONDATAW
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
+            hWnd = _hWnd,
+            uID = TrayIconId,
+        };
+        Shell_NotifyIconW(NIM_DELETE, ref nid);
+        _iconAdded = false;
+    }
+
     private IntPtr WindowProcedure(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
+        {
+            AddTrayIcon();
+            return IntPtr.Zero;
+        }
+
         switch (msg)
         {
             case WM_USER:
-                var trayId = (uint)wParam;
+                var rawNotification = unchecked((ulong)lParam.ToInt64());
+                var version4Id = (uint)((rawNotification >> 16) & 0xFFFF);
+                var trayId = version4Id != 0 ? version4Id : unchecked((uint)wParam.ToInt64());
                 if (trayId == TrayIconId)
                 {
-                    var notifyMsg = (uint)lParam;
+                    var notifyMsg = version4Id != 0
+                        ? (uint)(rawNotification & 0xFFFF)
+                        : unchecked((uint)lParam.ToInt64());
                     switch (notifyMsg)
                     {
                         case WM_RBUTTONUP:
@@ -268,7 +322,14 @@ public sealed class NativeTrayIcon : IDisposable
                 return IntPtr.Zero;
 
             case WM_DESTROY:
+                RemoveTrayIcon();
                 PostQuitMessage(0);
+                return IntPtr.Zero;
+
+            case WM_CLOSE:
+                RemoveTrayIcon();
+                DestroyWindow(hWnd);
+                _hWnd = IntPtr.Zero;
                 return IntPtr.Zero;
 
             case WM_STARTUP:
@@ -302,17 +363,20 @@ public sealed class NativeTrayIcon : IDisposable
 
         if (_hWnd != IntPtr.Zero)
         {
-            var nid = new NOTIFYICONDATAW
-            {
-                cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATAW>(),
-                hWnd = _hWnd,
-                uID = TrayIconId,
-            };
-            Shell_NotifyIconW(NIM_DELETE, ref nid);
+            RemoveTrayIcon();
             DestroyWindow(_hWnd);
+            _hWnd = IntPtr.Zero;
         }
 
         if (_hMenu != IntPtr.Zero)
             DestroyMenu(_hMenu);
+
+        if (_hIcon != IntPtr.Zero)
+        {
+            DestroyIcon(_hIcon);
+            _hIcon = IntPtr.Zero;
+        }
+
+        _wndProc = null;
     }
 }

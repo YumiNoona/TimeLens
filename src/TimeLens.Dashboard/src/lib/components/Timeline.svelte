@@ -1,14 +1,16 @@
 <script lang="ts">
   import type { TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
-  import { fmtDuration, fmtHourFull } from '../utils';
+  import { fmtDuration, fmtHourFull, normalizeTimeline } from '../utils';
+  import { timelineMinSegmentSeconds } from '../stores/settings';
   import { timeFormat } from '../stores/settings';
 
   let { blocks }: { blocks: TimelineBlock[] } = $props();
 
   // Dynamic window — zoom to activity range with 30 min padding
-  const minHour = $derived(blocks.length > 0 ? Math.max(0, Math.min(...blocks.map(b => b.startHour)) - 0.5) : 0);
-  const maxHour = $derived(blocks.length > 0 ? Math.min(24, Math.max(...blocks.map(b => b.endHour)) + 0.5) : 24);
+  const visibleBlocks = $derived(normalizeTimeline(blocks, $timelineMinSegmentSeconds));
+  const minHour = $derived(visibleBlocks.length > 0 ? Math.max(0, Math.min(...visibleBlocks.map(b => b.startHour)) - 0.5) : 0);
+  const maxHour = $derived(visibleBlocks.length > 0 ? Math.min(24, Math.max(...visibleBlocks.map(b => b.endHour)) + 0.5) : 24);
   const range = $derived(Math.max(maxHour - minHour, 0.5));
 
   function pctLeft(h: number): string { return `${((h - minHour) / range) * 100}%`; }
@@ -17,7 +19,7 @@
   // Current time needle
   const now = new Date();
   const nowHour = $derived(now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600);
-  const showNow = $derived(blocks.length > 0 && nowHour >= minHour && nowHour <= maxHour);
+  const showNow = $derived(visibleBlocks.length > 0 && nowHour >= minHour && nowHour <= maxHour);
 
   // Hour labels (adaptive step)
   const hourLabels = $derived.by(() => {
@@ -44,9 +46,6 @@
 
   const isActiveType = (t: string) => t !== 'idle' && t !== 'away' && t !== 'gap';
 
-  // Filter out sub-10s noise blocks from display (but keep for window calculations)
-  const displayBlocks = $derived(blocks.filter(b => b.durationSeconds >= 10 || !isActiveType(b.type)));
-
   let trackEl: HTMLDivElement;
 
   // Tooltip left position — clamped to card bounds
@@ -59,7 +58,7 @@
   }
 </script>
 
-{#if blocks.length === 0}
+{#if visibleBlocks.length === 0}
   <div class="tl-empty">No activity recorded yet</div>
 {:else}
   <div class="tl-wrap">
@@ -70,7 +69,7 @@
       role="img"
       aria-label="Activity timeline from {minHour.toFixed(1)}h to {maxHour.toFixed(1)}h"
     >
-      {#each displayBlocks as block}
+      {#each visibleBlocks as block}
         {@const active = isActiveType(block.type)}
         <div
           class="tl-block"

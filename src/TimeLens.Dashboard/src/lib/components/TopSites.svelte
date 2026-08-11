@@ -3,7 +3,7 @@
   import { colorForApp } from '../colors';
   import { appIcon } from '../appIcons';
 
-  let { sites }: { sites: BrowserEntry[] } = $props();
+  let { sites, emptyLabel = 'No browsing activity today.' }: { sites: BrowserEntry[]; emptyLabel?: string } = $props();
 
   const strippedDomains = $derived(
     sites.map(s => ({ ...s, displayDomain: s.domain.replace(/^www\./, '') }))
@@ -18,7 +18,7 @@
   </div>
 
   {#if sites.length === 0}
-    <p class="empty-msg">No browsing activity today.</p>
+    <p class="empty-msg">{emptyLabel}</p>
   {:else}
     <div class="site-list">
       {#each strippedDomains as site, i}

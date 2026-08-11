@@ -51,4 +51,19 @@ public record AppSettings
 
     [JsonPropertyName("pollIntervalSeconds")]
     public int PollIntervalSeconds { get; init; } = 30;
+
+    [JsonPropertyName("defaultView")]
+    public string DefaultView { get; init; } = "today";
+
+    [JsonPropertyName("density")]
+    public string Density { get; init; } = "comfortable";
+
+    [JsonPropertyName("motionEnabled")]
+    public bool MotionEnabled { get; init; } = true;
+
+    [JsonPropertyName("timelineMinSegmentSeconds")]
+    public int TimelineMinSegmentSeconds { get; init; } = 60;
+
+    [JsonPropertyName("heatmapDays")]
+    public int HeatmapDays { get; init; } = 182;
 }

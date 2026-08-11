@@ -1,8 +1,45 @@
+import type { TimelineBlock } from './types';
+
 export function fmtDuration(secs: number): string {
+  if (secs < 60) return '<1m';
   const m = Math.floor(secs / 60);
   if (m < 60) return m + 'm';
   const h = Math.floor(m / 60);
   return h + 'h ' + (m % 60) + 'm';
+}
+
+/**
+ * Produces a human-readable activity timeline without mutating the recorded data.
+ * Adjacent samples from the same app/category are joined, then sub-minute window
+ * switches are omitted so they do not render as duplicate timestamps or 0m rows.
+ */
+export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 60): TimelineBlock[] {
+  const ordered = blocks
+    .filter(block => block.endHour > block.startHour && block.durationSeconds > 0)
+    .toSorted((a, b) => a.startHour - b.startHour);
+  const merged: TimelineBlock[] = [];
+
+  for (const block of ordered) {
+    const current = { ...block };
+    const previous = merged.at(-1);
+    const gapSeconds = previous
+      ? Math.max(0, Math.round((current.startHour - previous.endHour) * 3600))
+      : Number.POSITIVE_INFINITY;
+    const sameContext = previous &&
+      previous.type.toLowerCase() === current.type.toLowerCase() &&
+      previous.exeName.toLowerCase() === current.exeName.toLowerCase();
+
+    if (previous && sameContext && gapSeconds <= 20) {
+      previous.endHour = Math.max(previous.endHour, current.endHour);
+      previous.durationSeconds += current.durationSeconds + gapSeconds;
+      previous.windowTitle = current.windowTitle || previous.windowTitle;
+      previous.project = current.project || previous.project;
+      continue;
+    }
+    merged.push(current);
+  }
+
+  return merged.filter(block => block.durationSeconds >= minimumSeconds);
 }
 
 export function fmtTime(mins: number): string {

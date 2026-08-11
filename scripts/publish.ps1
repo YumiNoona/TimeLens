@@ -1,14 +1,12 @@
 ﻿<#
 .SYNOPSIS
   Developer build script for TimeLens. Builds the Svelte dashboard,
-  publishes the .NET tray app (Native AOT), and optionally runs Inno Setup.
-  End users should download the pre-built installer from GitHub Releases.
+  publishes the .NET tray app as one self-contained Native AOT executable.
 #>
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Config = "Release",
     [switch]$SkipDashboard,
-    [switch]$Installer,
     [switch]$Launch
 )
 
@@ -16,9 +14,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $dashboardDir = "$root\src\TimeLens.Dashboard"
 $trayAppDir = "$root\src\TimeLens.TrayApp"
-$distDir = "$dashboardDir\dist"
 $publishDir = "$trayAppDir\bin\$Config\net9.0\win-x64\publish"
 $exePath = "$publishDir\TimeLens.TrayApp.exe"
+$rootExePath = "$root\TimeLens.exe"
 
 $header = { Write-Host "`n$($args[0])" -ForegroundColor Cyan }
 $ok = { Write-Host "  [ok] $($args[0])" -ForegroundColor Green }
@@ -88,77 +86,27 @@ try {
     exit 1
 }
 
-# --- Copy dashboard ---
-& $header "=== Bundling dashboard ==="
-if (Test-Path "$publishDir\dashboard") {
-    Remove-Item -Recurse -Force "$publishDir\dashboard"
-}
-if (Test-Path $distDir) {
-    Copy-Item -Recurse $distDir "$publishDir\dashboard"
-    & $ok "Dashboard copied to publish output"
-} else {
-    Write-Host "  Dashboard dist/ not found — exe will use embedded resources" -ForegroundColor DarkGray
-}
-
 # --- Deploy to root (double-click ready) ---
 & $header "=== Deploying to root ==="
 if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
-if (Test-Path $distDir) { Copy-Item -Recurse -Force $distDir "$root\dashboard" }
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
-Copy-Item -Force "$publishDir\TimeLens.ico" "$root\runtime\" -ErrorAction SilentlyContinue
-Copy-Item -Force "$publishDir\e_sqlite3.dll" "$root\runtime\" -ErrorAction SilentlyContinue
-Copy-Item -Force "$publishDir\categories.csv" "$root\runtime\" -ErrorAction SilentlyContinue
-& $ok "Root TimeLens.exe ready"
+& $ok "Standalone root TimeLens.exe ready"
 
 # --- Summary ---
 & $header "=== Build summary ==="
 $exeItem = Get-Item $exePath -ErrorAction SilentlyContinue
 $exeSizeMB = if ($exeItem) { [math]::Round($exeItem.Length / 1MB, 1) } else { 0 }
-$dashboardSizeMB = 0
-$dashboardFiles = 0
-if (Test-Path "$publishDir\dashboard") {
-    $dashboardSizeMB = [math]::Round((Get-ChildItem "$publishDir\dashboard" -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
-    $dashboardFiles = (Get-ChildItem "$publishDir\dashboard" -Recurse -File).Count
-}
 Write-Host "  Exe:         $exePath" -ForegroundColor White
 Write-Host "  Exe size:    ${exeSizeMB} MB" -ForegroundColor White
-Write-Host "  Dashboard:   ${dashboardSizeMB} MB ($dashboardFiles files)" -ForegroundColor White
-Write-Host "  Total:       $([math]::Round($exeSizeMB + $dashboardSizeMB, 1)) MB" -ForegroundColor White
+Write-Host "  Packaging:   Single self-contained executable" -ForegroundColor White
 Write-Host "  Config:      $Config" -ForegroundColor White
 Write-Host "  Output:      $publishDir" -ForegroundColor White
-
-# --- Inno Setup ---
-if ($Installer) {
-    & $header "=== Building installer ==="
-    $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-    $issFile = "$root\scripts\TimeLens.iss"
-
-    if (-not (Test-Path $iscc)) {
-        & $fail "Inno Setup not found at: $iscc"
-        Write-Host "       Install via: choco install innosetup" -ForegroundColor Yellow
-        Write-Host "       Or download: https://jrsoftware.org/isinfo.php" -ForegroundColor Yellow
-    } elseif (-not (Test-Path $issFile)) {
-        & $fail "Installer script not found: $issFile"
-    } else {
-        try {
-            $version = if ($exeItem -and $exeItem.VersionInfo.FileVersion) { $exeItem.VersionInfo.FileVersion } else { "0.0.0" }
-            & $iscc $issFile /DAppVersion=$version
-            $setupExe = "$root\dist\TimeLens-Setup-$version.exe"
-            if (Test-Path $setupExe) {
-                $setupSize = [math]::Round((Get-Item $setupExe).Length / 1MB, 1)
-                & $ok "Installer built: TimeLens-Setup-$version.exe (${setupSize} MB)"
-            }
-        } catch {
-            & $fail "Inno Setup build failed: $_"
-        }
-    }
-}
 
 # --- Launch ---
 if ($Launch) {
     & $header "=== Launching ==="
-    if (Test-Path $exePath) {
-        Start-Process -FilePath $exePath -WorkingDirectory $publishDir
+    if (Test-Path $rootExePath) {
+        Start-Process -FilePath $rootExePath -WorkingDirectory $root
         & $ok "TimeLens started"
         Write-Host "  Dashboard: http://127.0.0.1:47821/" -ForegroundColor Cyan
     } else {

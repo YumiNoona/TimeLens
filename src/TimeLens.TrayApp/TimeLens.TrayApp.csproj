@@ -43,7 +43,22 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\TimeLens.Dashboard\dist\**\*">
-      <LogicalName>dashboard\%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+      <LogicalName>dashboard/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\runtime\e_sqlite3.dll">
+      <LogicalName>runtime/e_sqlite3.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="categories.csv">
+      <LogicalName>runtime/categories.csv</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="TimeLens.ico">
+      <LogicalName>runtime/TimeLens.ico</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\browser-extensions\chrome\**\*">
+      <LogicalName>extensions/chromium/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\browser-extensions\firefox\**\*">
+      <LogicalName>extensions/firefox/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

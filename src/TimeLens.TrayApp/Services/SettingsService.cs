@@ -41,6 +41,11 @@ public sealed class SettingsService
             TimeFormat = dict.GetValueOrDefault("time_format", "12h"),
             PollIntervalSeconds = int.TryParse(dict.GetValueOrDefault("poll_interval_seconds", "30"), out var pis) ? pis : 30,
             BlockAction = dict.GetValueOrDefault("block_action", "hide"),
+            DefaultView = dict.GetValueOrDefault("default_view", "today"),
+            Density = dict.GetValueOrDefault("density", "comfortable"),
+            MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
+            TimelineMinSegmentSeconds = int.TryParse(dict.GetValueOrDefault("timeline_min_segment_seconds", "60"), out var tmss) ? tmss : 60,
+            HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "182"), out var hd) ? hd : 182,
         };
     }
 

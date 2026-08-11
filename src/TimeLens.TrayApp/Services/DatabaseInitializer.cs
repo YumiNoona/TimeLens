@@ -117,7 +117,12 @@ public static class DatabaseInitializer
             INSERT OR IGNORE INTO settings (key, value) VALUES ('theme', 'default');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_grouped', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('time_format', '12h');
-            INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_seconds', '30');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('poll_interval_seconds', '30');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('default_view', 'today');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('density', 'comfortable');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('motion_enabled', 'true');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_min_segment_seconds', '60');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('heatmap_days', '182');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);

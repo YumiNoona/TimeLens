@@ -3,7 +3,7 @@
   import { colorForCategory } from '../colors';
   import { fmtTime } from '../utils';
 
-  let { categories }: { categories: CategoryEntry[] } = $props();
+  let { categories, periodLabel = 'today' }: { categories: CategoryEntry[]; periodLabel?: string } = $props();
 
   const total = $derived(categories.reduce((a, c) => a + c.minutes, 0) || 1);
   const sorted = $derived([...categories].sort((a, b) => b.minutes - a.minutes));
@@ -65,7 +65,7 @@
           <span class="cat-pct-main">{topCat.percentage}%</span>
         {:else}
           <span class="cat-total">{fmtTime(total)}</span>
-          <span class="cat-total-label">today</span>
+          <span class="cat-total-label">{periodLabel}</span>
         {/if}
       </div>
     </div>

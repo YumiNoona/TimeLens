@@ -14,7 +14,7 @@ Tracks foreground apps, browser tabs, input, audio, and sessions —
 <br>
 all stored in a local SQLite database. No telemetry. No cloud. No data leaves your machine.
 
-**~10.5 MB** single-file Native AOT exe · **~40 MB** RAM · zero runtime dependencies
+**~18 MB** standalone Native AOT executable · zero runtime dependencies · copy and run
 
 </div>
 
@@ -26,16 +26,18 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 |---|---|
 | **Foreground tracking** | Logs active window (exe, title, PID) via WinEvent hook |
 | **Browser integration** | Chrome, Edge, Brave, Firefox, Zen extensions — tracks domains, URLs, audible tabs |
+| **Focus Mode** | Blocks exact app and domain matches with notify, minimize, terminate, and strict actions |
 | **Input monitoring** | Keyboard & mouse event counts per app in 1-minute buckets (no keylogging) |
 | **Audio detection** | Core Audio COM enumeration — bypasses idle detection during media playback |
 | **Idle detection** | `GetLastInputInfo` with configurable threshold, exempted during audio |
 | **Session tracking** | Lock/unlock, sleep/resume events with idle reason tagging |
 | **App categorization** | 8 built-in categories (Work, Development, Browsing, etc.) + custom rules |
-| **Live status** | Real-time current app, idle state, audio — visible in tray tooltip & dashboard |
-| **Calendar heatmap** | 28-day activity overview with color intensity |
-| **Timeline** | 24-hour activity blocks colored by category — flat & grouped modes |
+| **Live status** | Real-time current app, idle state, and audio context in the tray tooltip |
+| **Calendar heatmap** | GitHub-style activity overview with configurable 4-week, 3-month, or 6-month range |
+| **Timeline** | Meaningful activity blocks grouped by default, with expandable app detail and a configurable noise threshold |
 | **Daily summary** | Active/idle time, focus score, keystrokes/clicks, vs-yesterday comparison |
-| **History** | Browse any past day via date picker with full stats |
+| **History** | Browse past days with a date picker, heatmap, daily summary, apps, sites, categories, and timeline |
+| **Preferences** | Default tab, interface density, motion, refresh rate, time format, tracking signals, reminders, retention, exports, and goals |
 | **11 themes** | Acid, Terminal, Moss, Copper, Arctic, Crimson, Gold, Ember, Rose, Clay, Sunset |
 
 ---
@@ -44,27 +46,33 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 
 ### Download (recommended)
 
-[Download the latest release](https://github.com/YumiNoona/TimeLens/releases/latest) — extract anywhere and run `TimeLens.TrayApp.exe`. Open [http://127.0.0.1:47821/](http://127.0.0.1:47821/).
+[Download the latest release](https://github.com/YumiNoona/TimeLens/releases/latest), place `TimeLens.exe` anywhere, and run it. TimeLens starts in the system tray and serves the dashboard at [http://127.0.0.1:47821/](http://127.0.0.1:47821/).
+
+The executable is self-contained. On first launch it extracts only the native SQLite runtime and built-in category/icon resources to `%LOCALAPPDATA%\TimeLens\runtime`. Activity data remains in `%LOCALAPPDATA%\TimeLens`.
 
 ### Build from source
 
 **Prerequisites:** .NET 9 SDK · Node.js 18+
 
 ```powershell
-.\scripts\publish.ps1           # build everything + deploy to root
-.\scripts\publish.ps1 -Launch   # build + launch
-.\scripts\publish.ps1 -Installer # build + Inno Setup installer
-.\scripts\install.ps1           # one-click install to %LOCALAPPDATA%
+.\scripts\publish.ps1                 # build dashboard + standalone root EXE
+.\scripts\publish.ps1 -Launch         # build and launch TimeLens.exe
+.\scripts\publish.ps1 -SkipDashboard  # reuse an existing dashboard dist build
+.\scripts\install.ps1                 # build and install to %LOCALAPPDATA%\TimeLens
 ```
+
+`publish.ps1` produces a single copy-and-run `TimeLens.exe` in the repository root. Dashboard assets, browser-extension packages, SQLite, categories, and the tray icon are embedded in the executable.
 
 ### Browser extensions
 
 | Browser | How to install |
 |---|---|
-| **Chrome / Edge / Brave / Arc** | `chrome://extensions` → Developer mode → Load unpacked → select `src/browser-extensions/chrome/` |
-| **Firefox / Zen** | `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → select `src/browser-extensions/firefox/manifest.json` |
+| **Chrome / Edge / Brave / Arc / Opera / Vivaldi** | Download the Chromium ZIP → extract it → open the browser extensions page → enable Developer mode → Load unpacked |
+| **Firefox / Zen** | Download the Firefox ZIP → extract it → open `about:debugging` → Load Temporary Add-on → select `manifest.json` |
 
-Or right-click the tray icon → **Install Browser Extension** for a guided setup page.
+With TimeLens running, open [http://127.0.0.1:47821/extension-setup](http://127.0.0.1:47821/extension-setup) or right-click the tray icon and choose **Install Browser Extension**. The setup page downloads both ZIPs directly from the running EXE and shows the installed extension's connection status.
+
+For extension development, the unpacked sources remain under `src/browser-extensions/chrome` and `src/browser-extensions/firefox`. `src/browser-extensions/shared/background.js` is the shared source used by both builds.
 
 ---
 
@@ -85,16 +93,16 @@ TimeLens/
 │   │   └── Program.cs              # Entry point — wires watchers + API
 │   ├── TimeLens.Dashboard/         # Svelte 5 SPA
 │   │   └── src/lib/
-│   │       ├── components/         # 14 Svelte components
+│   │       ├── components/         # Dashboard views, including History and Focus Mode
 │   │       ├── stores/             # Reactive data stores
-│   │       └── api.ts              # API client with mock fallback
+│   │       └── api.ts              # Typed local API client
 │   └── browser-extensions/
 │       ├── chrome/                 # MV3 (Chrome, Edge, Brave, Arc)
-│       └── firefox/                # MV2 (Firefox, Zen)
+│       ├── firefox/                # MV2 (Firefox, Zen)
+│       └── shared/                 # Shared tracking/blocking source
 ├── scripts/
 │   ├── publish.ps1                 # Developer build + root deploy
-│   ├── install.ps1                 # One-click install
-│   └── TimeLens.iss                # Inno Setup installer
+│   └── install.ps1                 # Source build + per-user install
 └── .github/workflows/
     └── release.yml                 # CI/CD
 ```
@@ -119,7 +127,11 @@ Base URL: `http://127.0.0.1:47821`
 | `POST` | `/api/browser-event` | Log browser tab visit `{domain, url, title, browser, audible}` |
 | `POST` | `/api/audible-status` | Update audible tab state `{audible, browser}` |
 | `GET` | `/api/running-processes` | User-facing processes for rule suggestions |
+| `GET` | `/api/block/stats` | Block enforcement counts for the current day |
+| `POST` | `/api/block/enforce` | Enforce an active executable blocklist entry |
+| `GET` | `/api/extension-status` | Current extension connection, browser, and version |
 | `GET` | `/extension-setup` | Browser extension install guide page |
+| `GET` | `/extension/download/{chromium\|firefox}` | Download an extension ZIP embedded in the EXE |
 | `GET` | `/*` | Svelte SPA & static assets |
 
 ---
@@ -137,6 +149,8 @@ SQLite at `%LOCALAPPDATA%\TimeLens\activity.db` (WAL mode, auto-vacuum, 90-day r
 | `audio_activity` | Per-process audio playback snapshots |
 | `custom_rules` | User-defined exe → category overrides |
 | `settings` | Key-value config (tracking toggles, theme, auto-start, etc.) |
+| `block_log` | Successful Focus Mode app enforcement events |
+| `idle_spans` | Recorded idle periods and reasons |
 
 ---
 
@@ -145,11 +159,11 @@ SQLite at `%LOCALAPPDATA%\TimeLens\activity.db` (WAL mode, auto-vacuum, 90-day r
 | Layer | Technology |
 |---|---|
 | **Backend** | .NET 9 · Native AOT · Kestrel · Microsoft.Data.Sqlite |
-| **Frontend** | Svelte 5 · Vite · TypeScript · Tabler Icons |
+| **Frontend** | Svelte 5 · Vite · TypeScript · local fonts · Lucide + Tabler icons · Morphicons transitions |
 | **Tray icon** | Raw Win32 P/Invoke (`Shell_NotifyIconW`) |
 | **Extensions** | Chrome MV3 · Firefox MV2 |
-| **Installer** | Inno Setup 6 (per-user, no admin) |
-| **CI/CD** | GitHub Actions (builds on tag, uploads to release) |
+| **Packaging** | Single self-contained Windows executable with embedded dashboard and extensions |
+| **CI/CD** | GitHub Actions release workflow |
 
 ---
 

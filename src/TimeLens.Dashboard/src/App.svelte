@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import NavRail from './lib/components/NavRail.svelte';
-  import LiveChip from './lib/components/LiveChip.svelte';
   import StatCard from './lib/components/StatCard.svelte';
 
   import TopApps from './lib/components/TopApps.svelte';
@@ -13,14 +12,16 @@
   import RulesView from './lib/components/RulesView.svelte';
   import SettingsView from './lib/components/SettingsView.svelte';
   import BlockView from './lib/components/BlockView.svelte';
+  import HistoryView from './lib/components/HistoryView.svelte';
   import TopSites from './lib/components/TopSites.svelte';
   import SiteTimeCard from './lib/components/SiteTimeCard.svelte';
   import BrowserHourlyCard from './lib/components/BrowserHourlyCard.svelte';
   import MediaCard from './lib/components/MediaCard.svelte';
   import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
-  import { data, loading, error, live, refresh } from './lib/stores/activity';
-  import { timeFormat as timeFormatStore } from './lib/stores/settings';
+  import { fetchJson, getBrowserHourly } from './lib/api';
+  import { data, loading, error, refresh } from './lib/stores/activity';
+  import { timeFormat as timeFormatStore, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
 
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
@@ -34,18 +35,20 @@
   let showTitles = $state(false);
 
   let view = $state('today');
-  let currentTheme = $state('default');
   let pollInterval = $state(30);
+  let now = $state(new Date());
+  let activeTheme = 'default';
+  let density = 'comfortable';
+  let motionEnabled = true;
 
   function goTo(id: string) { view = id; }
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', {
+  const dateStr = $derived(now.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
-  });
+  }));
 
   const greeting = $derived.by(() => {
-    const h = today.getHours();
+    const h = now.getHours();
     if (h < 5) return 'Good night';
     if (h < 12) return 'Good morning';
     if (h < 17) return 'Good afternoon';
@@ -53,49 +56,91 @@
   });
 
   function applyTheme(t: string) {
-    currentTheme = t;
-    document.documentElement.className = '';
-    if (t !== 'default') document.documentElement.classList.add('theme-' + t);
+    activeTheme = t;
+    applyInterfacePreferences();
+  }
+
+  function applyDensity(value: string) {
+    density = value === 'compact' ? 'compact' : 'comfortable';
+    applyInterfacePreferences();
+  }
+
+  function applyMotion(value: boolean) {
+    motionEnabled = value;
+    applyInterfacePreferences();
+  }
+
+  function applyInterfacePreferences() {
+    const root = document.documentElement;
+    for (const name of [...root.classList]) {
+      if (name.startsWith('theme-')) root.classList.remove(name);
+    }
+    if (activeTheme !== 'default') root.classList.add('theme-' + activeTheme);
+    root.classList.toggle('density-compact', density === 'compact');
+    root.classList.toggle('motion-off', !motionEnabled);
   }
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function loadCompanionData(): Promise<void> {
+    const [sites, time, audio, hours] = await Promise.allSettled([
+      fetchJson<BrowserEntry[]>('/api/browser-summary'),
+      fetchJson<{domain: string; totalMinutes: number}[]>('/api/browser-time-summary'),
+      fetchJson<AudioEntry[]>('/api/audio-summary'),
+      getBrowserHourly()
+    ]);
+
+    if (sites.status === 'fulfilled') browserSites = sites.value;
+    if (time.status === 'fulfilled') browserTime = time.value;
+    if (audio.status === 'fulfilled') audioSessions = audio.value;
+    if (hours.status === 'fulfilled') browserHourlyRaw = hours.value;
+  }
+
+  async function loadSettings(): Promise<void> {
+    try {
+      const s = await fetchJson<Record<string, unknown>>('/api/settings');
+      if (typeof s.theme === 'string') applyTheme(s.theme);
+      timelineGrouped = typeof s.timelineGrouped === 'boolean' ? s.timelineGrouped : true;
+      showTitles = typeof s.showTitles === 'boolean' ? s.showTitles : false;
+      if (s.timeFormat === '24h' || s.timeFormat === '12h') timeFormatStore.set(s.timeFormat);
+      if (typeof s.pollIntervalSeconds === 'number') pollInterval = s.pollIntervalSeconds;
+      if (s.density === 'compact' || s.density === 'comfortable') applyDensity(s.density);
+      if (typeof s.motionEnabled === 'boolean') applyMotion(s.motionEnabled);
+      if (typeof s.timelineMinSegmentSeconds === 'number') timelineMinSegmentSeconds.set(s.timelineMinSegmentSeconds);
+      if (typeof s.heatmapDays === 'number') heatmapDays.set(s.heatmapDays);
+      const allowedViews = ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'];
+      if (typeof s.defaultView === 'string' && allowedViews.includes(s.defaultView)) view = s.defaultView;
+    } catch { }
+  }
 
   function startPoll() {
     if (pollTimer) return;
     const interval = Math.max(5, pollInterval) * 1000;
     pollTimer = setInterval(async () => {
-      await refresh(true);
-      try { const br = await fetch('/api/browser-summary'); browserSites = await br.json(); } catch { }
-      try { const bt = await fetch('/api/browser-time-summary'); browserTime = await bt.json(); } catch { }
-      try { const ar = await fetch('/api/audio-summary'); audioSessions = await ar.json(); } catch { }
-      try { const hr = await fetch('/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { }
+      now = new Date();
+      await Promise.all([refresh(true), loadCompanionData()]);
     }, interval);
   }
 
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
   onMount(async () => {
-    refresh();
-    try {
-      const r = await fetch('/api/settings');
-      const s = await r.json();
-      if (s.theme) applyTheme(s.theme);
-      timelineGrouped = s.timelineGrouped ?? true;
-      showTitles = s.showTitles ?? false;
-      if (s.timeFormat) timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
-      if (s.pollIntervalSeconds) pollInterval = s.pollIntervalSeconds;
-    } catch { }
-    try { const br = await fetch('/api/browser-summary'); browserSites = await br.json(); } catch { browserSites = []; }
-    try { const ar = await fetch('/api/audio-summary'); audioSessions = await ar.json(); } catch { audioSessions = []; }
-    try { const hr = await fetch('/api/browser-hourly'); browserHourlyRaw = await hr.json(); } catch { browserHourlyRaw = []; }
-    try { const bt = await fetch('/api/browser-time-summary'); browserTime = await bt.json(); } catch { browserTime = []; }
+    await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
 
     document.addEventListener('visibilitychange', onVisibility);
     if (!document.hidden) startPoll();
     return () => { stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
   });
 
-  function onVisibility() { document.hidden ? stopPoll() : startPoll(); }
+  function onVisibility() {
+    if (document.hidden) {
+      stopPoll();
+      return;
+    }
+    now = new Date();
+    void Promise.all([refresh(true), loadCompanionData()]);
+    startPoll();
+  }
 </script>
 
 <div class="shell">
@@ -103,12 +148,15 @@
 
   <main class="main">
     {#if $error}
-      <div class="error-banner">{$error}</div>
+      <div class="error-banner" role="alert">
+        <span><i class="ti ti-alert-circle" aria-hidden="true"></i> Could not refresh activity: {$error}</span>
+        <button type="button" onclick={() => refresh()}>Retry</button>
+      </div>
     {/if}
 
     {#key view}
     <div class="view-pane" in:fade={{ duration: 150 }} out:fade={{ duration: 100 }}>
-    {#if $loading}
+    {#if $loading && !$data && (view === 'today' || view === 'apps' || view === 'timeline')}
       <div class="view-loading">
         <div class="view-loading-pulse"></div>
         <p>Loading…</p>
@@ -119,11 +167,7 @@
           <div class="today-header-left">
             <p class="today-greeting">{greeting}</p>
             <h1 class="today-date">{dateStr}</h1>
-          </div>
-          <div class="today-header-right">
-            {#if $live}
-              <LiveChip status={$live} />
-            {/if}
+            <p class="today-purpose">Your current-day overview: time, focus, input, apps, and categories.</p>
           </div>
         </div>
 
@@ -225,10 +269,14 @@
         </div>
       {/if}
 
+    {:else if view === 'history'}
+      <HistoryView {timelineGrouped} {showTitles} />
     {:else if view === 'browser'}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Web activity</p>
           <h1 class="page-title">Browser</h1>
+          <p class="page-purpose">Domains, visits, browsing time, hourly patterns, and audible media.</p>
         </div>
       </div>
       <div class="content">
@@ -254,39 +302,49 @@
       </div>
     {:else if view === 'apps' && $data}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Desktop activity</p>
           <h1 class="page-title">Apps</h1>
+          <p class="page-purpose">Compare desktop app usage, keyboard activity, clicks, and uncategorized apps.</p>
         </div>
       </div>
       <div class="content"><AppsView data={$data} browserSites={browserSites} {browserTime} /></div>
     {:else if view === 'timeline' && $data}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Activity timeline</p>
           <h1 class="page-title">Timeline</h1>
+          <p class="page-purpose">Follow the day chronologically and inspect meaningful activity segments.</p>
         </div>
       </div>
       <div class="content"><TimelineView data={$data} timelineGrouped={timelineGrouped} {showTitles} /></div>
     {:else if view === 'rules'}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Organization</p>
           <h1 class="page-title">Rules</h1>
+          <p class="page-purpose">Teach TimeLens how apps, window titles, and domains should be categorized.</p>
         </div>
       </div>
       <div class="content"><RulesView /></div>
     {:else if view === 'block'}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Focus controls</p>
           <h1 class="page-title">Block</h1>
+          <p class="page-purpose">Shape focus sessions with schedules, limits, and distraction controls.</p>
         </div>
       </div>
       <div class="content"><BlockView /></div>
     {:else if view === 'settings'}
       <div class="topbar">
-        <div class="topbar-left">
+        <div class="page-heading">
+          <p class="page-eyebrow">Preferences</p>
           <h1 class="page-title">Settings</h1>
+          <p class="page-purpose">Configure tracking, privacy, appearance, reminders, storage, and goals.</p>
         </div>
       </div>
-      <div class="content"><SettingsView ontheme={applyTheme} /></div>
+      <div class="content"><SettingsView ontheme={applyTheme} ondensity={applyDensity} onmotion={applyMotion} /></div>
     {:else if !$data}
       <div class="placeholder-view">
         <i class="ti ti-loader" aria-hidden="true"></i>
@@ -299,7 +357,7 @@
 </div>
 
 <style>
-  .view-pane { width: 100%; }
+  .view-pane { width: 100%; min-width: 0; }
   .shell {
     display: flex;
     height: 100vh;
@@ -313,7 +371,7 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    padding: 0 var(--space-8);
+    padding: 0 clamp(14px, 1.35vw, 24px);
   }
 
   /* ── View Loading Skeleton ── */
@@ -352,8 +410,7 @@
   .today-header {
     display: flex;
     align-items: flex-end;
-    justify-content: space-between;
-    padding: var(--space-4) 0 var(--space-6);
+    padding: var(--space-4) 0 var(--space-5);
     flex-shrink: 0;
   }
 
@@ -372,11 +429,7 @@
     line-height: 1.1;
   }
 
-  .today-header-right {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
+  .today-purpose, .page-purpose { color: var(--clr-text-ter); font-size: var(--text-xs); margin-top: 5px; }
 
   /* ── Today: Content ── */
   .today-content {
@@ -456,17 +509,27 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-4) 0 var(--space-3);
-    border-bottom: 1px solid var(--clr-border);
+    padding: var(--space-5) 0 var(--space-4);
     flex-shrink: 0;
-    margin-bottom: var(--space-3);
+    margin-bottom: var(--space-2);
   }
 
   .page-title {
-    font-size: var(--text-lg);
+    font-size: var(--text-2xl);
     font-weight: var(--weight-semibold);
     color: var(--clr-text-pri);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+
+  .page-heading { min-width: 0; }
+  .page-eyebrow {
+    color: var(--md-primary);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: var(--space-1);
   }
 
   /* ── Content (non-Today pages) ── */
@@ -499,6 +562,20 @@
     font-size: var(--text-sm);
     font-weight: var(--weight-medium);
     border: 1px solid rgba(224, 112, 112, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+  }
+
+  .error-banner span { display: flex; align-items: center; gap: var(--space-2); }
+  .error-banner button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
   }
 
   /* ── Placeholder / empty ── */
@@ -539,5 +616,29 @@
   .empty-hint {
     font-size: var(--text-xs) !important;
     opacity: 0.5;
+  }
+
+  @media (max-width: 1050px) {
+    .today-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @media (max-width: 760px) {
+    .shell { flex-direction: column; }
+    .main {
+      padding: 0 12px;
+      padding-bottom: 76px;
+    }
+    .today-header { align-items: flex-start; gap: var(--space-4); }
+    .today-date { font-size: var(--text-xl); }
+    .today-grid, .two-col { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .error-banner { margin-inline: 0; }
+  }
+
+  @media (max-width: 520px) {
+    .today-header { flex-direction: column; }
+    .today-hero, .stat-row { grid-template-columns: 1fr; }
+    .main { padding-inline: 10px; }
+    .card { padding-inline: var(--space-4); }
   }
 </style>

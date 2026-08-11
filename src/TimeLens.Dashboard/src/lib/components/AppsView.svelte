@@ -29,6 +29,7 @@
   async function loadUncategorized() {
     try {
       const r = await fetch('/api/uncategorized');
+      if (!r.ok) throw new Error(`Server returned ${r.status}`);
       uncategorized = await r.json();
     } catch { uncategorized = []; }
   }
@@ -55,6 +56,7 @@
   onMount(async () => {
     try {
       const r = await fetch('/api/input-summary');
+      if (!r.ok) throw new Error(`Server returned ${r.status}`);
       inputData = await r.json();
     } catch { inputData = []; }
     loadUncategorized();
@@ -184,7 +186,8 @@
     background: var(--clr-bg-sec);
     border: 1px solid var(--clr-border);
     border-radius: var(--shape-sm);
-    padding: var(--sp-1) var(--sp-2);
+    height: 36px;
+    padding: 0 12px;
     color: var(--clr-text-pri);
     font-family: inherit;
     font-size: 13px;
@@ -198,10 +201,10 @@
   }
   .sort-btn i { font-size: 14px; }
   .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
-  .table { display: flex; flex-direction: column; border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
+  .table { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
   .th {
     display: grid; grid-template-columns: 2fr 1fr; padding: var(--sp-2) var(--sp-3);
-    background: var(--clr-bg-sec);
+    background: transparent;
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--clr-text-sec);
   }
@@ -209,13 +212,16 @@
   .tr {
     display: grid; grid-template-columns: 2fr 1fr;
     align-items: center;
-    padding: var(--sp-2) var(--sp-3);
+    min-height: 38px;
+    padding: 8px 12px;
     font-size: 13px;
     color: var(--clr-text-pri);
-    border-top: 1px solid var(--clr-border);
+    border: 0;
+    border-radius: 7px;
   }
   .tr.input-tr { grid-template-columns: 2fr 1fr 1fr; }
-  .tr.alt { background: var(--clr-bg-sec); }
+  .tr.alt { background: transparent; }
+  .tr:hover { background: var(--clr-bg-ter); }
   .td-name { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .app-icon-tabler { font-size: 18px; color: var(--md-on-surf-var); flex-shrink: 0; width: 20px; }
@@ -227,7 +233,6 @@
 		flex-shrink: 0;
 	}
 	.app-letter.hidden { display: none; }
-	.td-name img { flex-shrink: 0; }
 	.td-time { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
   .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
@@ -247,19 +252,21 @@
   .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; margin-left: var(--sp-3); }
 
   .section-hint { font-size: 11px; color: var(--clr-text-ter); font-weight: 400; margin-left: var(--sp-2); }
-  .uncat-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+  .uncat-list { display: flex; flex-direction: column; gap: 8px; margin-top: 0; }
   .uncat-row {
     display: flex; align-items: center; gap: var(--sp-3);
-    padding: var(--sp-2) var(--sp-3);
+    min-height: 44px;
+    padding: 9px 12px;
     background: var(--clr-bg-sec);
     border-radius: var(--shape-sm);
-    border: 1px solid var(--clr-border);
+    border: 1px solid transparent;
     flex-wrap: wrap;
   }
+  .uncat-row:hover { border-color: var(--clr-border); background: var(--clr-bg-ter); }
   .uncat-exe { font-family: var(--font-mono); font-size: 12px; color: var(--clr-text-pri); flex: 1; }
   .uncat-time { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-ter); width: 36px; text-align: right; flex-shrink: 0; }
   .uncat-assign {
-    font-size: 11px; padding: 3px 10px;
+    min-height: 30px; font-size: 11px; padding: 0 12px;
     border: 1px solid var(--md-primary); border-radius: var(--shape-sm);
     background: none; color: var(--md-primary); cursor: pointer; font-family: inherit; flex-shrink: 0;
   }

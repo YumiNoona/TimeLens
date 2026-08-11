@@ -1,11 +1,27 @@
 <script lang="ts">
-  import { timeFormat as timeFormatStore } from '../stores/settings';
+  import { onMount } from 'svelte';
+  import {
+    heatmapDays as heatmapDaysStore,
+    timeFormat as timeFormatStore,
+    timelineMinSegmentSeconds as timelineMinSegmentSecondsStore
+  } from '../stores/settings';
+
+  let {
+    ontheme,
+    ondensity,
+    onmotion
+  }: {
+    ontheme?: (theme: string) => void;
+    ondensity?: (density: string) => void;
+    onmotion?: (enabled: boolean) => void;
+  } = $props();
+
   let trackAudio = $state(true);
   let trackBrowser = $state(true);
   let trackInput = $state(true);
   let idleMinutes = $state(3);
   let theme = $state('default');
-  let timelineGrouped = $state(false);
+  let timelineGrouped = $state(true);
   let autoStart = $state(false);
   let retentionDays = $state(90);
   let dbSizeBytes = $state(0);
@@ -15,24 +31,41 @@
   let focusMode = $state(false);
   let timeFormat = $state('12h');
   let pollInterval = $state(30);
+  let defaultView = $state('today');
+  let density = $state('comfortable');
+  let motionEnabled = $state(true);
+  let timelineMinSegmentSeconds = $state(60);
+  let heatmapDays = $state(182);
   let apiReachable = $state(true);
+  let savingKey = $state('');
+  let saveMessage = $state('');
   let goals: { id: number; goalType: string; target: string; thresholdMinutes: number; notifyAt: number }[] = $state([]);
   let goalTarget = $state('');
   let goalType = $state('max_time');
   let goalMinutes = $state(60);
 
-  let { ontheme }: { ontheme?: (t: string) => void } = $props();
-
+  const API = '/api/settings';
   const themes = [
     { id: 'default', label: 'Acid', color: '#C8E86A' },
     { id: 'terminal', label: 'Terminal', color: '#39FF14' },
     { id: 'copper', label: 'Copper', color: '#B87333' },
     { id: 'arctic', label: 'Arctic', color: '#7EC8C8' },
+    { id: 'moss', label: 'Moss', color: '#8CB84A' },
+    { id: 'crimson', label: 'Crimson', color: '#E07070' },
+    { id: 'gold', label: 'Gold', color: '#F0C040' },
+    { id: 'ember', label: 'Ember', color: '#F08050' },
+    { id: 'rose', label: 'Rose', color: '#F080A0' },
+    { id: 'clay', label: 'Clay', color: '#C8A080' },
+    { id: 'sunset', label: 'Sunset', color: '#F0A060' },
   ];
-
-  const retentionOpts = [30, 60, 90, 180, 365];
-
-  const API = '/api/settings';
+  const views = [
+    { id: 'today', label: 'Today' },
+    { id: 'history', label: 'History' },
+    { id: 'apps', label: 'Apps' },
+    { id: 'browser', label: 'Browser' },
+    { id: 'timeline', label: 'Timeline' },
+    { id: 'block', label: 'Block' },
+  ];
 
   function fmtSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
@@ -42,8 +75,9 @@
 
   async function load(attempt = 1) {
     try {
-      const r = await fetch(API);
-      const s = await r.json();
+      const response = await fetch(API);
+      if (!response.ok) throw new Error();
+      const s = await response.json();
       trackAudio = s.trackAudio ?? true;
       trackBrowser = s.trackBrowser ?? true;
       trackInput = s.trackInput ?? true;
@@ -57,616 +91,381 @@
       breakInterval = s.breakIntervalMinutes ?? 50;
       focusMode = s.focusMode ?? false;
       timeFormat = s.timeFormat ?? '12h';
-      timeFormatStore.set(s.timeFormat === '24h' ? '24h' : '12h');
       pollInterval = s.pollIntervalSeconds ?? 30;
+      defaultView = s.defaultView ?? 'today';
+      density = s.density ?? 'comfortable';
+      motionEnabled = s.motionEnabled ?? true;
+      timelineMinSegmentSeconds = s.timelineMinSegmentSeconds ?? 60;
+      heatmapDays = s.heatmapDays ?? 182;
+      timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
+      timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds);
+      heatmapDaysStore.set(heatmapDays);
       apiReachable = true;
     } catch {
       if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return load(attempt + 1);
       }
       apiReachable = false;
     }
-    // Fetch DB size
+
     try {
-      const sz = await fetch('/api/db-size');
-      const j = await sz.json();
-      dbSizeBytes = j.sizeBytes ?? 0;
+      const response = await fetch('/api/db-size');
+      dbSizeBytes = (await response.json()).sizeBytes ?? 0;
     } catch { }
-    // Load goals
     try {
-      const gr = await fetch('/api/goals');
-      goals = await gr.json();
+      const response = await fetch('/api/goals');
+      goals = await response.json();
     } catch { }
   }
 
-  async function save(key: string, value: boolean | number) {
+  async function save(key: string, value: boolean | number | string) {
+    savingKey = key;
+    saveMessage = '';
     try {
-      await fetch(API, {
+      const response = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: value }),
-      });} catch {
+      });
+      if (!response.ok) throw new Error();
+      apiReachable = true;
+      saveMessage = 'Saved';
+      setTimeout(() => { if (saveMessage === 'Saved') saveMessage = ''; }, 1200);
+    } catch {
       apiReachable = false;
+      saveMessage = 'Could not save';
+    } finally {
+      savingKey = '';
     }
   }
 
-  function exportCsv(range: string = 'today') {
+  function setToggle(key: string, event: Event, update: (value: boolean) => void) {
+    const value = (event.currentTarget as HTMLInputElement).checked;
+    update(value);
+    void save(key, value);
+  }
+
+  function exportCsv(range: string) {
     window.open(`/api/export?format=csv&range=${range}`, '_blank');
   }
 
   async function addGoal() {
-    const t = goalTarget.trim();
-    if (!t) return;
+    const target = goalTarget.trim();
+    if (!target) return;
     try {
-      await fetch('/api/goals', {
+      const response = await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goalType, target: t, thresholdMinutes: goalMinutes, notifyAt: 80 }),
+        body: JSON.stringify({ goalType, target, thresholdMinutes: goalMinutes, notifyAt: 80 }),
       });
-      await load();
+      if (!response.ok) throw new Error();
       goalTarget = '';
+      await load();
     } catch { apiReachable = false; }
   }
 
   async function removeGoal(id: number) {
     try {
-      await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error();
       await load();
     } catch { apiReachable = false; }
   }
 
-  $effect(() => { load(); });
+  onMount(() => { void load(); });
 </script>
 
 <div class="settings">
-    {#if !apiReachable}
-      <span class="warning">Tray app not running</span>
-    {/if}
-  <div class="card"> 
-      <div class="card-header">
-        <h2 class="title-small">Tracking</h2>
-      </div>
-      <label class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Audio Tracking</span>
-          <span class="setting-desc">Prevent idle while playing media</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={trackAudio} onchange={(e) => save('trackAudio', (e.currentTarget as HTMLInputElement).checked)} />
-                  </div>
-      </label>
-      <label class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Browser Tracking</span>
-          <span class="setting-desc">Record browsing via the browser extension</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={trackBrowser} onchange={(e) => save('trackBrowser', (e.currentTarget as HTMLInputElement).checked)} />
-        </div>
-      </label>
-      <label class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Input Tracking</span>
-          <span class="setting-desc">Track keyboard and mouse activity</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={trackInput} onchange={() => save('trackInput', trackInput)} />
-        </div>
-      </label>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Startup & Idle</h2>
-      </div>
-      <label class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Launch at login</span>
-          <span class="setting-desc">Start TimeLens automatically when you sign in</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={autoStart} onchange={() => save('autoStart', autoStart)} />
-        </div>
-      </label>
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Idle Threshold</span>
-          <span class="setting-desc">Minutes of inactivity before considering you idle</span>
-        </div>
-        <div class="control">
-          <select class="select" bind:value={idleMinutes} onchange={() => save('idleThresholdSeconds', idleMinutes * 60)}>
-            {#each [1, 2, 3, 5, 10, 15] as n}
-              <option value={n}>{n} min</option>
-            {/each}
-          </select>
-        </div>
+  <div class="settings-status">
+    <div class="status-copy">
+      <span class="status-icon"><i class="ti ti-device-desktop-cog" aria-hidden="true"></i></span>
+      <div>
+        <strong>Workspace preferences</strong>
+        <span>Changes are saved locally and apply to this device.</span>
       </div>
     </div>
-
-    <div class="card card-theme">
-      <div class="card-header">
-        <h2 class="title-small">Theme</h2>
-      </div>
-      <div class="theme-grid">
-        {#each themes as t}
-          <button
-            class="theme-swatch"
-            class:active={theme === t.id}
-            onclick={() => { theme = t.id; save('theme', t.id); ontheme?.(t.id); }}
-            aria-label={t.label}
-          >
-            <div class="swatch-bar" style="background: {t.color}"></div>
-            <span class="swatch-label">{t.label}</span>
-          </button>
-        {/each}
-      </div>
+    <div class="status-side">
+      {#if saveMessage}<span class:error={saveMessage !== 'Saved'}>{saveMessage}</span>{/if}
+      <span class="privacy-badge"><i class="ti ti-lock" aria-hidden="true"></i> Local only</span>
     </div>
+  </div>
 
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Timeline</h2>
+  {#if !apiReachable}
+    <div class="warning" role="alert"><i class="ti ti-plug-off" aria-hidden="true"></i> Tray app is unavailable. Changes will not persist until it reconnects.</div>
+  {/if}
+
+  <section class="card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-layout-dashboard" aria-hidden="true"></i></span>
+      <div><h2>General</h2><p>Choose how TimeLens opens and feels.</p></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">Default tab</span><span class="setting-desc">Page shown when the dashboard opens</span></div>
+      <select class="select wide" bind:value={defaultView} onchange={() => save('defaultView', defaultView)}>
+        {#each views as option}<option value={option.id}>{option.label}</option>{/each}
+      </select>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">Interface density</span><span class="setting-desc">Use roomier or tighter cards and rows</span></div>
+      <select class="select wide" bind:value={density} onchange={() => { save('density', density); ondensity?.(density); }}>
+        <option value="comfortable">Comfortable</option><option value="compact">Compact</option>
+      </select>
+    </div>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Smooth motion</span><span class="setting-desc">Animate navigation, controls, and state changes</span></div>
+      <input type="checkbox" class="toggle" checked={motionEnabled} onchange={(e) => setToggle('motionEnabled', e, value => { motionEnabled = value; onmotion?.(value); })} />
+    </label>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Launch at login</span><span class="setting-desc">Start TimeLens after Windows sign-in</span></div>
+      <input type="checkbox" class="toggle" checked={autoStart} onchange={(e) => setToggle('autoStart', e, value => autoStart = value)} />
+    </label>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-activity-heartbeat" aria-hidden="true"></i></span>
+      <div><h2>Tracking</h2><p>Control which signals contribute to activity.</p></div>
+    </div>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Audio activity</span><span class="setting-desc">Treat audible media as active time</span></div>
+      <input type="checkbox" class="toggle" checked={trackAudio} onchange={(e) => setToggle('trackAudio', e, value => trackAudio = value)} />
+    </label>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Browser activity</span><span class="setting-desc">Accept domains and tabs from the extension</span></div>
+      <input type="checkbox" class="toggle" checked={trackBrowser} onchange={(e) => setToggle('trackBrowser', e, value => trackBrowser = value)} />
+    </label>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Keyboard and mouse</span><span class="setting-desc">Measure interaction without recording content</span></div>
+      <input type="checkbox" class="toggle" checked={trackInput} onchange={(e) => setToggle('trackInput', e, value => trackInput = value)} />
+    </label>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">Idle threshold</span><span class="setting-desc">Inactivity required before time becomes idle</span></div>
+      <select class="select" bind:value={idleMinutes} onchange={() => save('idleThresholdSeconds', idleMinutes * 60)}>
+        {#each [1, 2, 3, 5, 10, 15] as minutes}<option value={minutes}>{minutes} min</option>{/each}
+      </select>
+    </div>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-palette" aria-hidden="true"></i></span>
+      <div><h2>Appearance</h2><p>Pick an accent while keeping the same accessible dark surfaces.</p></div>
+    </div>
+    <div class="theme-grid">
+      {#each themes as option}
+        <button type="button" class="theme-swatch" class:selected={theme === option.id} onclick={() => { theme = option.id; save('theme', option.id); ontheme?.(option.id); }}>
+          <span class="swatch-dot" style="background:{option.color}"></span>
+          <span>{option.label}</span>
+          {#if theme === option.id}<i class="ti ti-check" aria-hidden="true"></i>{/if}
+        </button>
+      {/each}
+    </div>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-timeline-event" aria-hidden="true"></i></span>
+      <div><h2>Timeline & history</h2><p>Decide how much detail appears in daily activity views.</p></div>
+    </div>
+    <div class="settings-columns">
+      <div class="setting-row">
+        <div class="setting-info"><span class="setting-label">Default timeline layout</span><span class="setting-desc">Group activity into expandable categories</span></div>
+        <select class="select wide" bind:value={timelineGrouped} onchange={() => save('timelineGrouped', timelineGrouped)}>
+          <option value={true}>Grouped</option><option value={false}>Flat</option>
+        </select>
       </div>
       <label class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">{timelineGrouped ? 'Grouped' : 'Flat'}</span>
-          <span class="setting-desc">Collapse same-category runs. Turn off to show every event flat.</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={timelineGrouped}
-            onchange={(e) => save('timelineGrouped', (e.currentTarget as HTMLInputElement).checked)} />
-        </div>
+        <div class="setting-info"><span class="setting-label">Window titles</span><span class="setting-desc">Include titles in expanded timeline rows</span></div>
+        <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => showTitles = value)} />
       </label>
-      <label class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Window Titles</span>
-          <span class="setting-desc">Show active tab/window title per event in Timeline View</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={showTitles}
-            onchange={() => save('showTitles', showTitles)} />
-        </div>
-      </label>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Format</h2>
+      <div class="setting-row">
+        <div class="setting-info"><span class="setting-label">Hide quick switches</span><span class="setting-desc">Omit segments shorter than this duration</span></div>
+        <select class="select wide" bind:value={timelineMinSegmentSeconds} onchange={() => { save('timelineMinSegmentSeconds', timelineMinSegmentSeconds); timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds); }}>
+          <option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option>
+        </select>
       </div>
       <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Time Format</span>
-          <span class="setting-desc">Show timestamps in 12-hour or 24-hour notation</span>
-        </div>
-        <div class="control">
-          <select class="select" style="width:90px" bind:value={timeFormat} onchange={() => { save('timeFormat', timeFormat); timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h'); }}>
-            <option value="12h">12h</option>
-            <option value="24h">24h</option>
-          </select>
-        </div>
-      </div>
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Poll Interval</span>
-          <span class="setting-desc">How often the dashboard refreshes data</span>
-        </div>
-        <div class="control">
-          <select class="select" style="width:110px" bind:value={pollInterval} onchange={() => save('pollIntervalSeconds', pollInterval)}>
-            {#each [5, 10, 30, 60] as n}
-              <option value={n}>{n} seconds</option>
-            {/each}
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Break Reminder</h2>
-      </div>
-      <label class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Remind me to take breaks</span>
-          <span class="setting-desc">Show a notification after continuous active time</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={breakReminder}
-            onchange={() => save('breakReminder', breakReminder)} />
-        </div>
-      </label>
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Break interval</span>
-          <span class="setting-desc">Minutes of activity before a reminder</span>
-        </div>
-        <div class="control">
-          <select class="select" style="width:110px" bind:value={breakInterval} onchange={() => save('breakIntervalMinutes', breakInterval)}>
-            {#each [25, 30, 45, 50, 60, 90] as n}
-              <option value={n}>{n} min</option>
-            {/each}
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Focus Mode</h2>
-      </div>
-      <label class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Block distracting apps</span>
-          <span class="setting-desc">Manage your blocklist in the Block tab</span>
-        </div>
-        <div class="control">
-          <input type="checkbox" class="toggle" checked={focusMode}
-            onchange={() => save('focusMode', focusMode)} />
-        </div>
-      </label>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Data</h2>
+        <div class="setting-info"><span class="setting-label">Activity heatmap</span><span class="setting-desc">Range shown in History</span></div>
+        <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
+          <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={182}>6 months</option>
+        </select>
       </div>
       <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Retention</span>
-          <span class="setting-desc">Auto-delete events older than</span>
-        </div>
-        <div class="control">
-          <select class="select" style="width:110px" bind:value={retentionDays} onchange={() => save('retentionDays', retentionDays)}>
-            {#each retentionOpts as n}
-              <option value={n}>{n} days</option>
-            {/each}
-          </select>
-        </div>
-      </div>
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Export</span>
-          <span class="setting-desc">Download activity data as CSV</span>
-        </div>
-        <div class="control" style="gap:var(--sp-2)">
-          <button class="export-btn" onclick={() => exportCsv('today')}>
-            <i class="ti ti-download" aria-hidden="true"></i> Today
-          </button>
-          <button class="export-btn" onclick={() => exportCsv('30days')}>
-            <i class="ti ti-download" aria-hidden="true"></i> 30 days
-          </button>
-          <button class="export-btn" onclick={() => { let d = prompt('Enter date (YYYY-MM-DD):'); if (d) exportCsv(d); }}>
-            <i class="ti ti-calendar" aria-hidden="true"></i> Pick
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h2 class="title-small">Storage</h2>
+        <div class="setting-info"><span class="setting-label">Time format</span><span class="setting-desc">Timestamp notation throughout the dashboard</span></div>
+        <select class="select" bind:value={timeFormat} onchange={() => { save('timeFormat', timeFormat); timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h'); }}>
+          <option value="12h">12 hour</option><option value="24h">24 hour</option>
+        </select>
       </div>
       <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">Database</span>
-          <span class="setting-desc">%LOCALAPPDATA%\TimeLens\activity.db</span>
-        </div>
-        <code class="path">{fmtSize(dbSizeBytes)}</code>
-      </div>
-      <div class="setting-row last">
-        <div class="setting-info">
-          <span class="setting-label">Dashboard</span>
-          <span class="setting-desc">Local server, no data leaves your machine</span>
-        </div>
-        <code class="path"></code>
+        <div class="setting-info"><span class="setting-label">Dashboard refresh</span><span class="setting-desc">How often live data is requested</span></div>
+        <select class="select wide" bind:value={pollInterval} onchange={() => save('pollIntervalSeconds', pollInterval)}>
+          {#each [5, 10, 30, 60] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
+        </select>
       </div>
     </div>
+  </section>
 
-    <div class="card card-goals">
-      <div class="card-header">
-        <h2 class="title-small">Goals</h2>
+  <section class="card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-bell-ringing" aria-hidden="true"></i></span>
+      <div><h2>Focus & reminders</h2><p>Support healthy sessions and distraction controls.</p></div>
+    </div>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Break reminders</span><span class="setting-desc">Notify after continuous active time</span></div>
+      <input type="checkbox" class="toggle" checked={breakReminder} onchange={(e) => setToggle('breakReminder', e, value => breakReminder = value)} />
+    </label>
+    <div class="setting-row" class:muted={!breakReminder}>
+      <div class="setting-info"><span class="setting-label">Reminder interval</span><span class="setting-desc">Active time between reminders</span></div>
+      <select class="select" bind:value={breakInterval} disabled={!breakReminder} onchange={() => save('breakIntervalMinutes', breakInterval)}>
+        {#each [25, 30, 45, 50, 60, 90] as minutes}<option value={minutes}>{minutes} min</option>{/each}
+      </select>
+    </div>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Focus mode</span><span class="setting-desc">Enforce the targets configured in Block</span></div>
+      <input type="checkbox" class="toggle" checked={focusMode} onchange={(e) => setToggle('focusMode', e, value => focusMode = value)} />
+    </label>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-database" aria-hidden="true"></i></span>
+      <div><h2>Data & storage</h2><p>Retention, exports, and local database details.</p></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">Keep activity for</span><span class="setting-desc">Older raw events are automatically removed</span></div>
+      <select class="select" bind:value={retentionDays} onchange={() => save('retentionDays', retentionDays)}>
+        {#each [30, 60, 90, 180, 365] as days}<option value={days}>{days} days</option>{/each}
+      </select>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">Database size</span><span class="setting-desc">%LOCALAPPDATA%\TimeLens\activity.db</span></div>
+      <code class="path">{fmtSize(dbSizeBytes)}</code>
+    </div>
+    <div class="setting-row export-row">
+      <div class="setting-info"><span class="setting-label">Export CSV</span><span class="setting-desc">Download a portable copy of activity</span></div>
+      <div class="button-group">
+        <button class="secondary-btn" onclick={() => exportCsv('today')}><i class="ti ti-download" aria-hidden="true"></i> Today</button>
+        <button class="secondary-btn" onclick={() => exportCsv('30days')}><i class="ti ti-calendar-stats" aria-hidden="true"></i> 30 days</button>
       </div>
-      <div class="card-body">
+    </div>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-target-arrow" aria-hidden="true"></i></span>
+      <div><h2>Goals</h2><p>Set a maximum or minimum daily target for an app or category.</p></div>
+    </div>
+    <div class="goal-layout">
+      <div class="goal-list">
         {#if goals.length > 0}
-          {#each goals as g, i}
-            <div class="setting-row" class:last={i === goals.length - 1 && !goals[i+1]}>
-              <div class="setting-info">
-                <span class="setting-label">
-                  {g.goalType === 'max_time' ? 'Limit' : 'Minimum'} · {g.target}
-                </span>
-                <span class="setting-desc">{g.thresholdMinutes} min — alert at {g.notifyAt}%</span>
-              </div>
-              <div class="control">
-                <button class="del-btn" onclick={() => removeGoal(g.id)} aria-label="Remove">
-                  <i class="ti ti-trash"></i>
-                </button>
-              </div>
+          {#each goals as goal}
+            <div class="goal-row">
+              <span class="goal-icon"><i class="ti ti-target" aria-hidden="true"></i></span>
+              <div class="setting-info"><span class="setting-label">{goal.target}</span><span class="setting-desc">{goal.goalType === 'max_time' ? 'Maximum' : 'Minimum'} {goal.thresholdMinutes} min · alert at {goal.notifyAt}%</span></div>
+              <button class="icon-btn danger" onclick={() => removeGoal(goal.id)} aria-label="Remove {goal.target}"><i class="ti ti-trash" aria-hidden="true"></i></button>
             </div>
           {/each}
         {:else}
-          <div class="section-row">
-            <div class="empty-state"><span class="empty-text">No goals yet. Set a time limit for any app or category.</span></div>
-          </div>
+          <div class="goal-empty"><i class="ti ti-target-off" aria-hidden="true"></i><span>No goals yet</span></div>
         {/if}
-        <div class="section-row">
-          <div class="setting-info">
-            <span class="setting-label">New goal</span>
-            <div class="goal-fields">
-              <input class="mini-input" placeholder="app or category" bind:value={goalTarget} />
-              <select class="select mini" bind:value={goalType}>
-                <option value="max_time">max</option>
-                <option value="min_time">min</option>
-              </select>
-              <select class="select mini" bind:value={goalMinutes}>
-                {#each [15, 30, 60, 90, 120, 180, 240] as n}
-                  <option value={n}>{n}m</option>
-                {/each}
-              </select>
-            </div>
-          </div>
-          <div class="control">
-            <button class="export-btn" onclick={addGoal} disabled={!goalTarget.trim()}>
-              <i class="ti ti-plus"></i> Add
-            </button>
-          </div>
+      </div>
+      <div class="goal-form">
+        <label for="goal-target">New goal</label>
+        <div class="goal-fields">
+          <input id="goal-target" class="text-input" placeholder="App or category" bind:value={goalTarget} />
+          <select class="select" bind:value={goalType}><option value="max_time">Maximum</option><option value="min_time">Minimum</option></select>
+          <select class="select" bind:value={goalMinutes}>{#each [15, 30, 60, 90, 120, 180, 240] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select>
+          <button class="primary-btn" onclick={addGoal} disabled={!goalTarget.trim()}><i class="ti ti-plus" aria-hidden="true"></i> Add goal</button>
         </div>
       </div>
     </div>
+  </section>
 
-    <div class="card card-about">
-      <div class="card-header">
-        <h2 class="title-small">About</h2>
-      </div>
-      <div class="about-body">
-        <p class="about-text">TimeLens is a privacy-first PC activity tracker. All data is stored locally in a SQLite database. No data is sent to external servers. The built-in dashboard runs on a local Kestrel server bound to 127.0.0.1.</p>
-      </div>
-    </div>
-
+  <section class="about card-wide">
+    <i class="ti ti-shield-lock" aria-hidden="true"></i>
+    <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
+    <span class="version">TimeLens 1.0</span>
+  </section>
 </div>
 
 <style>
-  .settings {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--sp-4);
-    align-items: start;
-  }
-
-  .card-theme,
-  .card-about { grid-column: 1 / -1; }
-
-  .warning {
-    font-size: 12px;
-    color: var(--md-error);
-    font-weight: 500;
-    padding: var(--sp-1) var(--sp-2);
-    background: color-mix(in srgb, var(--md-error) 10%, transparent);
-    border-radius: var(--shape-sm);
-    width: fit-content;
-    grid-column: 1 / -1;
-  }
-
-  .card {
-    border: 1px solid var(--clr-border);
-    border-radius: var(--shape-md);
-    background: var(--clr-bg-sec);
-    overflow: hidden;
-  }
-
-  .card-header {
-    padding: 16px;
-    border-bottom: 1px solid var(--clr-border);
-  }
-
-  .card-header h2 { margin: 0; }
-
-  .setting-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    border-bottom: 1px solid var(--clr-border);
-  }
-
-  .setting-row.last { border-bottom: none; }
-
-  .setting-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .setting-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--clr-text-pri);
-  }
-
-  .setting-desc {
-    font-size: 12px;
-    color: var(--clr-text-sec);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .control {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
-    flex-shrink: 0;
-  }
-
-  .toggle {
-    appearance: none;
-    width: 40px;
-    height: 22px;
-    background: var(--clr-border);
-    border-radius: 99px;
-    position: relative;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    flex-shrink: 0;
-    margin: 0;
-  }
-
-  .toggle::after {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    background: #fff;
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  }
-
+  .settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .card-wide, .settings-status, .warning, .about { grid-column: 1 / -1; }
+  .settings-status { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; background: linear-gradient(110deg, color-mix(in srgb, var(--md-primary) 9%, var(--clr-bg-sec)), var(--clr-bg-sec) 54%); border: 1px solid color-mix(in srgb, var(--md-primary) 18%, var(--clr-border)); border-radius: var(--shape-lg); }
+  .status-copy, .status-side, .card-header, .button-group, .goal-fields, .about { display: flex; align-items: center; }
+  .status-copy { gap: 12px; }
+  .status-copy div, .card-header div, .about div { display: flex; flex-direction: column; gap: 2px; }
+  .status-copy strong { font-size: 14px; color: var(--clr-text-pri); }
+  .status-copy span, .status-side { font-size: 12px; color: var(--clr-text-sec); }
+  .status-icon, .section-icon, .goal-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 20%, transparent); }
+  .status-icon { width: 38px; height: 38px; border-radius: 11px; font-size: 18px; }
+  .status-side { gap: 10px; }
+  .status-side .error { color: var(--md-error); }
+  .privacy-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: var(--shape-full); background: var(--clr-bg-ter); color: var(--clr-text-sec); }
+  .warning { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: var(--md-error); background: color-mix(in srgb, var(--md-error) 10%, transparent); border: 1px solid color-mix(in srgb, var(--md-error) 22%, transparent); border-radius: var(--shape-md); font-size: 12px; }
+  .card { background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-lg); overflow: hidden; padding: 0; }
+  .card-header { gap: 10px; padding: 16px 18px 12px; }
+  .section-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 16px; }
+  .card-header h2 { margin: 0; font-size: 14px; color: var(--clr-text-pri); }
+  .card-header p { margin: 0; font-size: 11px; color: var(--clr-text-sec); }
+  .setting-row { min-height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--clr-border); }
+  .setting-row.muted { opacity: .48; }
+  .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
+  .setting-desc { color: var(--clr-text-sec); font-size: 11px; line-height: 1.35; }
+  .settings-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-columns .setting-row:nth-child(even) { border-left: 1px solid var(--clr-border); }
+  .toggle { appearance: none; width: 40px; height: 22px; flex: 0 0 auto; margin: 0; border-radius: 99px; background: var(--clr-border-strong); position: relative; cursor: pointer; transition: background var(--duration-base) var(--ease-out); }
+  .toggle::after { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: white; box-shadow: var(--shadow-xs); transition: transform var(--duration-base) var(--ease-out); }
   .toggle:checked { background: var(--md-primary); }
-
   .toggle:checked::after { transform: translateX(18px); }
-
-  .select {
-    background: var(--clr-bg-sec);
-    border: 1px solid var(--clr-border);
-    border-radius: var(--shape-sm);
-    padding: var(--sp-1) var(--sp-2);
-    color: var(--clr-text-pri);
-    font-family: inherit;
-    font-size: 13px;
-    width: 90px;
-    outline: none;
-    cursor: pointer;
-  }
-
-  .select:focus { border-color: var(--md-primary); }
-
-  .export-btn {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
-    padding: var(--sp-1) var(--sp-2);
-    background: var(--md-primary-cont);
-    color: var(--md-on-pri-cont);
-    border: 1px solid var(--md-primary);
-    border-radius: var(--shape-sm);
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  .export-btn:hover { filter: brightness(1.1); }
-
-  .export-btn i { font-size: 14px; }
-
-  .path {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--clr-text-sec);
-    background: var(--clr-bg-sec);
-    padding: var(--sp-1) var(--sp-2);
-    border-radius: var(--shape-sm);
-    white-space: nowrap;
-  }
-
-  .about-body { padding: var(--sp-3) var(--sp-4); }
-
-  .about-text {
-    font-size: 13px;
-    color: var(--clr-text-sec);
-    line-height: 1.6;
-    margin: 0;
-  }
-
-  .theme-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-    gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-  }
-
-  .theme-swatch {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--sp-1);
-    padding: var(--sp-2);
-    background: var(--clr-bg-sec);
-    border: 1px solid var(--clr-border);
-    border-radius: var(--shape-sm);
-    cursor: pointer;
-    font-family: inherit;
-    color: var(--clr-text-sec);
-    transition: border-color 0.15s, background 0.15s;
-    min-width: 64px;
-  }
-
-  .theme-swatch:hover { background: var(--clr-bg-ter); }
-
-  .theme-swatch.active {
-    border-color: var(--md-primary);
-    background: var(--md-primary-cont);
-    color: var(--md-on-pri-cont);
-  }
-
-  .swatch-bar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .swatch-label {
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.03em;
-  }
-
-  @media (max-width: 700px) {
+  .select, .text-input { height: 34px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px inherit; outline: none; }
+  .select { min-width: 96px; padding: 0 28px 0 10px; cursor: pointer; }
+  .select.wide { min-width: 132px; }
+  .select:focus, .text-input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 12%, transparent); }
+  .select:disabled { cursor: not-allowed; }
+  .theme-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; padding: 2px 18px 18px; }
+  .theme-swatch { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-md); font: 12px inherit; cursor: pointer; transition: transform var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
+  .theme-swatch:hover { transform: translateY(-1px); border-color: var(--clr-border-strong); }
+  .theme-swatch.selected { color: var(--clr-text-pri); border-color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 7%, var(--clr-bg-ter)); }
+  .theme-swatch i { margin-left: auto; color: var(--md-primary); }
+  .swatch-dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); }
+  .button-group { gap: 6px; }
+  .primary-btn, .secondary-btn, .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
+  .primary-btn { height: 34px; padding: 0 13px; border: 1px solid var(--md-primary); background: var(--md-primary); color: var(--md-on-primary); font-weight: 600; }
+  .secondary-btn { height: 32px; padding: 0 10px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); }
+  .secondary-btn:hover { border-color: var(--md-primary); color: var(--md-primary); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .path { color: var(--clr-text-sec); font: 11px var(--font-mono); white-space: nowrap; }
+  .goal-layout { padding: 0 18px 18px; display: grid; gap: 12px; }
+  .goal-list { display: grid; gap: 7px; }
+  .goal-row { min-height: 50px; display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-md); }
+  .goal-icon { width: 30px; height: 30px; border-radius: 8px; }
+  .goal-row .setting-info { flex: 1; }
+  .icon-btn { width: 30px; height: 30px; border: 0; color: var(--clr-text-sec); background: transparent; }
+  .icon-btn.danger:hover { color: var(--md-error); background: var(--md-err-cont); }
+  .goal-empty { min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--clr-text-ter); border: 1px dashed var(--clr-border); border-radius: var(--shape-md); font-size: 12px; }
+  .goal-form { padding: 12px; background: color-mix(in srgb, var(--clr-bg-ter) 72%, transparent); border-radius: var(--shape-md); }
+  .goal-form > label { display: block; margin-bottom: 8px; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .goal-fields { gap: 8px; }
+  .text-input { flex: 1; min-width: 180px; padding: 0 10px; font-family: var(--font-mono); }
+  .about { min-height: 62px; gap: 12px; padding: 12px 16px; border: 1px solid var(--clr-border); border-radius: var(--shape-lg); background: color-mix(in srgb, var(--clr-bg-sec) 76%, transparent); color: var(--md-primary); }
+  .about strong { color: var(--clr-text-pri); font-size: 13px; }
+  .about span { color: var(--clr-text-sec); font-size: 11px; }
+  .about .version { margin-left: auto; white-space: nowrap; color: var(--clr-text-ter); font-family: var(--font-mono); }
+  @media (max-width: 960px) {
     .settings { grid-template-columns: 1fr; }
+    .card-wide, .settings-status, .warning, .about { grid-column: 1; }
+    .settings-columns { grid-template-columns: 1fr; }
+    .settings-columns .setting-row:nth-child(even) { border-left: 0; }
+    .theme-grid { grid-template-columns: repeat(2, 1fr); }
   }
-
-  .card-goals {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: visible;
+  @media (max-width: 620px) {
+    .settings-status { align-items: flex-start; flex-direction: column; }
+    .setting-row.export-row, .goal-fields { align-items: stretch; flex-direction: column; }
+    .theme-grid { grid-template-columns: 1fr; }
+    .select, .select.wide { min-width: 112px; }
+    .goal-fields .select, .goal-fields .primary-btn { width: 100%; }
   }
-
-  .card-body {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .section-row {
-    border-top: 1px solid var(--clr-border);
-    padding: var(--sp-3) var(--sp-4);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .empty-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-  }
-
-  .goal-fields {
-    display: flex; gap: var(--sp-2); align-items: center; margin-top: var(--sp-2);
-  }
-
-  .mini-input {
-    background: var(--clr-bg-sec); border: 1px solid var(--clr-border);
-    border-radius: var(--shape-sm); padding: 6px 8px; color: var(--clr-text-pri);
-    font-family: var(--font-mono); font-size: 12px; outline: none;
-    width: 150px; box-sizing: border-box;
-  }
-  .mini-input:focus { border-color: var(--md-primary); }
-
-  .select.mini { height: 32px; font-size: 12px; padding: 4px 6px; }
 </style>

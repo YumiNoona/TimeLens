@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSCommandPath 
 $root = Split-Path -Parent $root  # scripts/ is one level down from root now
 $appDir = "$env:LOCALAPPDATA\TimeLens"
-$exePath = "$appDir\TimeLens.TrayApp.exe"
+$exePath = "$appDir\TimeLens.exe"
 
 Write-Host "=== TimeLens Installer ===" -ForegroundColor Cyan
 Write-Host ""
@@ -54,9 +54,8 @@ Write-Host ""
 Write-Host "--- Installing to $appDir ---" -ForegroundColor Cyan
 if (-not (Test-Path $appDir)) { New-Item -ItemType Directory -Path $appDir -Force | Out-Null }
 
-Copy-Item "$publishDir\TimeLens.TrayApp.exe" "$appDir\" -Force
+Copy-Item "$publishDir\TimeLens.TrayApp.exe" $exePath -Force
 if (Test-Path "$appDir\dashboard") { Remove-Item -Recurse -Force "$appDir\dashboard" }
-Copy-Item -Recurse "$publishDir\dashboard" "$appDir\dashboard"
 if (Test-Path "$root\LICENSE") { Copy-Item "$root\LICENSE" "$appDir\" }
 Write-Host "[✓] Files copied to $appDir" -ForegroundColor Green
 

@@ -10,6 +10,19 @@ html, body, #app {
   height: 100%;
 }
 
+html.motion-off *,
+html.motion-off *::before,
+html.motion-off *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+html.density-compact .content { gap: 12px; }
+html.density-compact .card { border-radius: var(--radius-lg); }
+html.density-compact .setting-row { padding-top: 10px; padding-bottom: 10px; }
+
 :root {
   /* ── Surface colors ── */
   --md-surface:       #0D0F0A;
@@ -316,6 +329,40 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  transform-origin: center;
+  transition: transform 180ms var(--ease-out), background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), color 180ms var(--ease-out), opacity 180ms var(--ease-out);
+}
+
+button > i,
+button > svg,
+button :is(i, svg) {
+  transform-origin: center;
+  transition: transform 260ms var(--ease-out), color 180ms var(--ease-out);
+}
+
+button:not(:disabled):hover > i,
+button:not(:disabled):hover > svg,
+button:not(:disabled):hover :is(i, svg) {
+  transform: translateY(-1px) scale(1.06);
+}
+
+button:not(:disabled):active { transform: translateY(1px) scale(0.985); }
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--md-primary);
+  outline-offset: 2px;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -334,7 +381,7 @@ body {
   background: var(--clr-bg-sec);
   border: 1px solid var(--clr-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-5);
 }
 
 .card-header {
@@ -384,9 +431,10 @@ body {
 .chip-button {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 5px 12px;
-  border: 0.5px solid var(--clr-border);
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--clr-border);
   border-radius: 999px;
   background: var(--clr-bg-sec);
   color: var(--clr-text-sec);
@@ -394,14 +442,23 @@ body {
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
 }
 .chip-button:hover {
   background: var(--clr-bg-ter);
   color: var(--clr-text-pri);
 }
 .chip-button.active {
-  background: rgba(200,232,106,0.15);
-  border-color: rgba(200,232,106,0.5);
-  color: #3B6D11;
+  background: transparent;
+  border-color: color-mix(in srgb, var(--md-primary) 50%, transparent);
+  color: var(--md-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

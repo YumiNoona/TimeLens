@@ -1,21 +1,28 @@
 <script lang="ts">
+  import MorphingIcon from './MorphingIcon.svelte';
+  import { FolderTree, List } from 'lucide';
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
-  import { fmtHourFull, fmtDuration } from '../utils';
-  import { timeFormat } from '../stores/settings';
+  import { fmtHourFull, fmtDuration, normalizeTimeline } from '../utils';
+  import { timeFormat, timelineMinSegmentSeconds } from '../stores/settings';
 
-  let { data, timelineGrouped = false, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
+  let { data, timelineGrouped = true, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
 
   let selectedTypes = $state<string[]>([]);
-  let groupedMode = $state(timelineGrouped ?? true);
+  let groupedMode = $state(true);
   let expanded = $state<Set<string>>(new Set());
 
-  let types = $derived([...new Set(data.timeline.map(b => b.type.toLowerCase()))]);
+  $effect(() => {
+    groupedMode = timelineGrouped;
+  });
+
+  let timeline = $derived(normalizeTimeline(data.timeline, $timelineMinSegmentSeconds));
+  let types = $derived([...new Set(timeline.map(b => b.type.toLowerCase()))]);
 
   let filtered = $derived(
     selectedTypes.length === 0
-      ? data.timeline
-      : data.timeline.filter(b => selectedTypes.includes(b.type.toLowerCase()))
+      ? timeline
+      : timeline.filter(b => selectedTypes.includes(b.type.toLowerCase()))
   );
 
   let maxSpan = $derived(Math.max(...filtered.map(b => b.endHour - b.startHour), 0.01));
@@ -132,25 +139,25 @@
 </script>
 
 <div class="tlv">
-  <div class="tl-toolbar">
-    <button class="mode-btn chip-button" onclick={() => groupedMode = !groupedMode}>
-      <i class="ti ti-{groupedMode ? 'list' : 'folders'}" aria-hidden="true"></i>
-      {groupedMode ? 'Flat' : 'Grouped'}
+  <div class="tl-controls">
+    <div class="filter-row">
+      {#each types as t}
+        <button class="type-chip chip-button" class:active={selectedTypes.includes(t)} onclick={() => toggleType(t)}>
+          <span class="chip-dot" style="background: {colorForCategory(t)}"></span>
+          {t}
+        </button>
+      {/each}
+      {#if selectedTypes.length > 0}
+        <button class="type-chip clear" onclick={() => selectedTypes = []}>Clear</button>
+      {/if}
+    </div>
+    <button class="mode-btn chip-button" class:active={groupedMode} onclick={() => groupedMode = !groupedMode} title="Change timeline layout">
+      <MorphingIcon icon={groupedMode ? FolderTree : List} size={14} strokeWidth={2} />
+      {groupedMode ? 'Grouped' : 'Flat'}
     </button>
   </div>
-  <div class="filter-row">
-    {#each types as t}
-      <button class="type-chip chip-button" class:active={selectedTypes.includes(t)} onclick={() => toggleType(t)}>
-        <span class="chip-dot" style="background: {colorForCategory(t)}"></span>
-        {t}
-      </button>
-    {/each}
-    {#if selectedTypes.length > 0}
-      <button class="type-chip clear" onclick={() => selectedTypes = []}>Clear</button>
-    {/if}
-  </div>
 
-  <div class="timeline-blocks" role="list">
+  <div class="timeline-blocks" role={groupedMode ? 'tree' : 'list'}>
     {#if filtered.length === 0}
       <p class="empty">No blocks match the selected types.</p>
     {:else if groupedMode}
@@ -158,8 +165,8 @@
         {#snippet renderNode(n: TreeNode)}
           {@const open = expanded.has(n.id)}
           {@const hasKids = n.children.length > 0}
-          <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div
+          <button
+            type="button"
             class="tl-row"
             class:d0={n.depth === 0}
             class:d1={n.depth === 1}
@@ -167,7 +174,10 @@
             class:has-kids={hasKids}
             style="padding-left: {12 + n.depth * 16}px"
             onclick={() => hasKids && toggleNode(n.id)}
-            role="listitem"
+            role="treeitem"
+            aria-level={n.depth + 1}
+            aria-selected="false"
+            aria-expanded={hasKids ? open : undefined}
           >
             {#if hasKids}
               <i class="ti ti-chevron-{open ? 'down' : 'right'} chevron" aria-hidden="true"></i>
@@ -179,14 +189,14 @@
               <span class="tl-arrow">→</span>
               <span>{fmtHour(n.endHour)}</span>
             </div>
-            <div class="tl-bar-bg">
-              <div class="tl-bar" style="width: {((n.endHour - n.startHour) / maxSpan) * 100}%; background: {colorForCategory(n.type)}"></div>
-            </div>
             <span class="tl-type" class:cat={n.depth === 0} class:exe={n.depth === 1} class:title={n.depth === 2}>
               {n.label}
             </span>
+            <div class="tl-bar-bg" aria-hidden="true">
+              <div class="tl-bar" style="width: {((n.endHour - n.startHour) / maxSpan) * 100}%; background: {colorForCategory(n.type)}"></div>
+            </div>
             <span class="tl-dur">{fmtDuration(n.durationSeconds)}</span>
-          </div>
+          </button>
           {#if open}
             <div class="tl-children" style="border-color: {colorForCategory(n.type)}">
               {#each n.children as child}
@@ -206,10 +216,10 @@
             <span class="tl-arrow">→</span>
             <span>{fmtHour(block.endHour)}</span>
           </div>
-          <div class="tl-bar-bg">
+          <span class="tl-type">{block.type}{#if block.project} · {block.project}{/if}</span>
+          <div class="tl-bar-bg" aria-hidden="true">
             <div class="tl-bar" style="width: {((block.endHour - block.startHour) / maxSpan) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
-          <span class="tl-type">{block.type}{#if block.project} · {block.project}{/if}</span>
           <span class="tl-dur">{fmtDuration(block.durationSeconds)}</span>
         </div>
       {/each}
@@ -218,10 +228,11 @@
 </div>
 
 <style>
-  .tlv { display: flex; flex-direction: column; gap: var(--sp-4); }
-  .tl-toolbar { display: flex; align-items: center; justify-content: flex-start; }
+  .tlv { display: flex; flex-direction: column; gap: 14px; }
+  .tl-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .mode-btn i { font-size: 14px; }
-  .filter-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+  .mode-btn.active { color: var(--md-primary); border-color: color-mix(in srgb, var(--md-primary) 42%, var(--clr-border)); }
+  .filter-row { display: flex; gap: 7px; flex-wrap: wrap; }
   .type-chip {
     font-size: 11px; font-weight: 500;
     text-transform: capitalize;
@@ -229,14 +240,23 @@
   .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .type-chip.clear { color: var(--md-error); border-color: rgba(224,112,112,0.3); }
 
-  .timeline-blocks { display: flex; flex-direction: column; gap: 2px; }
+  .timeline-blocks { display: flex; flex-direction: column; gap: 4px; }
 
   .tl-row {
-    display: flex; align-items: center; gap: var(--sp-2);
-    padding: var(--sp-2) var(--sp-3);
-    margin: 1px 0;
+    display: grid;
+    grid-template-columns: 14px 124px minmax(130px, 0.8fr) minmax(130px, 1fr) 54px;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    padding: 8px 12px;
+    margin: 0;
     cursor: default;
     position: relative;
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    color: inherit;
+    text-align: left;
   }
   .tl-row.has-kids { cursor: pointer; }
   .tl-row.d0 { background: var(--clr-bg-ter); font-weight: 600; }
@@ -248,7 +268,11 @@
 
   .tl-children {
     border-left: 2px solid;
-    margin-left: 24px;
+    margin: 2px 0 2px 24px;
+    padding-left: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .chevron {
@@ -260,26 +284,30 @@
   .chevron-spacer { width: 14px; flex-shrink: 0; }
 
   .tl-flat {
-    display: flex; align-items: center; gap: var(--sp-2);
-    padding: var(--sp-2) var(--sp-3);
-    margin: 1px 0;
-    background: var(--clr-bg-sec);
-    border-radius: var(--shape-sm);
+    display: grid;
+    grid-template-columns: 14px 124px minmax(130px, 0.8fr) minmax(130px, 1fr) 54px;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    padding: 8px 12px;
+    background: color-mix(in srgb, var(--clr-bg-sec) 72%, transparent);
+    border-radius: 8px;
     overflow: hidden;
   }
+  .tl-flat:hover { background: var(--clr-bg-sec); }
 
   .tl-time {
     display: flex; align-items: center; gap: var(--sp-1);
     font-family: var(--font-mono);
     font-size: 12px;
     color: var(--clr-text-sec);
-    width: 110px; flex-shrink: 0;
+    min-width: 0;
   }
   .tl-arrow { color: var(--md-primary); font-size: 10px; }
-  .tl-bar-bg { flex: 1; min-width: 40px; height: 10px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
+  .tl-bar-bg { min-width: 40px; height: 6px; background: var(--clr-bg-ter); border-radius: 99px; overflow: hidden; }
   .tl-bar { height: 100%; border-radius: 99px; min-width: 4px; max-width: 100%; }
   .tl-type {
-    flex: 1; min-width: 0;
+    min-width: 0;
     font-size: 12px; text-transform: capitalize;
     color: var(--clr-text-pri);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -288,11 +316,15 @@
   .tl-type.exe { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-sec); }
   .tl-type.title { font-family: var(--font-mono); font-size: 11px; color: var(--clr-text-ter); font-style: italic; }
   .tl-dur {
-    width: 48px; flex-shrink: 0; text-align: right;
+    min-width: 0; text-align: right;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--clr-text-ter);
-    margin-left: var(--sp-4);
   }
   .empty { font-size: 13px; color: var(--clr-text-ter); text-align: center; padding: var(--sp-6); }
+
+  @media (max-width: 780px) {
+    .tl-row, .tl-flat { grid-template-columns: 14px 112px minmax(110px, 1fr) 48px; gap: 8px; }
+    .tl-bar-bg { display: none; }
+  }
 </style>

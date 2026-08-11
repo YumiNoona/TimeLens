@@ -5,13 +5,6 @@ using TimeLens.TrayApp.Watchers;
 
 namespace TimeLens.TrayApp;
 
-internal sealed record BlockEntry(string I, string M, string? E)
-{
-    public bool IsExpired() => M == "t" && E is not null &&
-        DateTime.TryParse(E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
-        DateTime.UtcNow >= exp;
-}
-
 internal static class Program
 {
     private const string MutexName = "TimeLens-TrayApp-Instance";
@@ -25,38 +18,65 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+            return;
+
         try
         {
-            // Pre-load native SQLite library from runtime subfolder before any DB code runs
-            NativeLibrary.Load(Path.Combine(AppContext.BaseDirectory, "runtime", "e_sqlite3.dll"));
+            // Native AOT cannot load SQLite directly from an assembly resource. Extract the
+            // embedded runtime payload on first launch so TimeLens.exe remains copy-and-run.
+            var sqlitePath = EnsureRuntimeFile("runtime/e_sqlite3.dll", "e_sqlite3.dll");
+            var categoriesPath = EnsureRuntimeFile("runtime/categories.csv", "categories.csv");
+            EnsureRuntimeFile("runtime/TimeLens.ico", "TimeLens.ico");
+            NativeLibrary.Load(sqlitePath);
 
-            MainImpl();
+            MainImpl(categoriesPath);
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText(
-                Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "TimeLens", "crash.log"),
+            var dataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TimeLens");
+            Directory.CreateDirectory(dataDir);
+            File.AppendAllText(
+                Path.Combine(dataDir, "crash.log"),
                 $"{DateTime.UtcNow:o} Fatal: {ex}{Environment.NewLine}");
             Environment.Exit(1);
         }
     }
 
-    private static void MainImpl()
+    private static string EnsureRuntimeFile(string resourceName, string fileName)
     {
-        Mutex? mutex = null;
+        var runtimeDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TimeLens", "runtime");
+        Directory.CreateDirectory(runtimeDir);
+
+        var targetPath = Path.Combine(runtimeDir, fileName);
+        using var resource = typeof(Program).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded runtime resource is missing: {resourceName}");
+
+        if (File.Exists(targetPath) && new FileInfo(targetPath).Length == resource.Length)
+            return targetPath;
+
+        var temporaryPath = targetPath + ".new";
         try
         {
-            mutex = Mutex.OpenExisting(MutexName);
-            mutex.Dispose();
-            return; // Another instance is already running
+            using (var output = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                resource.CopyTo(output);
+            File.Move(temporaryPath, targetPath, true);
         }
-        catch (WaitHandleCannotBeOpenedException)
+        finally
         {
-            mutex = new Mutex(true, MutexName, out _);
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
 
+        return targetPath;
+    }
+
+    private static void MainImpl(string builtinCsvPath)
+    {
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TimeLens", "activity.db");
@@ -76,7 +96,6 @@ internal static class Program
         var userCsvPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TimeLens", "categories.csv");
-        var builtinCsvPath = Path.Combine(AppContext.BaseDirectory, "runtime", "categories.csv");
         var csvPath = File.Exists(userCsvPath) ? userCsvPath : builtinCsvPath;
         classifier.LoadBuiltins(csvPath);
 
@@ -114,49 +133,38 @@ internal static class Program
         }
 
         // Blocklist enforcement — entries: {i: identifier, m: 'u'|'t', e?: expiresAt}
-        var focusBlocked = new List<BlockEntry>();
+        var focusBlockLock = new object();
+        BlockEntry[] focusBlocked = [];
         DateTime lastFocusToast = DateTime.MinValue;
         NativeTrayIcon? tray = null;
 
         void ReloadBlocklist()
         {
-            focusBlocked.Clear();
-            try
+            var raw = LiveStatusStore.Settings.FocusBlocklist;
+            var entries = (BlockEntryHelper.TryParseBlockEntries(raw) ?? [])
+                .Where(entry => !entry.IsExpired() && !BlockEntryHelper.IsProtected(entry.I))
+                .ToArray();
+            lock (focusBlockLock) focusBlocked = entries;
+
+            var canonical = BlockEntryHelper.Serialize(entries);
+            if (!string.Equals(raw, canonical, StringComparison.Ordinal))
             {
-                var raw = LiveStatusStore.Settings.FocusBlocklist;
-                if (string.IsNullOrWhiteSpace(raw) || raw == "[]") return;
-                // Try the new object format first
-                var entries = System.Text.Json.JsonSerializer.Deserialize<BlockEntry[]>(raw);
-                if (entries is not null) { focusBlocked.AddRange(entries); return; }
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = canonical };
+                settingsSvc.Save("focus_blocklist", canonical);
             }
-            catch { }
-            // Fallback: old string[] format — migrate on read
-            try
-            {
-                var legacy = System.Text.Json.JsonSerializer.Deserialize<string[]>(LiveStatusStore.Settings.FocusBlocklist);
-                if (legacy is null) return;
-                var migrated = legacy.Select(s => new BlockEntry(s, "u", null)).ToArray();
-                focusBlocked.AddRange(migrated);
-                // Persist migrated format
-                var json = System.Text.Json.JsonSerializer.Serialize(migrated);
-                LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = json };
-            }
-            catch { }
         }
 
         // Initial load with migration
         ReloadBlocklist();
 
-        bool IsBlocked(string exeOrDomain)
+        BlockEntry[] BlocklistSnapshot()
         {
-            var lower = exeOrDomain.Replace(".exe", "").ToLowerInvariant();
-            foreach (var be in focusBlocked)
-            {
-                var id = be.I.Replace(".exe", "").ToLowerInvariant();
-                if (lower == id || lower.EndsWith("." + id)) return true;
-            }
-            return false;
+            lock (focusBlockLock) return focusBlocked.ToArray();
         }
+
+        bool IsBlockedExecutable(string executable) =>
+            BlocklistSnapshot().Any(entry => !entry.IsExpired() &&
+                BlockEntryHelper.MatchesExecutable(entry, executable));
 
         string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
 
@@ -205,46 +213,53 @@ internal static class Program
 
         void PersistBlocklist()
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(focusBlocked.ToArray());
+            var json = BlockEntryHelper.Serialize(BlocklistSnapshot());
             LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = json };
-            var dbDir = Path.GetDirectoryName(dbPath)!;
-            var svc = new SettingsService(dbPath);
-            svc.Save("focus_blocklist", json);
+            settingsSvc.Save("focus_blocklist", json);
         }
 
-        void EnforceBlock(string exeName)
+        bool EnforceBlock(string exeName)
         {
-            if (!LiveStatusStore.Settings.FocusMode) return;
+            var normalized = BlockEntryHelper.NormalizeIdentifier(exeName);
+            if (!LiveStatusStore.Settings.FocusMode || normalized is null ||
+                !normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                BlockEntryHelper.IsProtected(normalized) || !IsBlockedExecutable(normalized))
+                return false;
 
             var action = GetBlockAction();
+            if (action is not ("notify" or "hide" or "kill" or "strict")) action = "hide";
 
             // Always show toast when a blocked app is detected
             if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
             {
                 lastFocusToast = DateTime.UtcNow;
-                try { tray?.ShowBalloon("Focus Mode", $"'{exeName}' is blocked — get back to work!", true); } catch { }
+                try { tray?.ShowBalloon("Focus Mode", $"'{normalized}' is blocked — get back to work!", true); } catch { }
             }
 
-            if (action == "notify") return; // toast only, no further enforcement
+            if (action == "notify") return true;
 
             try
             {
-                var exeOnly = System.IO.Path.GetFileNameWithoutExtension(exeName);
+                var exeOnly = System.IO.Path.GetFileNameWithoutExtension(normalized);
                 var procs = System.Diagnostics.Process.GetProcessesByName(exeOnly);
+                var enforced = false;
 
                 foreach (var proc in procs)
                 {
-                    try
+                    using (proc)
                     {
-                        if (action == "kill" || action == "strict")
+                        try
                         {
-                            proc.Kill(entireProcessTree: true);
-                            writer.InsertBlockLog(exeName, action);
+                            if ((action == "kill" || action == "strict") && proc.Id != Environment.ProcessId)
+                            {
+                                proc.Kill(entireProcessTree: true);
+                                enforced = true;
+                            }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogCrash($"EnforceBlock kill '{exeName}' pid={proc.Id}: {ex}");
+                        catch (Exception ex)
+                        {
+                            LogCrash($"EnforceBlock kill '{normalized}' pid={proc.Id}: {ex}");
+                        }
                     }
                 }
 
@@ -254,14 +269,21 @@ internal static class Program
                     var windows = Win32.FindWindowsForProcess(exeOnly);
                     foreach (var hwnd in windows)
                     {
-                        Win32.ShowWindow(hwnd, Win32.SW_MINIMIZE);
+                        if (!Win32.IsIconic(hwnd))
+                        {
+                            Win32.ShowWindow(hwnd, Win32.SW_MINIMIZE);
+                            enforced = true;
+                        }
                     }
                 }
+
+                if (enforced) writer.InsertBlockLog(normalized, action);
             }
             catch (Exception ex)
             {
-                LogCrash($"EnforceBlock '{exeName}': {ex}");
+                LogCrash($"EnforceBlock '{normalized}': {ex}");
             }
+            return true;
         }
 
         // Timer to periodically enforce blocks + auto-remove expired
@@ -271,12 +293,17 @@ internal static class Program
             {
                 if (!LiveStatusStore.Settings.FocusMode) return;
 
-                var removed = focusBlocked.RemoveAll(be => be.IsExpired());
-                if (removed > 0) PersistBlocklist();
-
-                foreach (var blocked in focusBlocked)
+                var before = BlocklistSnapshot();
+                var active = before.Where(entry => !entry.IsExpired()).ToArray();
+                if (active.Length != before.Length)
                 {
-                    if (!blocked.I.Contains(".exe")) continue;
+                    lock (focusBlockLock) focusBlocked = active;
+                    PersistBlocklist();
+                }
+
+                foreach (var blocked in active)
+                {
+                    if (!BlockEntryHelper.IsExecutable(blocked)) continue;
                     EnforceBlock(blocked.I);
                 }
             }
@@ -387,7 +414,7 @@ internal static class Program
             // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && state == "active")
             {
-                var blocked = IsBlocked(exe);
+                var blocked = IsBlockedExecutable(exe);
                 if (blocked)
                     EnforceBlock(exe);
             }
@@ -426,12 +453,6 @@ internal static class Program
             }
         };
 
-        if (settings.TrackInput)
-            inputMonitor.InputActivityTick += (keys, clicks, pid, exe) =>
-            {
-                writer.InsertInputActivity(keys, clicks, pid, exe);
-            };
-
         // Browser processes — audio from these is already tracked by the extension's
         // audible-status endpoint, so skip Core Audio logging to avoid duplicate entries.
         var browserAudioExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -439,15 +460,6 @@ internal static class Program
             "chrome.exe", "msedge.exe", "microsoftedge.exe", "firefox.exe",
             "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe", "thorium.exe"
         };
-
-        if (settings.TrackAudio)
-            audioMonitor.SessionAudioChanged += (pid, exe, playing) =>
-            {
-                if (browserAudioExes.Contains(exe ?? "") && !string.IsNullOrEmpty(LiveStatusStore.AudibleTab))
-                    return;
-                writer.InsertAudioActivity(pid, exe, playing);
-                LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
-            };
 
         // Watchers will be started inside the message loop via StartupRequested
         // so that WinEvent hooks have a running message pump.
@@ -556,35 +568,35 @@ internal static class Program
 
         void ApplyTrackAudio(bool on)
         {
-            RuntimeConfig.Settings = RuntimeConfig.Settings with { TrackAudio = on };
-            LiveStatusStore.Settings = RuntimeConfig.Settings;
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackAudio = on };
+            RuntimeConfig.Settings = LiveStatusStore.Settings;
+            audioMonitor.SessionAudioChanged -= OnAudioChanged;
             if (on)
             {
                 idleMonitor.AudioMonitorRef = audioMonitor;
-                audioMonitor.Start();
                 audioMonitor.SessionAudioChanged += OnAudioChanged;
+                audioMonitor.Start();
             }
             else
             {
                 audioMonitor.Stop();
-                audioMonitor.SessionAudioChanged -= OnAudioChanged;
                 idleMonitor.AudioMonitorRef = null;
             }
         }
 
         void ApplyTrackInput(bool on)
         {
-            RuntimeConfig.Settings = RuntimeConfig.Settings with { TrackInput = on };
-            LiveStatusStore.Settings = RuntimeConfig.Settings;
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackInput = on };
+            RuntimeConfig.Settings = LiveStatusStore.Settings;
+            inputMonitor.InputActivityTick -= OnInputTick;
             if (on)
             {
-                inputMonitor.Start();
                 inputMonitor.InputActivityTick += OnInputTick;
+                inputMonitor.Start();
             }
             else
             {
                 inputMonitor.Stop();
-                inputMonitor.InputActivityTick -= OnInputTick;
             }
         }
 
@@ -594,6 +606,12 @@ internal static class Program
         int consecutiveActiveMinutes = 0;
 
         using var trayDispose = tray = new NativeTrayIcon();
+        var executablePath = Environment.ProcessPath;
+        var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)
+            ? File.GetLastWriteTimeUtc(executablePath).Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture)
+            : DateTime.UtcNow.Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture);
+        if (settings.TrackInput) inputMonitor.InputActivityTick += OnInputTick;
+        if (settings.TrackAudio) audioMonitor.SessionAudioChanged += OnAudioChanged;
         tray.StartupRequested += () =>
         {
             winWatcher.Start();
@@ -623,7 +641,7 @@ internal static class Program
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/",
+                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}",
                 UseShellExecute = true
             });
         };
@@ -638,10 +656,9 @@ internal static class Program
         tray.ExitRequested += () =>
         {
             apiCts.Cancel();
-            Environment.Exit(0);
+            tray.Close();
         };
 
         tray.Run();
-        mutex?.Dispose();
     }
 }

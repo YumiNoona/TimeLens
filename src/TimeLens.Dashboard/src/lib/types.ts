@@ -79,4 +79,6 @@ export interface DashboardData {
   heatmap: HeatmapEntry[];
   categories: CategoryEntry[];
   live: LiveStatus;
+  browserSites: BrowserEntry[];
+  audioSessions: AudioEntry[];
 }

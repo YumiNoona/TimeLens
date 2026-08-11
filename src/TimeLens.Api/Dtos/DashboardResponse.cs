@@ -7,8 +7,8 @@ public sealed record DashboardResponse(
     HeatmapEntryDto[] Heatmap,
     CategoryEntryDto[] Categories,
     LiveStatusDto Live,
-    BrowserEntryDto[] BrowserSites = null,
-    AudioSessionDto[] AudioSessions = null
+    BrowserEntryDto[] BrowserSites,
+    AudioSessionDto[] AudioSessions
 );
 
 public sealed record SummaryDto(

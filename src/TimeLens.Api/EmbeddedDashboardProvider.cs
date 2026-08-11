@@ -86,7 +86,9 @@ internal sealed class EmbeddedFileInfo : IFileInfo
         }
     }
     public string? PhysicalPath => null;
-    public DateTimeOffset LastModified => DateTimeOffset.MinValue;
+    // Static-file middleware converts this value to a Win32 FILETIME when setting
+    // response metadata. DateTimeOffset.MinValue is outside the valid FILETIME range.
+    public DateTimeOffset LastModified => DateTimeOffset.UnixEpoch;
     public string Name { get; }
 
     public Stream CreateReadStream()

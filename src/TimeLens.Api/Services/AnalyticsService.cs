@@ -8,6 +8,7 @@ namespace TimeLens.Api.Services;
 
 public sealed class AnalyticsService
 {
+    private const int HeatmapDays = 182;
     private readonly string _connString;
     private readonly ConcurrentDictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = new();
     private readonly List<string> _cacheOrder = new();
@@ -50,12 +51,19 @@ public sealed class AnalyticsService
 
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
+            var rangeEnd = isToday ? DateTime.UtcNow : tomorrow;
 
-            var summary = await GetSummaryAsync(conn, localDate.ToString("yyyy-MM-dd"), localDate.AddDays(-1).ToString("yyyy-MM-dd"));
+            var summary = await GetSummaryAsync(
+                conn,
+                localDate.ToString("yyyy-MM-dd"),
+                localDate.AddDays(-1).ToString("yyyy-MM-dd"),
+                today,
+                tomorrow,
+                rangeEnd);
             var timeline = await GetTimelineAsync(conn, localDate.ToString("yyyy-MM-dd"), tomorrow);
-            var topApps = await GetTopAppsAsync(conn, localDate.ToString("yyyy-MM-dd"));
-            var heatmap = await GetHeatmapAsync(conn, localDate);
-            var categories = await GetCategoriesAsync(conn, localDate.ToString("yyyy-MM-dd"));
+            var topApps = await GetTopAppsAsync(conn, localDate.ToString("yyyy-MM-dd"), today, tomorrow, rangeEnd);
+            var heatmap = await GetHeatmapAsync(conn, localDate, rangeEnd);
+            var categories = await GetCategoriesAsync(conn, localDate.ToString("yyyy-MM-dd"), rangeEnd);
             var live = new LiveStatusDto(
                 LiveStatusStore.CurrentApp,
                 LiveStatusStore.IdleSeconds / 60,
@@ -66,8 +74,8 @@ public sealed class AnalyticsService
                 LiveStatusStore.PendingIdleReturn
             );
 
-            var browserSites = isToday ? await GetBrowserSummaryAsync(conn, localDate.ToString("yyyy-MM-dd")) : [];
-            var audioSessions = isToday ? await GetAudioSummaryAsync(conn, today, tomorrow) : [];
+            var browserSites = await GetBrowserSummaryAsync(conn, localDate.ToString("yyyy-MM-dd"));
+            var audioSessions = await GetAudioSummaryAsync(conn, today, tomorrow);
 
             var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live, browserSites, audioSessions);
 
@@ -97,24 +105,30 @@ public sealed class AnalyticsService
     }
 
     private static async Task<SummaryDto> GetSummaryAsync(
-        SqliteConnection conn, string localDate, string yesterdayDate)
+        SqliteConnection conn,
+        string localDate,
+        string yesterdayDate,
+        DateTime today,
+        DateTime tomorrow,
+        DateTime rangeEnd)
     {
-        var now = DateTime.UtcNow.ToString("o");
-
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT
                 COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
-                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS active_secs,
                 COALESCE(SUM(CASE WHEN session_state IN ('idle', 'away') AND COALESCE(category, '') != 'system' THEN
-                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS idle_secs
             FROM app_events
             WHERE local_date = $date
             """;
         cmd.Parameters.AddWithValue("$date", localDate);
-        cmd.Parameters.AddWithValue("$now", now);
+        cmd.Parameters.AddWithValue("$rangeEnd", rangeEnd.ToString("o"));
+        cmd.Parameters.AddWithValue("$previousEnd", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
 
         int activeSecs = 0, idleSecs = 0;
         using (var r = await cmd.ExecuteReaderAsync())
@@ -129,7 +143,7 @@ public sealed class AnalyticsService
         // Sum active time in productive categories for focus score
         cmd.CommandText = """
             SELECT COALESCE(SUM(
-                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
             ), 0) FROM app_events
             WHERE local_date = $date
               AND session_state = 'active'
@@ -140,7 +154,7 @@ public sealed class AnalyticsService
         // Sum "other" time — unclassified, treated as neutral in focus score
         cmd.CommandText = """
             SELECT COALESCE(SUM(
-                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
             ), 0) FROM app_events
             WHERE local_date = $date
               AND session_state = 'active'
@@ -151,6 +165,7 @@ public sealed class AnalyticsService
         cmd.CommandText = """
             SELECT COUNT(*) FROM app_events
             WHERE local_date = $yday AND session_state = 'active'
+              AND COALESCE(category, '') != 'system'
             """;
         cmd.Parameters.AddWithValue("$yday", yesterdayDate);
         var hadYesterdayData = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
@@ -159,16 +174,17 @@ public sealed class AnalyticsService
         {
             cmd.CommandText = """
                 SELECT COALESCE(SUM(
-                    (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                    (julianday(COALESCE(end_time, $previousEnd)) - julianday(start_time)) * 86400
                 ), 0) FROM app_events
                 WHERE local_date = $yday AND session_state = 'active'
+                  AND COALESCE(category, '') != 'system'
                 """;
         }
         var yesterdaySecs = hadYesterdayData ? Convert.ToInt32(await cmd.ExecuteScalarAsync()) : -1;
 
         cmd.CommandText = """
             SELECT category, COALESCE(SUM(
-                (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
             ), 0) AS secs FROM app_events
             WHERE local_date = $date AND session_state = 'active' AND category != 'system'
             GROUP BY category ORDER BY secs DESC LIMIT 1
@@ -277,7 +293,8 @@ public sealed class AnalyticsService
             var type = sessionState == "active" ? (cat ?? "other") : sessionState;
 
             if (!isOngoing && blocks.Count > 0 && blocks[^1].Type == type &&
-                Math.Abs(blocks[^1].EndHour - startHour) < 0.01)
+                string.Equals(blocks[^1].ExeName, exeName, StringComparison.OrdinalIgnoreCase) &&
+                Math.Abs(blocks[^1].EndHour - startHour) < 20.0 / 3600.0)
             {
                 blocks[^1] = blocks[^1] with { EndHour = endHour, DurationSeconds = blocks[^1].DurationSeconds + durationSecs };
             }
@@ -346,7 +363,7 @@ public sealed class AnalyticsService
     }
 
     private static async Task<TopAppDto[]> GetTopAppsAsync(
-        SqliteConnection conn, string localDate)
+        SqliteConnection conn, string localDate, DateTime today, DateTime tomorrow, DateTime rangeEnd)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -369,10 +386,9 @@ public sealed class AnalyticsService
             GROUP BY ae.exe_name ORDER BY secs DESC LIMIT 8
             """;
         cmd.Parameters.AddWithValue("$date", localDate);
-        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-        var localTomorrow = DateTime.ParseExact(localDate, "yyyy-MM-dd", null).AddDays(1);
-        cmd.Parameters.AddWithValue("$t0", localDate);
-        cmd.Parameters.AddWithValue("$t1", localTomorrow.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("$now", rangeEnd.ToString("o"));
+        cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
+        cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
 
         var apps = new List<TopAppDto>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -387,16 +403,17 @@ public sealed class AnalyticsService
     }
 
     private static async Task<HeatmapEntryDto[]> GetHeatmapAsync(
-        SqliteConnection conn, DateTime localDate)
+        SqliteConnection conn, DateTime localDate, DateTime rangeEnd)
     {
-        var startDate = localDate.AddDays(-27);
+        var startDate = localDate.AddDays(-(HeatmapDays - 1));
         var startDateStr = startDate.ToString("yyyy-MM-dd");
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT COALESCE(local_date, DATE(start_time)) AS day,
                    COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
-                       (julianday(COALESCE(end_time, DATE(start_time, '+1 day'))) -
+                       (julianday(COALESCE(end_time,
+                            CASE WHEN local_date = $endDate THEN $rangeEnd ELSE DATE(start_time, '+1 day') END)) -
                         julianday(start_time)) * 86400
                    ELSE 0 END), 0) AS secs
             FROM app_events
@@ -405,6 +422,8 @@ public sealed class AnalyticsService
             ORDER BY day
             """;
         cmd.Parameters.AddWithValue("$start", startDateStr);
+        cmd.Parameters.AddWithValue("$endDate", localDate.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("$rangeEnd", rangeEnd.ToString("o"));
 
         var map = new Dictionary<string, int>();
         using var r = await cmd.ExecuteReaderAsync();
@@ -412,11 +431,11 @@ public sealed class AnalyticsService
         {
             var day = r.GetString(0);
             var secs = Convert.ToInt32(r["secs"]);
-            map[day] = secs / 3600;
+            map[day] = secs / 60;
         }
 
         var entries = new List<HeatmapEntryDto>();
-        for (int i = 0; i < 28; i++)
+        for (int i = 0; i < HeatmapDays; i++)
         {
             var date = startDate.AddDays(i).ToString("yyyy-MM-dd");
             entries.Add(new HeatmapEntryDto(date, map.GetValueOrDefault(date, 0)));
@@ -425,7 +444,7 @@ public sealed class AnalyticsService
     }
 
     private static async Task<CategoryEntryDto[]> GetCategoriesAsync(
-        SqliteConnection conn, string localDate)
+        SqliteConnection conn, string localDate, DateTime rangeEnd)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -437,7 +456,7 @@ public sealed class AnalyticsService
             GROUP BY cat ORDER BY secs DESC
             """;
         cmd.Parameters.AddWithValue("$date", localDate);
-        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("$now", rangeEnd.ToString("o"));
 
         var cats = new List<CategoryEntryDto>();
         double totalSecs = 0;

@@ -22,6 +22,7 @@ public static class ApiHost
 
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, byte[]> ExtensionPackageCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly HashSet<string> InfrastructureExes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -42,7 +43,7 @@ public static class ApiHost
         Action<bool>? setTrackInput = null,
         Action<string, string, string, string, int>? upsertRule = null,
         Action<string>? deleteRule = null,
-        Action<string>? enforceBlock = null)
+        Func<string, bool>? enforceBlock = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -58,6 +59,36 @@ public static class ApiHost
         });
 
         var app = builder.Build();
+
+        // The SPA entry point must never be reused across application upgrades. Embedded
+        // files otherwise share a stable timestamp, so a browser can receive a 304 for an
+        // old index.html and keep loading the previous hashed JavaScript bundle.
+        app.Use(async (ctx, next) =>
+        {
+            var path = ctx.Request.Path;
+            var isDashboardEntry = path == "/" || path == "/index.html" ||
+                (!Path.HasExtension(path.Value) &&
+                 !path.StartsWithSegments("/api") &&
+                 !path.StartsWithSegments("/extension"));
+            var mustBeFresh = isDashboardEntry || path == "/extension-setup";
+
+            if (mustBeFresh)
+            {
+                ctx.Request.Headers.Remove("If-None-Match");
+                ctx.Request.Headers.Remove("If-Modified-Since");
+                ctx.Response.OnStarting(() =>
+                {
+                    ctx.Response.Headers.CacheControl = "no-store, no-cache, max-age=0, must-revalidate";
+                    ctx.Response.Headers.Pragma = "no-cache";
+                    ctx.Response.Headers.Expires = "0";
+                    ctx.Response.Headers.Remove("ETag");
+                    ctx.Response.Headers.Remove("Last-Modified");
+                    return Task.CompletedTask;
+                });
+            }
+
+            await next();
+        });
 
         app.Use(async (ctx, next) =>
         {
@@ -99,7 +130,11 @@ public static class ApiHost
             var embedded = new EmbeddedDashboardProvider(entryAsm);
             if (embedded.GetFileInfo("index.html").Exists)
             {
-                staticOpts = new StaticFileOptions { FileProvider = embedded };
+                staticOpts = new StaticFileOptions
+                {
+                    FileProvider = embedded,
+                    OnPrepareResponse = context => SetStaticAssetCacheHeaders(context.Context)
+                };
             }
         }
 
@@ -107,7 +142,8 @@ public static class ApiHost
         {
             staticOpts = new StaticFileOptions
             {
-                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dashboardPath)
+                FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dashboardPath),
+                OnPrepareResponse = context => SetStaticAssetCacheHeaders(context.Context)
             };
         }
 
@@ -140,6 +176,68 @@ public static class ApiHost
                     System.Text.Json.JsonValueKind.String => prop.Value.GetString() ?? "",
                     _ => prop.Value.GetRawText()
                 };
+
+                if (prop.Name == "blockAction" && value is not ("notify" or "hide" or "kill" or "strict"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid block action\"}");
+                    return;
+                }
+                if (prop.Name == "focusMode" && prop.Value.ValueKind is not
+                    (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"focusMode must be a boolean\"}");
+                    return;
+                }
+                if (prop.Name == "defaultView" && value is not ("today" or "history" or "apps" or "browser" or "timeline" or "block" or "rules" or "settings"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid default view\"}");
+                    return;
+                }
+                if (prop.Name == "density" && value is not ("comfortable" or "compact"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid interface density\"}");
+                    return;
+                }
+                if (prop.Name == "motionEnabled" && prop.Value.ValueKind is not
+                    (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"motionEnabled must be a boolean\"}");
+                    return;
+                }
+                if (prop.Name == "timelineMinSegmentSeconds" && value is not ("30" or "60" or "120" or "300"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid timeline threshold\"}");
+                    return;
+                }
+                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "182"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid heatmap range\"}");
+                    return;
+                }
+                if (prop.Name == "focusBlocklist")
+                {
+                    var entries = BlockEntryHelper.TryParseBlockEntries(value) ?? [];
+                    if (value != "[]" && entries.Length == 0)
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsync("{\"error\":\"Invalid blocklist\"}");
+                        return;
+                    }
+                    if (entries.Any(entry => BlockEntryHelper.IsProtected(entry.I)))
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsync("{\"error\":\"TimeLens and critical Windows targets cannot be blocked\"}");
+                        return;
+                    }
+                    value = BlockEntryHelper.Serialize(entries);
+                }
                 saveSetting?.Invoke(prop.Name switch
                 {
                     "trackAudio" => "track_audio",
@@ -158,6 +256,11 @@ public static class ApiHost
                     "blockAction" => "block_action",
                     "pollIntervalSeconds" => "poll_interval_seconds",
                     "timeFormat" => "time_format",
+                    "defaultView" => "default_view",
+                    "density" => "density",
+                    "motionEnabled" => "motion_enabled",
+                    "timelineMinSegmentSeconds" => "timeline_min_segment_seconds",
+                    "heatmapDays" => "heatmap_days",
                     _ => prop.Name
                 }, value);
 
@@ -227,6 +330,23 @@ public static class ApiHost
                     case "pollIntervalSeconds":
                         if (int.TryParse(value, out var pis))
                             LiveStatusStore.Settings = LiveStatusStore.Settings with { PollIntervalSeconds = pis };
+                        break;
+                    case "defaultView":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { DefaultView = value };
+                        break;
+                    case "density":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { Density = value };
+                        break;
+                    case "motionEnabled":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { MotionEnabled = value == "true" };
+                        break;
+                    case "timelineMinSegmentSeconds":
+                        if (int.TryParse(value, out var tmss))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with { TimelineMinSegmentSeconds = tmss };
+                        break;
+                    case "heatmapDays":
+                        if (int.TryParse(value, out var hd))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with { HeatmapDays = hd };
                         break;
                 }
             }
@@ -538,16 +658,11 @@ public static class ApiHost
                         var items = BlockEntryHelper.TryParseBlockEntries(blocklist);
                         if (items is not null)
                         {
-                            var host = evt.Domain.ToLowerInvariant();
-                            var url = (evt.Url ?? "").ToLowerInvariant();
                             foreach (var be in items)
                             {
                                 if (string.IsNullOrEmpty(be.I)) continue;
-                                if (be.M == "t" && be.E is not null &&
-                                    DateTime.TryParse(be.E, null, System.Globalization.DateTimeStyles.RoundtripKind, out var exp) &&
-                                    DateTime.UtcNow >= exp) continue;
-                                var pat = be.I.ToLowerInvariant();
-                                if (host.Contains(pat) || url.Contains(pat))
+                                if (be.IsExpired()) continue;
+                                if (BlockEntryHelper.MatchesDomain(be, evt.Domain))
                                 {
                                     domainBlocked = true;
                                     LiveStatusStore.PendingFocusBlock = evt.Domain;
@@ -700,8 +815,26 @@ public static class ApiHost
         app.MapPost("/api/extension-heartbeat", (HttpContext ctx) =>
         {
             LiveStatusStore.LastExtensionHeartbeat = DateTime.UtcNow;
+            LiveStatusStore.LastExtensionBrowser = ctx.Request.Query["browser"].FirstOrDefault() ?? "unknown";
+            LiveStatusStore.LastExtensionVersion = ctx.Request.Query["version"].FirstOrDefault() ?? "unknown";
             ctx.Response.StatusCode = 200;
             return Task.CompletedTask;
+        });
+
+        app.MapGet("/api/extension-status", async (HttpContext ctx) =>
+        {
+            var ageSeconds = LiveStatusStore.LastExtensionHeartbeat == DateTime.MinValue
+                ? -1
+                : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
+            ctx.Response.ContentType = "application/json";
+            await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartObject();
+            json.WriteBoolean("connected", ageSeconds >= 0 && ageSeconds <= 75);
+            json.WriteNumber("ageSeconds", ageSeconds);
+            json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
+            json.WriteString("version", LiveStatusStore.LastExtensionVersion);
+            json.WriteEndObject();
+            await json.FlushAsync();
         });
 
         app.MapGet("/api/input-summary", async (HttpContext ctx) =>
@@ -830,14 +963,16 @@ public static class ApiHost
 
         app.MapGet("/api/browser-hourly", async (HttpContext ctx) =>
         {
-            var localNow = DateTime.Now;
-            var localDate = localNow.Date;
-            var offsetHours = (int)Math.Round((localNow - DateTime.UtcNow).TotalHours);
+            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
+            DateTime queryDate = DateTime.Now;
+            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
+                queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+            var localDate = queryDate.Date;
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT CAST(strftime('%H', start_time) AS INTEGER) AS h, COUNT(*) AS cnt
+                SELECT CAST(strftime('%H', start_time, 'localtime') AS INTEGER) AS h, COUNT(*) AS cnt
                 FROM browser_events
                 WHERE local_date = $date
                 GROUP BY h ORDER BY h
@@ -847,9 +982,7 @@ public static class ApiHost
             using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
             {
-                var utcHour = r.GetInt32(0);
-                var localHour = (utcHour + offsetHours + 24) % 24;
-                counts[localHour] += r.GetInt32(1);
+                counts[r.GetInt32(0)] += r.GetInt32(1);
             }
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             arr.WriteStartArray();
@@ -1071,6 +1204,32 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapGet("/extension/download/{family}", async (HttpContext ctx) =>
+        {
+            var family = ctx.Request.RouteValues["family"]?.ToString() ?? "";
+            family = family.ToLowerInvariant() switch
+            {
+                "chrome" or "chromium" => "chromium",
+                "firefox" => "firefox",
+                _ => ""
+            };
+            if (family.Length == 0 || entryAsm is null)
+            {
+                ctx.Response.StatusCode = 404;
+                return;
+            }
+
+            var package = ExtensionPackageCache.GetOrAdd(family,
+                key => ExtensionPackageProvider.CreateZip(entryAsm, key));
+            var fileName = family == "chromium"
+                ? "TimeLens-extension-chromium.zip"
+                : "TimeLens-extension-firefox.zip";
+            ctx.Response.ContentType = "application/zip";
+            ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
+            ctx.Response.ContentLength = package.Length;
+            await ctx.Response.Body.WriteAsync(package);
+        });
+
         app.MapGet("/extension-setup", (HttpContext ctx) =>
         {
             ctx.Response.ContentType = "text/html; charset=utf-8";
@@ -1082,8 +1241,6 @@ public static class ApiHost
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TimeLens · Extensions</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
 :root{
   --md-surface:#0D0F0A;--md-surface-1:#141810;--md-surface-2:#1C2118;--md-surface-3:#222819;
@@ -1093,7 +1250,7 @@ public static class ApiHost
   --md-tertiary:#7ECFA8;--md-ter-cont:#00472B;
   --md-error:#E07070;--md-err-cont:#3B1212;
   --md-on-surf:#E4E8DC;--md-on-surf-var:#8A9283;--md-on-surf-dim:#4A5145;
-  --font-display:'Inter',sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --font-display:Inter,Segoe UI,sans-serif;--font-mono:'Cascadia Mono',Consolas,monospace;
   --shape-sm:8px;--shape-md:12px;--shape-lg:16px;--shape-xl:28px;
   --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px
 }
@@ -1188,9 +1345,11 @@ body{
 .br-dl{
   display:flex;align-items:center;gap:6px;
   font-size:12px;font-weight:500;color:var(--md-primary);
-  flex-shrink:0;opacity:0;transition:opacity .15s
+  flex-shrink:0;opacity:1;transition:all .15s;
+  border:1px solid color-mix(in srgb,var(--md-primary) 35%,transparent);
+  background:var(--md-primary-cont);padding:7px 10px;border-radius:8px
 }
-.browser-row:hover .br-dl{opacity:1}
+.browser-row:hover .br-dl{background:var(--md-primary);color:var(--md-on-primary)}
 .section-divider{
   display:flex;align-items:center;gap:var(--sp-3);
   margin:var(--sp-4) 0 var(--sp-3)
@@ -1205,14 +1364,14 @@ body{
 .status-row{
   display:flex;align-items:center;gap:var(--sp-2);
   padding-top:var(--sp-4);border-top:1px solid var(--md-outline);
-  font-size:12px;color:var(--md-on-surf-dim)
+  font-size:12px;color:var(--md-on-surf-var)
 }
 .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .status-dot.online{background:var(--md-tertiary);box-shadow:0 0 6px var(--md-tertiary)}
 .status-dot.offline{background:var(--md-error)}
 .status-dot.checking{background:var(--md-secondary);animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.footer-note{margin-top:var(--sp-4);font-size:11px;color:var(--md-on-surf-dim);line-height:1.6}
+.footer-note{margin-top:var(--sp-4);font-size:11px;color:var(--md-on-surf-var);line-height:1.6}
 .footer-note a{color:var(--md-on-surf-var)}
 @media(max-width:600px){body{flex-direction:column}.rail{width:100%;flex-direction:row;padding:var(--sp-2);gap:var(--sp-2)}.main{padding:var(--sp-3)}.rail-logo{margin-bottom:0;margin-right:auto}}
 </style>
@@ -1221,7 +1380,7 @@ body{
 
 <div class="rail">
   <div class="rail-logo">
-    <i class="ti ti-clock-hour-4"></i>
+    <span aria-hidden="true">◷</span>
   </div>
 </div>
 
@@ -1240,85 +1399,94 @@ body{
 
   <div class="card">
     <div class="card-title">
-      <i class="ti ti-brand-chrome"></i>
+      <span aria-hidden="true">◎</span>
       Chromium Browsers
     </div>
 
-    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <a class="browser-row" href="/extension/download/chromium" download>
       <div class="br-icon br-chrome">C</div>
       <div class="br-info">
         <div class="br-name">Google Chrome</div>
         <div class="br-hint">chrome://extensions</div>
       </div>
-      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+      <div class="br-dl">Download ZIP ↓</div>
     </a>
 
-    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <a class="browser-row" href="/extension/download/chromium" download>
       <div class="br-icon br-edge">E</div>
       <div class="br-info">
         <div class="br-name">Microsoft Edge</div>
         <div class="br-hint">edge://extensions</div>
       </div>
-      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+      <div class="br-dl">Download ZIP ↓</div>
     </a>
 
-    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-chrome.zip" target="_blank">
+    <a class="browser-row" href="/extension/download/chromium" download>
       <div class="br-icon br-brave">B</div>
       <div class="br-info">
         <div class="br-name">Brave / Arc / Opera / Vivaldi</div>
         <div class="br-hint">Any Chromium extensions page</div>
       </div>
-      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+      <div class="br-dl">Download ZIP ↓</div>
     </a>
 
     <div class="section-divider">
       <span class="section-label">Firefox Family</span>
     </div>
 
-    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+    <a class="browser-row" href="/extension/download/firefox" download>
       <div class="br-icon br-firefox">F</div>
       <div class="br-info">
         <div class="br-name">Mozilla Firefox</div>
         <div class="br-hint">about:debugging</div>
       </div>
-      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+      <div class="br-dl">Download ZIP ↓</div>
     </a>
 
-    <a class="browser-row" href="https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-extension-firefox.zip" target="_blank">
+    <a class="browser-row" href="/extension/download/firefox" download>
       <div class="br-icon br-zen">Z</div>
       <div class="br-info">
         <div class="br-name">Zen Browser</div>
         <div class="br-hint">about:debugging</div>
       </div>
-      <div class="br-dl"><i class="ti ti-download"></i> Download</div>
+      <div class="br-dl">Download ZIP ↓</div>
     </a>
 
     <div class="status-row">
       <div class="status-dot checking" id="sd"></div>
-      <span id="st">Checking tray app...</span>
+      <span id="st">Checking extension connection...</span>
     </div>
   </div>
 
   <div class="footer-note">
-    After extracting the zip, go to your browser's extensions page, enable <strong>Developer mode</strong>, and click <strong>Load unpacked</strong> — select the extracted folder.
-    <a href="https://github.com/YumiNoona/TimeLens/blob/master/docs/how-to-install-extension.md" target="_blank">Full installation guide</a>.
+    After extracting the ZIP, open the extensions page shown above, enable <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, and select the extracted folder. Firefox users should choose <strong>Load Temporary Add-on</strong> and select <strong>manifest.json</strong>.
   </div>
 
 </main>
 
 <script>
-  fetch('/api/settings')
-    .then(function(r){ return r.ok ? r.json() : null })
-    .then(function(s){
-      if(s && s.theme && s.theme !== 'default')
-        document.documentElement.className = 'theme-' + s.theme;
-      document.getElementById('sd').className = 'status-dot online';
-      document.getElementById('st').textContent = 'Tray app running — extension will connect on install';
-    })
-    .catch(function(){
-      document.getElementById('sd').className = 'status-dot offline';
-      document.getElementById('st').textContent = 'Tray app not detected — start TimeLens.TrayApp.exe first';
-    });
+  function setStatus(kind, text){
+    document.getElementById('sd').className = 'status-dot ' + kind;
+    document.getElementById('st').textContent = text;
+  }
+  fetch('/api/settings').then(function(r){
+    if(!r.ok) throw new Error('app unavailable');
+    return r.json();
+  }).then(function(s){
+    if(s && s.theme && s.theme !== 'default') document.documentElement.className = 'theme-' + s.theme;
+  }).catch(function(){ setStatus('offline','TimeLens is not responding — restart TimeLens.exe'); });
+
+  function checkExtension(){
+    fetch('/api/extension-status', {cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
+      .then(function(s){
+        if(s.connected) setStatus('online','Extension connected · ' + s.browser + ' · v' + s.version);
+        else setStatus('checking','TimeLens is running — install or reload the extension to connect');
+      })
+      .catch(function(){ setStatus('offline','TimeLens is not responding — restart TimeLens.exe'); });
+  }
+  checkExtension();
+  setInterval(checkExtension,15000);
 </script>
 
 </body>
@@ -1422,12 +1590,22 @@ body{
 
         app.MapPost("/api/block/enforce", async (HttpContext ctx) =>
         {
-            using var sr = new System.IO.StreamReader(ctx.Request.Body);
-            var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
-            var exe = doc.RootElement.GetProperty("exe").GetString();
-            if (!string.IsNullOrEmpty(exe))
-                enforceBlock?.Invoke(exe);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var exe = doc.RootElement.TryGetProperty("exe", out var exeProp)
+                ? BlockEntryHelper.NormalizeIdentifier(exeProp.GetString())
+                : null;
+            if (exe is null || !exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"A valid executable is required\"}");
+                return;
+            }
+            if (enforceBlock?.Invoke(exe) != true)
+            {
+                ctx.Response.StatusCode = 403;
+                await ctx.Response.WriteAsync("{\"error\":\"Target is not in the active blocklist\"}");
+                return;
+            }
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -1464,6 +1642,12 @@ body{
 
         await app.RunAsync(ct);
     }
+
+    private static void SetStaticAssetCacheHeaders(HttpContext context)
+    {
+        if (context.Request.Path.StartsWithSegments("/assets"))
+            context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
@@ -1483,27 +1667,103 @@ body{
 [JsonSerializable(typeof(BlockEntry[]))]
 internal partial class AppJsonContext : JsonSerializerContext { }
 
-internal sealed record BlockEntry(string I, string M, string? E);
-
-internal static class BlockEntryHelper
+public sealed record BlockEntry(string I, string M, string? E)
 {
+    public bool IsExpired() => M == "t" && E is not null &&
+        DateTime.TryParse(E, null, DateTimeStyles.RoundtripKind, out var expires) &&
+        DateTime.UtcNow >= expires;
+}
+
+public static class BlockEntryHelper
+{
+    private static readonly HashSet<string> ProtectedTargets = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "timelens.exe", "explorer.exe", "dwm.exe", "csrss.exe", "winlogon.exe",
+        "services.exe", "lsass.exe", "svchost.exe", "system", "idle",
+        "localhost", "127.0.0.1", "::1"
+    };
+
     public static BlockEntry[]? TryParseBlockEntries(string json)
     {
         if (string.IsNullOrWhiteSpace(json) || json == "[]") return null;
+        BlockEntry[]? parsed = null;
         try
         {
-            var entries = System.Text.Json.JsonSerializer.Deserialize<BlockEntry[]>(json);
-            if (entries is not null) return entries;
+            parsed = System.Text.Json.JsonSerializer.Deserialize(json, AppJsonContext.Default.BlockEntryArray);
         }
         catch { }
-        // Fallback: legacy string[] format
-        try
+
+        if (parsed is null)
         {
-            var legacy = System.Text.Json.JsonSerializer.Deserialize<string[]>(json);
-            if (legacy is null) return null;
-            return legacy.Select(s => new BlockEntry(s, "u", null)).ToArray();
+            try
+            {
+                var legacy = System.Text.Json.JsonSerializer.Deserialize(json, AppJsonContext.Default.StringArray);
+                parsed = legacy?.Select(s => new BlockEntry(s, "u", null)).ToArray();
+            }
+            catch { }
         }
-        catch { }
-        return null;
+
+        if (parsed is null) return null;
+
+        var normalized = new List<BlockEntry>(Math.Min(parsed.Length, 200));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in parsed)
+        {
+            var id = NormalizeIdentifier(entry.I);
+            if (id is null || !seen.Add(id)) continue;
+            var mode = entry.M == "t" ? "t" : "u";
+            if (mode == "t" && (entry.E is null ||
+                !DateTime.TryParse(entry.E, null, DateTimeStyles.RoundtripKind, out _)))
+                continue;
+            normalized.Add(new BlockEntry(id, mode, mode == "t" ? entry.E : null));
+            if (normalized.Count == 200) break;
+        }
+        return normalized.Count == 0 ? null : normalized.ToArray();
+    }
+
+    public static string Serialize(IEnumerable<BlockEntry> entries) =>
+        System.Text.Json.JsonSerializer.Serialize(entries.ToArray(), AppJsonContext.Default.BlockEntryArray);
+
+    public static string? NormalizeIdentifier(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var value = raw.Trim().Trim('"', '\'').ToLowerInvariant();
+        if (value.Length > 512) return null;
+
+        if (value.Contains('\\'))
+            value = Path.GetFileName(value);
+
+        if (value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            if (value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || value.Contains('/')) return null;
+            return value;
+        }
+
+        if (!value.Contains("://", StringComparison.Ordinal))
+            value = "https://" + value.TrimStart('*', '.');
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || string.IsNullOrWhiteSpace(uri.Host))
+            return null;
+
+        var host = uri.IdnHost.Trim('.').ToLowerInvariant();
+        if (host.StartsWith("www.", StringComparison.Ordinal)) host = host[4..];
+        return Uri.CheckHostName(host) == UriHostNameType.Unknown ? null : host;
+    }
+
+    public static bool IsExecutable(BlockEntry entry) =>
+        entry.I.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsProtected(string identifier) => ProtectedTargets.Contains(identifier);
+
+    public static bool MatchesExecutable(BlockEntry entry, string executable) =>
+        IsExecutable(entry) && string.Equals(
+            Path.GetFileName(entry.I), Path.GetFileName(executable), StringComparison.OrdinalIgnoreCase);
+
+    public static bool MatchesDomain(BlockEntry entry, string host)
+    {
+        if (IsExecutable(entry)) return false;
+        var normalizedHost = NormalizeIdentifier(host);
+        return normalizedHost is not null &&
+            (string.Equals(normalizedHost, entry.I, StringComparison.OrdinalIgnoreCase) ||
+             normalizedHost.EndsWith("." + entry.I, StringComparison.OrdinalIgnoreCase));
     }
 }

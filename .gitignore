@@ -23,11 +23,20 @@ bld/
 
 # Native AOT publish
 publish/
+artifacts/
+TestResults/
+coverage/
 
 # Node
 node_modules/
 dist/
 .vite/
+.svelte-kit/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # IDE
 .vs/
@@ -45,14 +54,19 @@ Thumbs.db
 # Env
 .env
 .env.local
+.env.*.local
+!.env.example
 
 # Logs
 *.log
 
 # Build artifacts (root)
+/TimeLens-v*.zip
 /TimeLens-portable-*.zip
 /TimeLens-extension-*.zip
 /publish-test/
+/.tmp-*/
+/.cache/
 
 # Root-level deploy (built by publish.ps1)
 /TimeLens.exe
@@ -62,6 +76,11 @@ Thumbs.db
 /*.csv
 /*.exe
 /*.ico
+
+# Temporary extraction/update files
+*.tmp
+*.new
+*.bak
 
 # Public asset mirror (source is Dashboard/public/)
 src/TimeLens.TrayApp/Public/

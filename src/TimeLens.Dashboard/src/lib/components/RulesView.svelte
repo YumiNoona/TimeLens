@@ -199,12 +199,12 @@
       <input class="input" placeholder="pattern, e.g. notion or *notion*" bind:value={newPattern}
         onfocus={onFocus} oninput={onInput} onkeydown={onKeydown} onblur={onBlur} autocomplete="off" />
       {#if showDropdown && filtered.length > 0}
-        <div class="suggestions" onmousedown={clearFocusTimeout}>
+        <div class="suggestions" role="presentation" onmousedown={clearFocusTimeout}>
           {#each filtered as exe, i}
             <button class="suggestion-item" class:highlight={i === highlightIdx} class:live={$live?.currentApp === exe} onmousedown={() => selectSuggestion(exe)} type="button">
               {#if $live?.currentApp === exe}<span class="live-dot"></span>{/if}
               <span>{exe}</span>
-              {#if $live?.currentApp === exe}<span class="live-label">active</span>{/if}
+              {#if $live?.currentApp === exe}<span class="live-label">current app</span>{/if}
             </button>
           {/each}
         </div>
@@ -403,11 +403,11 @@
   }
   .add-btn.small { height: 28px; padding: 0 var(--sp-2); font-size: 12px; flex-shrink: 0; }
   .add-btn:disabled { opacity: 0.4; cursor: default; }
-  .card { border: 1px solid var(--md-outline); border-radius: var(--shape-lg); background: var(--md-surface-1); overflow: hidden; }
+  .card { border: 1px solid var(--md-outline); border-radius: var(--shape-lg); background: var(--md-surface-1); overflow: hidden; padding: 0; }
   .card-header {
     padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--md-outline);
     font-size: 13px; font-weight: 500; color: var(--md-on-surf);
-    display: flex; align-items: center; gap: var(--sp-2);
+    display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 0;
   }
   .count-badge {
     font-size: 10px; font-weight: 600; color: var(--md-on-surf-dim);

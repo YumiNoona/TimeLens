@@ -46,12 +46,14 @@ jobs:
         run: |
           $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
-          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-chromium.zip"
+          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-chrome.zip"
+          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-edge.zip"
           Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-firefox.zip"
 
           $assets = @(
             "TimeLens.exe",
-            "TimeLens-v${{ env.VERSION }}-extension-chromium.zip",
+            "TimeLens-v${{ env.VERSION }}-extension-chrome.zip",
+            "TimeLens-v${{ env.VERSION }}-extension-edge.zip",
             "TimeLens-v${{ env.VERSION }}-extension-firefox.zip"
           )
           $checksums = foreach ($asset in $assets) {

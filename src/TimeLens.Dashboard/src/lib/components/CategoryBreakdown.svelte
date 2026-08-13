@@ -110,7 +110,7 @@
   .tracked-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-full); font: 10px var(--font-mono); white-space: nowrap; }
   .tracked-pill i { color: var(--md-primary); }
   .category-layout { display: grid; grid-template-columns: minmax(210px, .78fr) minmax(260px, 1.22fr); gap: 20px; padding: 10px 18px 18px; align-items: center; }
-  .donut-panel { min-height: 238px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; border: 1px solid var(--clr-border); border-radius: 14px; background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--md-primary) 7%, transparent), transparent 54%), color-mix(in srgb, var(--clr-bg-ter) 64%, transparent); }
+  .donut-panel { min-height: 222px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: visible; }
   .donut-halo { position: absolute; width: 168px; height: 168px; top: 24px; border-radius: 50%; background: color-mix(in srgb, var(--md-primary) 5%, transparent); filter: blur(18px); }
   .cat-donut { position: relative; width: 182px; height: 182px; z-index: 1; }
   .cat-donut svg { width: 100%; height: 100%; overflow: visible; }

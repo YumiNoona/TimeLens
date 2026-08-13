@@ -12,6 +12,7 @@
   import TimelineView from './TimelineView.svelte';
   import { normalizeTimeline } from '../utils';
   import { timelineMinSegmentSeconds } from '../stores/settings';
+  import { reorderable } from '../actions/reorderable';
 
   let {
     timelineGrouped = true,
@@ -153,7 +154,7 @@
     </div>
   {:else if historyData}
     <div class="history-content" class:updating={isLoading}>
-      <section class="history-stats" aria-label="Daily summary">
+      <section class="history-stats" aria-label="Daily summary" use:reorderable={{ key: 'history:stats' }}>
         <StatCard
           label="Active time"
           value={historyData.summary.activeTime}
@@ -200,7 +201,7 @@
         />
       </section>
 
-      <div class="history-overview">
+      <div class="history-overview" use:reorderable={{ key: 'history:overview' }}>
         <CalendarHeatmap
           entries={historyData.heatmap}
           {selectedDate}
@@ -257,13 +258,13 @@
           </div>
         </div>
       {:else}
-        <div class="history-grid">
+        <div class="history-grid" use:reorderable={{ key: 'history:apps-categories' }}>
           <TopApps apps={historyData.topApps} />
           <CategoryBreakdown categories={historyData.categories} periodLabel="this day" />
         </div>
 
         {#if historyData.browserSites.length > 0}
-          <div class="history-grid">
+          <div class="history-grid" use:reorderable={{ key: 'history:browser' }}>
             <TopSites sites={historyData.browserSites} emptyLabel="No browsing activity this day." />
             <BrowserHourlyCard browserHourly={fullHourly} />
           </div>

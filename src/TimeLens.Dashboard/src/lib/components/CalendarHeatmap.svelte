@@ -179,8 +179,13 @@
   .hm-header i { color: var(--md-on-surf-var); font-size: 15px; }
   .hm-range { font-size: 11px; color: var(--md-on-surf-dim); background: var(--clr-bg-ter); border-radius: var(--shape-full); padding: 4px 8px; }
 
-  .hm-overflow { overflow-x: auto; padding: 2px 0; }
-  .hm-content { width: max-content; margin: 0; }
+  .hm-overflow {
+    overflow-x: auto;
+    padding: 2px 8px 2px 2px;
+    margin-inline: -2px;
+    scrollbar-gutter: stable;
+  }
+  .hm-content { width: max-content; margin: 0; padding-right: 4px; }
 
   .hm-body {
     display: flex;

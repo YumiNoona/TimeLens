@@ -444,6 +444,41 @@ select:focus-visible,
   cursor: pointer;
   transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
 }
+
+/* User-arrangeable dashboard cards */
+.layout-card { position: relative; min-width: 0; }
+.card-drag-handle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 8;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--shape-sm);
+  color: var(--clr-text-ter);
+  background: color-mix(in srgb, var(--clr-bg-sec) 88%, transparent);
+  opacity: .34;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: opacity var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
+}
+.layout-card:hover > .card-drag-handle,
+.card-drag-handle:focus-visible,
+.layout-card-chosen > .card-drag-handle { opacity: 1; }
+.card-drag-handle:hover,
+.card-drag-handle:focus-visible { color: var(--md-primary); border-color: var(--clr-border-strong); background: var(--clr-bg-ter); outline: none; }
+.card-drag-handle:active { cursor: grabbing; }
+.layout-card-ghost { opacity: .28; border: 1px dashed var(--md-primary) !important; }
+.layout-card-chosen { z-index: 20; box-shadow: var(--shadow-2); }
+.layout-card-dragging { cursor: grabbing; transform: rotate(.35deg) scale(1.01); }
+.motion-off .layout-card-dragging { transform: none; }
+@media (pointer: coarse) { .card-drag-handle { opacity: .82; } }
 .chip-button:hover {
   background: var(--clr-bg-ter);
   color: var(--clr-text-pri);

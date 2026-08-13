@@ -61,12 +61,18 @@ if (-not $SkipDashboard) {
     & $header "=== Building Svelte dashboard ==="
     Push-Location $dashboardDir
     try {
-        npm ci 2>&1 | Out-Null
-        npm run build 2>&1 | Out-Null
+        $previousErrorPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        npm ci
+        if ($LASTEXITCODE -ne 0) { throw "npm ci exited with code $LASTEXITCODE" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build exited with code $LASTEXITCODE" }
+        $ErrorActionPreference = $previousErrorPreference
         & $ok "Dashboard built"
     } catch {
+        $ErrorActionPreference = "Stop"
         & $fail "Dashboard build failed"
-        Pop-Location
+        Write-Host "       $($_.Exception.Message)" -ForegroundColor Yellow
         exit 1
     } finally {
         Pop-Location

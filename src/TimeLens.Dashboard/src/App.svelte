@@ -22,6 +22,7 @@
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
   import { timeFormat as timeFormatStore, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
+  import { reorderable } from './lib/actions/reorderable';
 
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
@@ -172,7 +173,7 @@
         </div>
 
         <div class="today-content">
-          <section class="today-hero">
+          <section class="today-hero" use:reorderable={{ key: 'today:stats' }}>
             <StatCard
               label="Active time"
               value={$data.summary.activeTime}
@@ -227,7 +228,7 @@
             />
           </section>
 
-          <div class="today-grid">
+          <div class="today-grid" use:reorderable={{ key: 'today:insights' }}>
             <TopApps apps={$data.topApps} />
             <CategoryBreakdown categories={$data.categories} />
           </div>
@@ -280,7 +281,7 @@
         </div>
       </div>
       <div class="content">
-        <div class="stat-row">
+        <div class="stat-row" use:reorderable={{ key: 'browser:stats' }}>
           <StatCard label="Unique sites" value={browserSites.length} />
           <StatCard label="Total visits" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
           <StatCard label="Browse time" value={`${browserTime.filter(bt => bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com').reduce((a, b) => a + b.totalMinutes, 0)}m`} />
@@ -292,12 +293,14 @@
             <span class="empty-hint">Install the browser extension to start tracking</span>
           </div>
         {:else}
-          <div class="two-col">
+          <div class="two-col" use:reorderable={{ key: 'browser:insights' }}>
            <TopSites sites={browserSites} />
              <SiteTimeCard {browserTime} />
            </div>
-            <BrowserHourlyCard {browserHourly} />
-            <MediaCard {audioSessions} />
+            <div class="browser-detail-grid" use:reorderable={{ key: 'browser:details' }}>
+              <BrowserHourlyCard {browserHourly} />
+              <MediaCard {audioSessions} />
+            </div>
         {/if}
       </div>
     {:else if view === 'apps' && $data}
@@ -567,6 +570,8 @@
     justify-content: space-between;
     gap: var(--space-5);
   }
+
+  .browser-detail-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
 
   .error-banner span { display: flex; align-items: center; gap: var(--space-2); }
   .error-banner button {

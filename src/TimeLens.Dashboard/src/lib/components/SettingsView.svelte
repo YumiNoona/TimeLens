@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { reorderable, resetCardLayouts } from '../actions/reorderable';
   import {
     heatmapDays as heatmapDaysStore,
     timeFormat as timeFormatStore,
@@ -50,6 +51,7 @@
   let goalTarget = $state('');
   let goalType = $state('max_time');
   let goalMinutes = $state(60);
+  let layoutTarget = $state('today');
 
   const API = '/api/settings';
   const themes = [
@@ -72,6 +74,14 @@
     { id: 'browser', label: 'Browser' },
     { id: 'timeline', label: 'Timeline' },
     { id: 'block', label: 'Block' },
+  ];
+  const layoutTargets = [
+    { id: 'today', label: 'Today' },
+    { id: 'history', label: 'History' },
+    { id: 'browser', label: 'Browser' },
+    { id: 'block', label: 'Block' },
+    { id: 'rules', label: 'Rules' },
+    { id: 'settings', label: 'Settings' },
   ];
 
   function fmtSize(bytes: number): string {
@@ -234,7 +244,7 @@
   onMount(() => { void load(); });
 </script>
 
-<div class="settings">
+<div class="settings" use:reorderable={{ key: 'settings:cards', draggable: ':scope > .card' }}>
   <div class="settings-status">
     <div class="status-copy">
       <span class="status-icon"><i class="ti ti-device-desktop-cog" aria-hidden="true"></i></span>
@@ -482,6 +492,30 @@
     </div>
   </section>
 
+  <section class="card card-wide layout-settings-card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-layout-dashboard"></i></span>
+      <div>
+        <h2>Card layout</h2>
+        <p>Restore the original card order for one page or the entire dashboard.</p>
+      </div>
+    </div>
+    <div class="layout-reset-row">
+      <label>
+        <span>Dashboard page</span>
+        <select class="select wide" bind:value={layoutTarget} aria-label="Dashboard page to reset">
+          {#each layoutTargets as page}
+            <option value={page.id}>{page.label}</option>
+          {/each}
+        </select>
+      </label>
+      <div class="button-group">
+        <button class="secondary-btn" type="button" onclick={() => resetCardLayouts(layoutTarget)}>Reset selected page</button>
+        <button class="secondary-btn" type="button" onclick={() => resetCardLayouts('all')}>Reset all layouts</button>
+      </div>
+    </div>
+  </section>
+
   <section class="about card-wide">
     <i class="ti ti-shield-lock" aria-hidden="true"></i>
     <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
@@ -533,6 +567,8 @@
   .theme-swatch i { margin-left: auto; color: var(--md-primary); }
   .swatch-dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); }
   .button-group { gap: 6px; }
+  .layout-reset-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 4px 18px 18px; }
+  .layout-reset-row label { min-width: 210px; display: flex; flex-direction: column; gap: 7px; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; }
   .primary-btn, .secondary-btn, .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .primary-btn { height: 34px; padding: 0 13px; border: 1px solid var(--md-primary); background: var(--md-primary); color: var(--md-on-primary); font-weight: 600; }
   .secondary-btn { height: 32px; padding: 0 10px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); }
@@ -586,6 +622,9 @@
     .protection-body { grid-template-columns: 1fr; }
   }
   @media (max-width: 620px) {
+    .layout-reset-row { align-items: stretch; flex-direction: column; }
+    .layout-reset-row label { min-width: 0; }
+    .layout-reset-row .button-group { flex-wrap: wrap; }
     .settings-status { align-items: flex-start; flex-direction: column; }
     .setting-row.export-row, .goal-fields { align-items: stretch; flex-direction: column; }
     .theme-grid { grid-template-columns: 1fr; }

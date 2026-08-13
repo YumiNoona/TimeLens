@@ -244,7 +244,7 @@
 
   .tl-row {
     display: grid;
-    grid-template-columns: 14px 124px minmax(130px, 0.8fr) minmax(130px, 1fr) 54px;
+    grid-template-columns: 14px 124px clamp(140px, 18vw, 220px) minmax(130px, 1fr) 54px;
     align-items: center;
     gap: 12px;
     min-height: 40px;
@@ -285,7 +285,7 @@
 
   .tl-flat {
     display: grid;
-    grid-template-columns: 14px 124px minmax(130px, 0.8fr) minmax(130px, 1fr) 54px;
+    grid-template-columns: 14px 124px clamp(140px, 18vw, 220px) minmax(130px, 1fr) 54px;
     align-items: center;
     gap: 12px;
     min-height: 40px;

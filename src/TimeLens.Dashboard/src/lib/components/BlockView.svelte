@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { appIcon } from '../appIcons';
+  import { reorderable } from '../actions/reorderable';
 
   type BlockEntry = { i: string; m: 'u' | 't'; e?: string };
   type RetryAction = () => Promise<void>;
@@ -306,7 +307,7 @@
   onMount(() => { load(); const t = setInterval(loadRunning, 5000); return () => clearInterval(t); });
 </script>
 
-<div class="block">
+<div class="block" use:reorderable={{ key: 'block:cards', draggable: ':scope > .card' }}>
     {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
     {#if errorMessage}<button class="warning error-dismiss" onclick={() => errorMessage = null}>{errorMessage} <span>×</span></button>{/if}
   <div class="card focus-workflow">

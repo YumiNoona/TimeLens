@@ -107,7 +107,7 @@
     <div class="history-heading">
       <p class="eyebrow">Activity history</p>
       <h1>{dateLabel}</h1>
-      <p>Review your apps, focus, input, browsing, and timeline for any tracked day.</p>
+      <p class="history-subtitle">Review your apps, focus, input, browsing, and timeline for any tracked day.</p>
     </div>
 
     <div class="date-controls" aria-label="History date controls">
@@ -305,7 +305,7 @@
 
   .eyebrow {
     color: var(--md-primary);
-    font-size: var(--text-xs);
+    font-size: var(--type-page-eyebrow);
     font-weight: var(--weight-semibold);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -314,15 +314,16 @@
 
   .history-heading h1 {
     color: var(--clr-text-pri);
-    font-size: var(--text-2xl);
+    font-size: var(--type-page-title);
     font-weight: var(--weight-semibold);
     letter-spacing: -0.03em;
     line-height: 1.15;
   }
 
-  .history-heading > p:last-child {
+  .history-subtitle {
     color: var(--clr-text-sec);
-    font-size: var(--text-sm);
+    font-size: var(--type-page-subtitle);
+    line-height: 1.45;
     margin-top: var(--space-2);
   }
 

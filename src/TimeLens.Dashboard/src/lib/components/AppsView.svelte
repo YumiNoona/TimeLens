@@ -67,6 +67,15 @@
       .filter(a => a.name.toLowerCase().includes(search.toLowerCase()))
       .toSorted((a, b) => sortKey === 'time' ? b.minutes - a.minutes : a.name.localeCompare(b.name))
   );
+
+  function formatAppTime(minutes: number): string {
+    const total = Math.max(0, Math.round(minutes));
+    if (total < 1) return '<1m';
+    const hours = Math.floor(total / 60);
+    const mins = total % 60;
+    if (hours === 0) return `${mins}m`;
+    return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+  }
 </script>
 
 <div class="apps">
@@ -100,7 +109,7 @@
           {app.name}
         </span>
         <span class="td-time" role="cell">
-          {Math.floor(app.minutes / 60)}h {app.minutes % 60}m
+          {formatAppTime(app.minutes)}
         </span>
       </div>
     {/each}
@@ -203,14 +212,14 @@
   .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
   .table { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
   .th {
-    display: grid; grid-template-columns: 2fr 1fr; padding: var(--sp-2) var(--sp-3);
+    display: grid; grid-template-columns: minmax(0, 1fr) 110px; padding: var(--sp-2) var(--sp-3);
     background: transparent;
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--clr-text-sec);
   }
   .th.input-th { grid-template-columns: 2fr 1fr 1fr; }
   .tr {
-    display: grid; grid-template-columns: 2fr 1fr;
+    display: grid; grid-template-columns: minmax(0, 1fr) 110px;
     align-items: center;
     min-height: 38px;
     padding: 8px 12px;
@@ -233,7 +242,7 @@
 		flex-shrink: 0;
 	}
 	.app-letter.hidden { display: none; }
-	.td-time { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
+	.td-time { font-family: var(--font-mono); text-align: right; color: var(--clr-text-pri); font-size: 12px; font-weight: 500; }
   .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
   .section { margin-top: var(--sp-4); }

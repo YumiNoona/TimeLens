@@ -17,7 +17,6 @@
   import SiteTimeCard from './lib/components/SiteTimeCard.svelte';
   import BrowserHourlyCard from './lib/components/BrowserHourlyCard.svelte';
   import MediaCard from './lib/components/MediaCard.svelte';
-  import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
@@ -418,21 +417,28 @@
   }
 
   .today-greeting {
-    font-size: var(--text-base);
-    font-weight: var(--weight-normal);
-    color: var(--clr-text-sec);
+    font-size: var(--type-page-eyebrow);
+    font-weight: var(--weight-semibold);
+    color: var(--md-primary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     margin-bottom: var(--space-1);
   }
 
   .today-date {
-    font-size: var(--text-2xl);
+    font-size: var(--type-page-title);
     font-weight: var(--weight-semibold);
     color: var(--clr-text-pri);
     letter-spacing: -0.03em;
     line-height: 1.1;
   }
 
-  .today-purpose, .page-purpose { color: var(--clr-text-ter); font-size: var(--text-xs); margin-top: 5px; }
+  .today-purpose, .page-purpose {
+    color: var(--clr-text-sec);
+    font-size: var(--type-page-subtitle);
+    line-height: 1.45;
+    margin-top: var(--space-2);
+  }
 
   /* ── Today: Content ── */
   .today-content {
@@ -518,7 +524,7 @@
   }
 
   .page-title {
-    font-size: var(--text-2xl);
+    font-size: var(--type-page-title);
     font-weight: var(--weight-semibold);
     color: var(--clr-text-pri);
     letter-spacing: -0.03em;
@@ -528,7 +534,7 @@
   .page-heading { min-width: 0; }
   .page-eyebrow {
     color: var(--md-primary);
-    font-size: var(--text-xs);
+    font-size: var(--type-page-eyebrow);
     font-weight: var(--weight-semibold);
     letter-spacing: 0.08em;
     text-transform: uppercase;

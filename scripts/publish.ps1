@@ -86,9 +86,11 @@ if (-not $SkipDashboard) {
 try {
     dotnet publish "$trayAppDir" -c $Config -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited with code $LASTEXITCODE" }
     & $ok "Native AOT publish complete"
 } catch {
     & $fail "dotnet publish failed"
+    Write-Host "       $($_.Exception.Message)" -ForegroundColor Yellow
     exit 1
 }
 

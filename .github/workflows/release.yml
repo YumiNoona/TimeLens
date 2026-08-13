@@ -41,6 +41,26 @@ jobs:
           $version = $tag -replace '^v', ''
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
+      - name: Verify release version metadata
+        shell: pwsh
+        run: |
+          $expected = "${{ env.VERSION }}"
+          [xml]$project = Get-Content "src\TimeLens.TrayApp\TimeLens.TrayApp.csproj"
+          $dashboard = Get-Content "src\TimeLens.Dashboard\package.json" | ConvertFrom-Json
+          $chrome = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
+          $firefox = Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json
+          $actual = @{
+            TrayApp = [string]$project.Project.PropertyGroup.Version
+            Dashboard = [string]$dashboard.version
+            Chrome = [string]$chrome.version
+            Firefox = [string]$firefox.version
+          }
+          foreach ($entry in $actual.GetEnumerator()) {
+            if ($entry.Value -ne $expected) {
+              throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
+            }
+          }
+
       - name: Prepare release assets
         shell: pwsh
         run: |

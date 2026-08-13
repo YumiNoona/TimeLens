@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text.Json.Serialization;
 using TimeLens.Api.Dtos;
 using TimeLens.Api.Services;
@@ -74,6 +75,7 @@ public static class ApiHost
     };
     public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
 
+    [SupportedOSPlatform("windows6.1")]
     public static async Task StartAsync(string dbPath, CancellationToken ct = default,
         Action<string, string>? saveSetting = null,
         Action<bool>? setTrackAudio = null,
@@ -1362,8 +1364,8 @@ public static class ApiHost
             var package = ExtensionPackageCache.GetOrAdd(family,
                 key => ExtensionPackageProvider.CreateZip(entryAsm, key));
             var fileName = family == "chromium"
-                ? "TimeLens-v9.0.0-extension-chromium.zip"
-                : "TimeLens-v9.0.0-extension-firefox.zip";
+                ? "TimeLens-v2.0.0-extension-chromium.zip"
+                : "TimeLens-v2.0.0-extension-firefox.zip";
             ctx.Response.ContentType = "application/zip";
             ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
             ctx.Response.ContentLength = package.Length;

@@ -519,7 +519,7 @@
   <section class="about card-wide">
     <i class="ti ti-shield-lock" aria-hidden="true"></i>
     <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
-    <span class="version">TimeLens 9.0.0</span>
+    <span class="version">TimeLens 2.0.0</span>
   </section>
 </div>
 
@@ -541,8 +541,8 @@
   .card { background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-lg); overflow: hidden; padding: 0; }
   .card-header { gap: 10px; padding: 16px 18px 12px; }
   .section-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 16px; }
-  .card-header h2 { margin: 0; font-size: 14px; color: var(--clr-text-pri); }
-  .card-header p { margin: 0; font-size: 11px; color: var(--clr-text-sec); }
+  .card-header h2 { margin: 0; font-size: var(--type-section-title); color: var(--clr-text-pri); }
+  .card-header p { margin: 0; font-size: var(--type-section-subtitle); line-height: 1.4; color: var(--clr-text-sec); }
   .setting-row { min-height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--clr-border); }
   .setting-row.muted { opacity: .48; }
   .protected-value { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }

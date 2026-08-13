@@ -56,7 +56,7 @@ function persist(node: HTMLElement, selector: string, key: string): void {
   localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(order));
 }
 
-function addHandle(item: HTMLElement, key: string, announce: HTMLElement): void {
+function addHandle(item: HTMLElement, key: string): void {
   if (item.querySelector(':scope > .card-drag-handle')) return;
   item.classList.add('layout-card');
 
@@ -83,7 +83,6 @@ function addHandle(item: HTMLElement, key: string, announce: HTMLElement): void 
     if (backwards) container.insertBefore(item, items[nextIndex]);
     else container.insertBefore(item, items[nextIndex].nextSibling);
     persist(container, ':scope > .layout-card', key);
-    announce.textContent = `${name} moved to position ${nextIndex + 1} of ${items.length}.`;
     handle.focus();
   });
 
@@ -93,17 +92,13 @@ function addHandle(item: HTMLElement, key: string, announce: HTMLElement): void 
 export const reorderable: Action<HTMLElement, ReorderableOptions> = (node, initialOptions) => {
   let options = initialOptions;
   let selector = options.draggable || ':scope > *';
-  const announce = document.createElement('span');
-  announce.className = 'sr-only';
-  announce.setAttribute('aria-live', 'polite');
-  node.after(announce);
 
   let items = directItems(node, selector);
   ensureIds(items);
   const defaultOrder = items.map(item => item.dataset.layoutId || '');
   arrange(node, items, savedOrder(options.key));
   items = directItems(node, selector);
-  items.forEach(item => addHandle(item, options.key, announce));
+  items.forEach(item => addHandle(item, options.key));
   node.classList.add('reorderable-grid');
 
   const sortable = Sortable.create(node, {
@@ -130,11 +125,10 @@ export const reorderable: Action<HTMLElement, ReorderableOptions> = (node, initi
     ghostClass: 'layout-card-ghost',
     chosenClass: 'layout-card-chosen',
     dragClass: 'layout-card-dragging',
-    onEnd: event => {
+    onChange: () => persist(node, selector, options.key),
+    onUpdate: () => persist(node, selector, options.key),
+    onEnd: () => {
       persist(node, selector, options.key);
-      const moved = directItems(node, selector)[event.newIndex ?? 0];
-      const name = moved?.querySelector<HTMLElement>('.card-title, .stat-label, .section-heading strong, .card-header h2, .card-header')?.innerText?.trim() || 'Card';
-      announce.textContent = `${name} moved to position ${(event.newIndex ?? 0) + 1}.`;
     }
   });
 
@@ -143,7 +137,6 @@ export const reorderable: Action<HTMLElement, ReorderableOptions> = (node, initi
     if (scope !== 'all' && options.key !== scope && !options.key.startsWith(`${scope}:`)) return;
     localStorage.removeItem(STORAGE_PREFIX + options.key);
     arrange(node, directItems(node, selector), defaultOrder);
-    announce.textContent = `${options.key.split(':')[0]} card layout reset.`;
   };
   window.addEventListener('timelens-layout-reset', reset);
 
@@ -155,7 +148,6 @@ export const reorderable: Action<HTMLElement, ReorderableOptions> = (node, initi
     destroy() {
       sortable.destroy();
       window.removeEventListener('timelens-layout-reset', reset);
-      announce.remove();
       directItems(node, ':scope > .layout-card').forEach(item => {
         item.classList.remove('layout-card');
         item.querySelector(':scope > .card-drag-handle')?.remove();

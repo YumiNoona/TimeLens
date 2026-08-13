@@ -22,6 +22,20 @@ all stored in a local SQLite database. No telemetry. No cloud. No data leaves yo
 
 ---
 
+## v2.0.0
+
+This release consolidates the finished TimeLens experience into one lightweight, local-first package:
+
+- consistent dashboard headings, supporting text, spacing, and responsive cards across every view
+- persistent drag-and-drop card layouts, natural duration labels, history, grouped timelines, and refined heatmap/category visuals
+- stronger app and website blocking with timed rules, strict enforcement, and optional password-protected changes
+- embedded Chrome, Edge, and Firefox extension downloads with matching v2.0.0 manifests
+- a Native AOT Windows tray app with no Electron/WebView process and no background GPU renderer
+
+On the release test machine, the packaged tray process settled near **20 MB private memory** and **0% sampled idle CPU**. Actual usage varies by Windows version, active tracking signals, dashboard tabs, and database size.
+
+---
+
 ## Features
 
 | Category | Details |
@@ -55,7 +69,7 @@ The executable is self-contained. On first launch it extracts only the native SQ
 
 ### Build from source
 
-**Prerequisites:** .NET 9 SDK · Node.js 18+
+**Prerequisites:** .NET 9 SDK · Node.js 22+
 
 ```powershell
 .\scripts\publish.ps1                 # build dashboard + standalone root EXE

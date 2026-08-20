@@ -63,7 +63,7 @@ Thumbs.db
 # Build artifacts (root)
 /TimeLens-v*.zip
 /TimeLens-portable-*.zip
-/TimeLens-extension-*.zip
+/SHA256SUMS.txt
 /publish-test/
 /.tmp-*/
 /.cache/
@@ -85,11 +85,8 @@ Thumbs.db
 # Public asset mirror (source is Dashboard/public/)
 src/TimeLens.TrayApp/Public/
 
-# Temp
-tools/genicon/bin/
-tools/genicon/obj/
-tools/gen-ext-icons/bin/
-tools/gen-ext-icons/obj/
+# Vercel
+.vercel/
 
 # SQLite
 *.db

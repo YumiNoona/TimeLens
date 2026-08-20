@@ -1,0 +1,14 @@
+.git/
+.github/
+runtime/
+scripts/
+src/
+tools/
+TimeLens.exe
+*.db
+*.db-shm
+*.db-wal
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/

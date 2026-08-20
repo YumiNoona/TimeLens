@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using TimeLens.Api;
+using TimeLens.Api.Services;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
 
@@ -530,6 +531,12 @@ internal static class Program
         }
 
         using var apiCts = new CancellationTokenSource();
+        using var updateService = new UpdateService();
+        void RequestShutdown()
+        {
+            apiCts.Cancel();
+            tray?.Close();
+        }
         _ = ApiHost.StartAsync(dbPath, apiCts.Token,
             saveSetting: (k, v) =>
             {
@@ -551,7 +558,9 @@ internal static class Program
             setTrackInput: ApplyTrackInput,
             upsertRule: UpsertRule,
             deleteRule: DeleteRule,
-            enforceBlock: EnforceBlock);
+            enforceBlock: EnforceBlock,
+            updateService: updateService,
+            requestShutdown: RequestShutdown);
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {
@@ -619,6 +628,18 @@ internal static class Program
             if (settings.TrackInput) inputMonitor.Start();
             if (settings.TrackAudio) audioMonitor.Start();
 
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(5_000, apiCts.Token);
+                    var update = await updateService.CheckAsync(apiCts.Token);
+                    if (update.UpdateAvailable && update.LatestVersion is not null)
+                        tray.ShowBalloon("TimeLens update available", $"Version {update.LatestVersion} is ready. Open Settings to install it.");
+                }
+                catch (OperationCanceledException) { }
+            }, apiCts.Token);
+
             // Break reminder timer — fires every 60s
             _ = System.Threading.Tasks.Task.Run(async () =>
             {
@@ -649,14 +670,13 @@ internal static class Program
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/extension-setup",
+                FileName = "https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/",
                 UseShellExecute = true
             });
         };
         tray.ExitRequested += () =>
         {
-            apiCts.Cancel();
-            tray.Close();
+            RequestShutdown();
         };
 
         tray.Run();

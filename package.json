@@ -1,0 +1,9 @@
+{
+  "name": "timelens-repository",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "web:dev": "npm run dev --prefix web",
+    "web:build": "npm run build --prefix web"
+  }
+}

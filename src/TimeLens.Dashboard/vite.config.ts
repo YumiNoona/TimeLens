@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [svelte({ preprocess: vitePreprocess() })],
   define: {
     __DEV__: 'false',
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
   },
   server: {
     port: 5173,

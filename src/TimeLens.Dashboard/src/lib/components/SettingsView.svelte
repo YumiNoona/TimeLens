@@ -10,11 +10,17 @@
   let {
     ontheme,
     ondensity,
-    onmotion
+    onmotion,
+    ontimelinegrouped,
+    onshowtitles,
+    onpollinterval
   }: {
     ontheme?: (theme: string) => void;
     ondensity?: (density: string) => void;
     onmotion?: (enabled: boolean) => void;
+    ontimelinegrouped?: (grouped: boolean) => void;
+    onshowtitles?: (enabled: boolean) => void;
+    onpollinterval?: (seconds: number) => void;
   } = $props();
 
   let trackAudio = $state(true);
@@ -52,6 +58,21 @@
   let goalType = $state('max_time');
   let goalMinutes = $state(60);
   let layoutTarget = $state('today');
+  type UpdateStatus = {
+    currentVersion: string;
+    latestVersion?: string;
+    updateAvailable: boolean;
+    restarting: boolean;
+    message: string;
+    error?: string;
+  };
+  let updateStatus: UpdateStatus = $state({
+    currentVersion: __APP_VERSION__,
+    updateAvailable: false,
+    restarting: false,
+    message: 'Check for a newer production release.'
+  });
+  let updateBusy = $state(false);
 
   const API = '/api/settings';
   const themes = [
@@ -74,6 +95,8 @@
     { id: 'browser', label: 'Browser' },
     { id: 'timeline', label: 'Timeline' },
     { id: 'block', label: 'Block' },
+    { id: 'rules', label: 'Rules' },
+    { id: 'settings', label: 'Settings' },
   ];
   const layoutTargets = [
     { id: 'today', label: 'Today' },
@@ -191,6 +214,46 @@
     } catch { apiReachable = false; }
   }
 
+  async function checkUpdates() {
+    updateBusy = true;
+    try {
+      const response = await fetch('/api/update/status', { cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      updateStatus = await response.json();
+    } catch {
+      updateStatus = {
+        currentVersion: __APP_VERSION__,
+        updateAvailable: false,
+        restarting: false,
+        message: 'TimeLens could not check for updates.',
+        error: 'The update service is unavailable. Try again later.'
+      };
+    } finally {
+      updateBusy = false;
+    }
+  }
+
+  async function installUpdate() {
+    updateBusy = true;
+    try {
+      const response = await fetch('/api/update/install', {
+        method: 'POST',
+        headers: { 'X-TimeLens-Update': 'install' }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Update failed');
+      updateStatus = result;
+    } catch (error) {
+      updateStatus = {
+        ...updateStatus,
+        restarting: false,
+        error: error instanceof Error ? error.message : 'The update could not be installed.'
+      };
+    } finally {
+      if (!updateStatus.restarting) updateBusy = false;
+    }
+  }
+
   function clearProtectionFields() {
     protectionCurrentPassword = '';
     protectionNewPassword = '';
@@ -241,7 +304,7 @@
       protectionMessage = 'Password protection disabled';
   }
 
-  onMount(() => { void load(); });
+  onMount(() => { void load(); void checkUpdates(); });
 </script>
 
 <div class="settings" use:reorderable={{ key: 'settings:cards', draggable: ':scope > .card' }}>
@@ -262,6 +325,31 @@
   {#if !apiReachable}
     <div class="warning" role="alert"><i class="ti ti-plug-off" aria-hidden="true"></i> Tray app is unavailable. Changes will not persist until it reconnects.</div>
   {/if}
+
+  <section class="card card-wide update-card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-refresh" aria-hidden="true"></i></span>
+      <div><h2>Software updates</h2><p>Check, verify, and install the latest standalone EXE.</p></div>
+    </div>
+    <div class="update-row">
+      <div class="update-copy">
+        <span class="update-badge" class:available={updateStatus.updateAvailable}>
+          {updateStatus.updateAvailable ? `Version ${updateStatus.latestVersion} available` : `Installed ${updateStatus.currentVersion}`}
+        </span>
+        <span class:error={Boolean(updateStatus.error)}>{updateStatus.error ?? updateStatus.message}</span>
+      </div>
+      <div class="update-actions">
+        <button class="secondary-btn" type="button" onclick={checkUpdates} disabled={updateBusy || updateStatus.restarting}>
+          <i class="ti ti-refresh" aria-hidden="true"></i>{updateBusy ? 'Checking…' : 'Check again'}
+        </button>
+        {#if updateStatus.updateAvailable}
+          <button class="primary-btn" type="button" onclick={installUpdate} disabled={updateBusy || updateStatus.restarting}>
+            <i class="ti ti-download" aria-hidden="true"></i>{updateStatus.restarting ? 'Restarting…' : 'Update now'}
+          </button>
+        {/if}
+      </div>
+    </div>
+  </section>
 
   <section class="card">
     <div class="card-header">
@@ -339,13 +427,13 @@
     <div class="settings-columns">
       <div class="setting-row">
         <div class="setting-info"><span class="setting-label">Default timeline layout</span><span class="setting-desc">Group activity into expandable categories</span></div>
-        <select class="select wide" bind:value={timelineGrouped} onchange={() => save('timelineGrouped', timelineGrouped)}>
+        <select class="select wide" bind:value={timelineGrouped} onchange={() => { save('timelineGrouped', timelineGrouped); ontimelinegrouped?.(timelineGrouped); }}>
           <option value={true}>Grouped</option><option value={false}>Flat</option>
         </select>
       </div>
       <label class="setting-row">
         <div class="setting-info"><span class="setting-label">Window titles</span><span class="setting-desc">Include titles in expanded timeline rows</span></div>
-        <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => showTitles = value)} />
+        <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => { showTitles = value; onshowtitles?.(value); })} />
       </label>
       <div class="setting-row">
         <div class="setting-info"><span class="setting-label">Hide quick switches</span><span class="setting-desc">Omit segments shorter than this duration</span></div>
@@ -367,7 +455,7 @@
       </div>
       <div class="setting-row">
         <div class="setting-info"><span class="setting-label">Dashboard refresh</span><span class="setting-desc">How often live data is requested</span></div>
-        <select class="select wide" bind:value={pollInterval} onchange={() => save('pollIntervalSeconds', pollInterval)}>
+        <select class="select wide" bind:value={pollInterval} onchange={() => { save('pollIntervalSeconds', pollInterval); onpollinterval?.(pollInterval); }}>
           {#each [5, 10, 30, 60] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
         </select>
       </div>
@@ -519,7 +607,7 @@
   <section class="about card-wide">
     <i class="ti ti-shield-lock" aria-hidden="true"></i>
     <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
-    <span class="version">TimeLens 2.0.0</span>
+    <span class="version">TimeLens {__APP_VERSION__} · Production</span>
   </section>
 </div>
 
@@ -544,6 +632,12 @@
   .card-header h2 { margin: 0; font-size: var(--type-section-title); color: var(--clr-text-pri); }
   .card-header p { margin: 0; font-size: var(--type-section-subtitle); line-height: 1.4; color: var(--clr-text-sec); }
   .setting-row { min-height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--clr-border); }
+  .update-row { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 18px 16px; border-top: 1px solid var(--clr-border); }
+  .update-copy { min-width: 0; display: flex; align-items: center; gap: 10px; color: var(--clr-text-sec); font-size: 11px; }
+  .update-copy .error { color: var(--md-error); }
+  .update-badge { flex: 0 0 auto; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font: 10px var(--font-mono); }
+  .update-badge.available { color: var(--md-primary); background: var(--md-primary-cont); }
+  .update-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
   .setting-row.muted { opacity: .48; }
   .protected-value { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -630,5 +724,8 @@
     .theme-grid { grid-template-columns: 1fr; }
     .select, .select.wide { min-width: 112px; }
     .goal-fields .select, .goal-fields .primary-btn { width: 100%; }
+    .update-row { align-items: stretch; flex-direction: column; }
+    .update-copy { align-items: flex-start; flex-direction: column; }
+    .update-actions { justify-content: flex-end; }
   }
 </style>

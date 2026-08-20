@@ -47,34 +47,25 @@ jobs:
           $expected = "${{ env.VERSION }}"
           [xml]$project = Get-Content "src\TimeLens.TrayApp\TimeLens.TrayApp.csproj"
           $dashboard = Get-Content "src\TimeLens.Dashboard\package.json" | ConvertFrom-Json
-          $chrome = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
-          $firefox = Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json
           $actual = @{
             TrayApp = [string]$project.Project.PropertyGroup.Version
             Dashboard = [string]$dashboard.version
-            Chrome = [string]$chrome.version
-            Firefox = [string]$firefox.version
           }
           foreach ($entry in $actual.GetEnumerator()) {
             if ($entry.Value -ne $expected) {
               throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
             }
           }
+          Write-Host "Desktop release: $expected"
 
       - name: Prepare release assets
         shell: pwsh
         run: |
           $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
-          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-chrome.zip"
-          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-edge.zip"
-          Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-v${{ env.VERSION }}-extension-firefox.zip"
 
           $assets = @(
-            "TimeLens.exe",
-            "TimeLens-v${{ env.VERSION }}-extension-chrome.zip",
-            "TimeLens-v${{ env.VERSION }}-extension-edge.zip",
-            "TimeLens-v${{ env.VERSION }}-extension-firefox.zip"
+            "TimeLens.exe"
           )
           $checksums = foreach ($asset in $assets) {
             $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
@@ -86,6 +77,5 @@ jobs:
         with:
           files: |
             TimeLens.exe
-            TimeLens-v*-extension-*.zip
             SHA256SUMS.txt
           generate_release_notes: true

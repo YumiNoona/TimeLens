@@ -3,189 +3,128 @@
 # TimeLens
 
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
-[![Native AOT](https://img.shields.io/badge/Native_AOT-%E2%9C%93-00AA00?style=flat-square)](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/)
+[![Native AOT](https://img.shields.io/badge/Native_AOT-Windows-00AA00?style=flat-square)](https://learn.microsoft.com/dotnet/core/deploying/native-aot/)
 [![Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?style=flat-square&logo=svelte)](https://svelte.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-local-003B57?style=flat-square&logo=sqlite)](https://sqlite.org/)
-[![Windows](https://img.shields.io/badge/Windows-10+-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 
-**Privacy-first, local-only PC activity tracker.**
-<br>
-Tracks foreground apps, browser tabs, input, audio, and sessions —
-<br>
-all stored in a local SQLite database. No telemetry. No cloud. No data leaves your machine.
+**Private activity tracking for Windows.**
 
-**~18 MB** standalone Native AOT executable · zero runtime dependencies · copy and run
+TimeLens turns foreground apps, browser activity, input, audio, idle time, and sessions into a useful local dashboard. Activity stays in a SQLite database on the user's computer—there is no account, telemetry service, or cloud activity store.
 
-[**Download TimeLens.exe**](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe) · [View releases](https://github.com/YumiNoona/TimeLens/releases/latest)
+[**Download TimeLens.exe**](https://time-lens-web.vercel.app/api/download) · [**Get the Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [Documentation](https://time-lens-web.vercel.app/docs)
 
 </div>
 
----
+## Production v1
 
-## v2.0.0
+- Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
+- Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
+- App and domain focus controls with timed targets, four enforcement modes, and optional password protection
+- Persistent user-arranged dashboard cards, configurable density/motion/tracking, themes, reminders, retention, exports, and goals
+- Store-managed browser extension installation from Mozilla Add-ons
+- Built-in updater with startup notification, manual check, SHA-256 verification, and one-click replacement from Settings
 
-This release consolidates the finished TimeLens experience into one lightweight, local-first package:
+## Install
 
-- consistent dashboard headings, supporting text, spacing, and responsive cards across every view
-- persistent drag-and-drop card layouts, natural duration labels, history, grouped timelines, and refined heatmap/category visuals
-- stronger app and website blocking with timed rules, strict enforcement, and optional password-protected changes
-- embedded Chrome, Edge, and Firefox extension downloads with matching v2.0.0 manifests
-- a Native AOT Windows tray app with no Electron/WebView process and no background GPU renderer
+1. [Download the latest production EXE](https://time-lens-web.vercel.app/api/download).
+2. Put `TimeLens.exe` in a user-writable folder and run it.
+3. Open the tray menu and choose **Open Dashboard**.
+4. Choose **Install Browser Extension** to open the official [TimeLens Tracker listing](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/).
 
-On the release test machine, the packaged tray process settled near **20 MB private memory** and **0% sampled idle CPU**. Actual usage varies by Windows version, active tracking signals, dashboard tabs, and database size.
+The executable is self-contained. On first launch it extracts the native SQLite library, category data, and tray icon to `%LOCALAPPDATA%\TimeLens\runtime`. The local dashboard is available only at `http://127.0.0.1:47821`.
 
----
+## Build
 
-## Features
-
-| Category | Details |
-|---|---|
-| **Foreground tracking** | Logs active window (exe, title, PID) via WinEvent hook |
-| **Browser integration** | Chrome, Edge, Brave, Firefox, Zen extensions — tracks domains, URLs, audible tabs |
-| **Focus Mode** | Blocks exact app and domain matches with notify, minimize, terminate, and strict actions |
-| **Block password** | Optional salted password protection for disabling Focus, weakening enforcement, or removing active targets |
-| **Input monitoring** | Keyboard & mouse event counts per app in 1-minute buckets (no keylogging) |
-| **Audio detection** | Core Audio COM enumeration — bypasses idle detection during media playback |
-| **Idle detection** | `GetLastInputInfo` with configurable threshold, exempted during audio |
-| **Session tracking** | Lock/unlock, sleep/resume events with idle reason tagging |
-| **App categorization** | 8 built-in categories (Work, Development, Browsing, etc.) + custom rules |
-| **Live status** | Real-time current app, idle state, and audio context in the tray tooltip |
-| **Calendar heatmap** | GitHub-style activity overview with configurable 4-week, 3-month, or 6-month range |
-| **Timeline** | Meaningful activity blocks grouped by default, with expandable app detail and a configurable noise threshold |
-| **Daily summary** | Active/idle time, focus score, keystrokes/clicks, vs-yesterday comparison |
-| **History** | Browse past days with a date picker, heatmap, daily summary, apps, sites, categories, and timeline |
-| **Preferences** | Default tab, interface density, motion, refresh rate, time format, tracking signals, reminders, retention, exports, and goals |
-| **11 themes** | Acid, Terminal, Moss, Copper, Arctic, Crimson, Gold, Ember, Rose, Clay, Sunset |
-
----
-
-## Quick Start
-
-### Download (recommended)
-
-[Download the latest standalone EXE](https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens.exe), place `TimeLens.exe` anywhere, and run it. TimeLens starts in the system tray and serves the dashboard at [http://127.0.0.1:47821/](http://127.0.0.1:47821/).
-
-The executable is self-contained. On first launch it extracts only the native SQLite runtime and built-in category/icon resources to `%LOCALAPPDATA%\TimeLens\runtime`. Activity data remains in `%LOCALAPPDATA%\TimeLens`.
-
-### Build from source
-
-**Prerequisites:** .NET 9 SDK · Node.js 22+
+Prerequisites: .NET 9 SDK and Node.js 22 or newer.
 
 ```powershell
-.\scripts\publish.ps1                 # build dashboard + standalone root EXE
-.\scripts\publish.ps1 -Launch         # build and launch TimeLens.exe
-.\scripts\publish.ps1 -SkipDashboard  # reuse an existing dashboard dist build
-.\scripts\install.ps1                 # build and install to %LOCALAPPDATA%\TimeLens
+.\scripts\publish.ps1                 # dashboard + standalone root EXE
+.\scripts\publish.ps1 -Launch         # build and launch
+.\scripts\publish.ps1 -SkipDashboard  # reuse the current dashboard build
 ```
 
-`publish.ps1` produces a single copy-and-run `TimeLens.exe` in the repository root. Dashboard assets, browser-extension packages, SQLite, categories, and the tray icon are embedded in the executable.
+Website commands:
 
-### Browser extensions
-
-| Browser | How to install |
-|---|---|
-| **Chrome / Edge / Brave / Arc / Opera / Vivaldi** | Download the Chromium ZIP → extract it → open the browser extensions page → enable Developer mode → Load unpacked |
-| **Firefox / Zen** | Download the Firefox ZIP → extract it → open `about:debugging` → Load Temporary Add-on → select `manifest.json` |
-
-With TimeLens running, open [http://127.0.0.1:47821/extension-setup](http://127.0.0.1:47821/extension-setup) or right-click the tray icon and choose **Install Browser Extension**. The setup page downloads both ZIPs directly from the running EXE and shows the installed extension's connection status.
-
-For extension development, the unpacked sources remain under `src/browser-extensions/chrome` and `src/browser-extensions/firefox`. `src/browser-extensions/shared/background.js` is the shared source used by both builds.
-
----
-
-## Architecture
-
+```powershell
+npm ci --prefix web
+npm run web:dev
+npm run web:build
 ```
+
+## Repository layout
+
+```text
 TimeLens/
+├── api/                         # Vercel release metadata/download proxy
+├── server/                      # server-only GitHub release integration
+├── web/                         # public landing page and documentation
 ├── src/
-│   ├── TimeLens.Core/              # Shared models & interfaces
-│   ├── TimeLens.Api/               # Kestrel API + embedded dashboard provider
-│   │   ├── Dtos/                   # Request/response DTOs
-│   │   ├── Services/               # AnalyticsService (SQLite queries)
-│   │   └── EmbeddedDashboardProvider.cs
-│   ├── TimeLens.TrayApp/           # Win32 tray app (Native AOT)
-│   │   ├── Watchers/               # WinEvent, Idle, Session, Input, Audio
-│   │   ├── Services/               # EventWriter, CategoryClassifier, DB, AutoStart
-│   │   ├── NativeTrayIcon.cs       # Raw Win32 P/Invoke tray icon
-│   │   └── Program.cs              # Entry point — wires watchers + API
-│   ├── TimeLens.Dashboard/         # Svelte 5 SPA
-│   │   └── src/lib/
-│   │       ├── components/         # Dashboard views, including History and Focus Mode
-│   │       ├── stores/             # Reactive data stores
-│   │       └── api.ts              # Typed local API client
-│   └── browser-extensions/
-│       ├── chrome/                 # MV3 (Chrome, Edge, Brave, Arc)
-│       ├── firefox/                # MV2 (Firefox, Zen)
-│       └── shared/                 # Shared tracking/blocking source
-├── scripts/
-│   ├── publish.ps1                 # Developer build + root deploy
-│   └── install.ps1                 # Source build + per-user install
-└── .github/workflows/
-    └── release.yml                 # CI/CD
+│   ├── TimeLens.Core/           # models and interfaces
+│   ├── TimeLens.Api/            # local Kestrel API and updater
+│   ├── TimeLens.Dashboard/      # embedded Svelte dashboard
+│   └── TimeLens.TrayApp/        # Win32 tray host, watchers, and services
+├── scripts/                     # local publish/install helpers
+├── .github/workflows/release.yml
+└── vercel.json                  # builds only web/ and exposes api/
 ```
 
----
+The published browser extension is maintained by the browser store and is intentionally not included in this repository or desktop release.
 
-## API
+## Website and Vercel
+
+Connect this repository to Vercel using the repository root. `vercel.json` installs and builds only `web/`, publishes `web/dist`, and retains the serverless endpoints under `api/`. Desktop source, build output, and local data are excluded by `.vercelignore`.
+
+Set these Vercel environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `GITHUB_TOKEN` | Fine-grained token with read-only **Contents** access to this repository; required after the repository becomes private |
+| `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
+| `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
+| `GITHUB_RELEASE_MAJOR` | `1` for the production-v1 update channel |
+
+`/api/download` authenticates server-side and redirects to GitHub's short-lived signed asset URL. The EXE bypasses Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while the executable download stays public; anyone with the website download URL can still obtain the EXE by design.
+
+`/api/latest-release` returns only sanitized version, size, checksum, publication time, and same-site download information. A valid release must be non-draft, non-prerelease, use a `v1.x.x` tag, and contain both `TimeLens.exe` and `SHA256SUMS.txt`.
+
+## Releasing and updates
+
+The release workflow builds the dashboard, publishes the Native AOT app, verifies matching desktop/dashboard versions, and uploads:
+
+- `TimeLens.exe`
+- `SHA256SUMS.txt`
+
+Historical tags already use `v1.0.0`, so this production source is versioned `1.0.1`. Create the `v1.0.1` tag when the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
+
+The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
+
+## Local API
 
 Base URL: `http://127.0.0.1:47821`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/summary?date=YYYY-MM-DD` | Full dashboard payload (summary, timeline, top apps, heatmap, categories, live, input, browser, audio) |
-| `GET` | `/api/input-summary?date=YYYY-MM-DD` | Per-app keystroke & click counts |
-| `GET` | `/api/audio-summary?date=YYYY-MM-DD` | Per-app audio session counts |
-| `GET` | `/api/browser-summary?date=YYYY-MM-DD` | Top 20 domains by visit count |
-| `GET` | `/api/settings` | Current settings |
-| `POST` | `/api/settings` | Update settings `{trackAudio, trackInput, theme, autoStart, ...}` |
-| `GET` | `/api/rules` | Custom categorization rules |
-| `POST` | `/api/rules` | Add/update rule `{pattern, category}` |
+| `GET` | `/api/summary?date=YYYY-MM-DD` | Daily dashboard summary and timeline data |
+| `GET` | `/api/settings` | Current local preferences |
+| `POST` | `/api/settings` | Save local preferences |
+| `GET` | `/api/rules` | Categorization rules |
+| `POST` | `/api/rules` | Add or update a rule |
 | `DELETE` | `/api/rules/{pattern}` | Delete a rule |
-| `POST` | `/api/browser-event` | Log browser tab visit `{domain, url, title, browser, audible}` |
-| `POST` | `/api/audible-status` | Update audible tab state `{audible, browser}` |
-| `GET` | `/api/running-processes` | User-facing processes for rule suggestions |
-| `GET` | `/api/block/stats` | Block enforcement counts for the current day |
-| `POST` | `/api/block/enforce` | Enforce an active executable blocklist entry |
-| `GET` | `/api/extension-status` | Current extension connection, browser, and version |
-| `GET` | `/extension-setup` | Browser extension install guide page |
-| `GET` | `/extension/download/{chromium\|firefox}` | Download an extension ZIP embedded in the EXE |
-| `GET` | `/*` | Svelte SPA & static assets |
+| `POST` | `/api/browser-event` | Receive an event from the installed extension |
+| `GET` | `/api/extension-status` | Extension connection state |
+| `GET` | `/api/update/status` | Check the production update feed |
+| `POST` | `/api/update/install` | Verify, stage, and restart into an update |
+| `GET` | `/extension-setup` | Compatibility redirect to the official extension listing |
+| `GET` | `/*` | Embedded dashboard SPA and static assets |
 
----
+## Privacy and data
 
-## Database
+The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite WAL mode. TimeLens records aggregate input counts, not typed characters. Browser data is accepted from the installed extension over the local API. Settings, categories, rules, block logs, idle spans, and activity history remain on the device unless the user explicitly exports them.
 
-SQLite at `%LOCALAPPDATA%\TimeLens\activity.db` (WAL mode, auto-vacuum, 90-day retention).
+## Stack
 
-| Table | Description |
-|---|---|
-| `app_events` | Foreground window entries — exe, title, PID, category, session state, idle reason |
-| `browser_events` | Browser tab visits from extensions |
-| `session_events` | Lock/unlock/sleep/resume events |
-| `input_activity` | 1-minute aggregate keystroke & click counts per app |
-| `audio_activity` | Per-process audio playback snapshots |
-| `custom_rules` | User-defined exe → category overrides |
-| `settings` | Key-value config (tracking toggles, theme, auto-start, etc.) |
-| `block_log` | Successful Focus Mode app enforcement events |
-| `idle_spans` | Recorded idle periods and reasons |
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| **Backend** | .NET 9 · Native AOT · Kestrel · Microsoft.Data.Sqlite |
-| **Frontend** | Svelte 5 · Vite · TypeScript · local fonts · Lucide + Tabler icons · Morphicons transitions |
-| **Tray icon** | Raw Win32 P/Invoke (`Shell_NotifyIconW`) |
-| **Extensions** | Chrome MV3 · Firefox MV2 |
-| **Packaging** | Single self-contained Windows executable with embedded dashboard and extensions |
-| **CI/CD** | GitHub Actions release workflow |
-
----
-
-## License
-
-[MIT](LICENSE) © TimeLens
-
-This project is free and open source. You can use, modify, and distribute it under the terms of the MIT license. No attribution required — but appreciated.
+- .NET 9, Native AOT, Kestrel, Microsoft.Data.Sqlite
+- Svelte 5, Vite, TypeScript, local fonts and icons
+- Raw Win32 tray integration and Windows activity/audio/session APIs
+- Vercel static hosting and serverless release proxy
+- GitHub Actions release automation

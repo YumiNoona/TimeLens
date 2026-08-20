@@ -23,7 +23,6 @@ public static class ApiHost
 
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, byte[]> ExtensionPackageCache = new(StringComparer.OrdinalIgnoreCase);
 
     private static bool HasBlockUnlock(HttpContext ctx) =>
         BlockProtectionService.IsAuthorized(ctx.Request.Headers["X-TimeLens-Unlock"].FirstOrDefault());
@@ -82,7 +81,9 @@ public static class ApiHost
         Action<bool>? setTrackInput = null,
         Action<string, string, string, string, int>? upsertRule = null,
         Action<string>? deleteRule = null,
-        Func<string, bool>? enforceBlock = null)
+        Func<string, bool>? enforceBlock = null,
+        UpdateService? updateService = null,
+        Action? requestShutdown = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -109,7 +110,7 @@ public static class ApiHost
                 (!Path.HasExtension(path.Value) &&
                  !path.StartsWithSegments("/api") &&
                  !path.StartsWithSegments("/extension"));
-            var mustBeFresh = isDashboardEntry || path == "/extension-setup";
+            var mustBeFresh = isDashboardEntry;
 
             if (mustBeFresh)
             {
@@ -198,6 +199,43 @@ public static class ApiHost
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsJsonAsync(
                 LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
+        });
+
+        app.MapGet("/api/update/status", async (HttpContext ctx) =>
+        {
+            if (updateService is null)
+            {
+                ctx.Response.StatusCode = 503;
+                return;
+            }
+            var status = await updateService.CheckAsync(ctx.RequestAborted);
+            await ctx.Response.WriteAsJsonAsync(status, AppJsonContext.Default.UpdateStatusDto);
+        });
+
+        app.MapPost("/api/update/install", async (HttpContext ctx) =>
+        {
+            if (updateService is null)
+            {
+                ctx.Response.StatusCode = 503;
+                return;
+            }
+            if (!string.Equals(ctx.Request.Headers["X-TimeLens-Update"].FirstOrDefault(), "install", StringComparison.Ordinal))
+            {
+                ctx.Response.StatusCode = 403;
+                return;
+            }
+
+            var status = await updateService.DownloadAndStageAsync(ctx.RequestAborted);
+            if (status.Error is not null) ctx.Response.StatusCode = StatusCodes.Status502BadGateway;
+            await ctx.Response.WriteAsJsonAsync(status, AppJsonContext.Default.UpdateStatusDto);
+            if (status.Restarting && requestShutdown is not null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(750);
+                    requestShutdown();
+                });
+            }
         });
 
         app.MapPost("/api/block/protection/setup", async (HttpContext ctx) =>
@@ -1346,294 +1384,10 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
-        app.MapGet("/extension/download/{family}", async (HttpContext ctx) =>
-        {
-            var family = ctx.Request.RouteValues["family"]?.ToString() ?? "";
-            family = family.ToLowerInvariant() switch
-            {
-                "chrome" or "chromium" => "chromium",
-                "firefox" => "firefox",
-                _ => ""
-            };
-            if (family.Length == 0 || entryAsm is null)
-            {
-                ctx.Response.StatusCode = 404;
-                return;
-            }
-
-            var package = ExtensionPackageCache.GetOrAdd(family,
-                key => ExtensionPackageProvider.CreateZip(entryAsm, key));
-            var fileName = family == "chromium"
-                ? "TimeLens-v2.0.0-extension-chromium.zip"
-                : "TimeLens-v2.0.0-extension-firefox.zip";
-            ctx.Response.ContentType = "application/zip";
-            ctx.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
-            ctx.Response.ContentLength = package.Length;
-            await ctx.Response.Body.WriteAsync(package);
-        });
-
         app.MapGet("/extension-setup", (HttpContext ctx) =>
         {
-            ctx.Response.ContentType = "text/html; charset=utf-8";
-            ctx.Response.StatusCode = 200;
-            return ctx.Response.WriteAsync("""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TimeLens · Extensions</title>
-<style>
-:root{
-  --md-surface:#0D0F0A;--md-surface-1:#141810;--md-surface-2:#1C2118;--md-surface-3:#222819;
-  --md-outline:rgba(255,255,255,.07);--md-outline-var:rgba(255,255,255,.14);
-  --md-primary:#C8E86A;--md-on-primary:#151E00;--md-primary-cont:#1E2E00;--md-on-pri-cont:#D6F572;
-  --md-secondary:#E8A23A;--md-sec-cont:#2C1E00;
-  --md-tertiary:#7ECFA8;--md-ter-cont:#00472B;
-  --md-error:#E07070;--md-err-cont:#3B1212;
-  --md-on-surf:#E4E8DC;--md-on-surf-var:#8A9283;--md-on-surf-dim:#4A5145;
-  --font-display:Inter,Segoe UI,sans-serif;--font-mono:'Cascadia Mono',Consolas,monospace;
-  --shape-sm:8px;--shape-md:12px;--shape-lg:16px;--shape-xl:28px;
-  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px
-}
-.theme-ember{--md-surface:#0F0A08;--md-surface-1:#1A1008;--md-surface-2:#23180E;--md-surface-3:#2C1E12;--md-primary:#FF8A65;--md-on-primary:#3B0D00;--md-primary-cont:#4A1504;--md-on-pri-cont:#FFB89A;--md-secondary:#FFAB40;--md-sec-cont:#421F00;--md-tertiary:#F6A0A0;--md-ter-cont:#571C1C}
-.theme-rose{--md-surface:#0F080C;--md-surface-1:#1A0D14;--md-surface-2:#26141C;--md-surface-3:#301A24;--md-primary:#F48FB1;--md-on-primary:#3B0020;--md-primary-cont:#4E0A2D;--md-on-pri-cont:#FDB4CF}
-.theme-moss{--md-surface:#0A0F0A;--md-surface-1:#101810;--md-surface-2:#162116;--md-surface-3:#1C291C;--md-primary:#81C784;--md-on-primary:#002202;--md-primary-cont:#0A320B;--md-on-pri-cont:#A5D6A7}
-.theme-clay{--md-surface:#0E0C0B;--md-surface-1:#19140F;--md-surface-2:#221C15;--md-surface-3:#2B241B;--md-primary:#BCAAA4;--md-on-primary:#2E1510;--md-primary-cont:#3C221B;--md-on-pri-cont:#D7CCC8}
-.theme-sunset{--md-surface:#0F0C08;--md-surface-1:#1A1508;--md-surface-2:#241E0E;--md-surface-3:#2E2714;--md-primary:#FFD54F;--md-on-primary:#2E2000;--md-primary-cont:#402C00;--md-on-pri-cont:#FFE082}
-.theme-terminal{--md-surface:#080F08;--md-surface-1:#0C140C;--md-surface-2:#111A11;--md-surface-3:#162016;--md-primary:#39FF14;--md-on-primary:#003300;--md-primary-cont:#0A3300;--md-on-pri-cont:#66FF44}
-.theme-copper{--md-surface:#0F0B08;--md-surface-1:#1A1208;--md-surface-2:#231A0E;--md-surface-3:#2C2214;--md-primary:#B87333;--md-on-primary:#1A0A00;--md-primary-cont:#2E1504;--md-on-pri-cont:#D4945A}
-.theme-arctic{--md-surface:#090C0E;--md-surface-1:#10161A;--md-surface-2:#161E22;--md-surface-3:#1C262A;--md-primary:#7EC8C8;--md-on-primary:#002222;--md-primary-cont:#0A2E2E;--md-on-pri-cont:#A0DFDF}
-.theme-crimson{--md-surface:#0F0808;--md-surface-1:#1A0D0D;--md-surface-2:#231414;--md-surface-3:#2C1A1A;--md-primary:#DC143C;--md-on-primary:#1A0004;--md-primary-cont:#2E000A;--md-on-pri-cont:#F06070}
-.theme-gold{--md-surface:#0E0C07;--md-surface-1:#171208;--md-surface-2:#201A0D;--md-surface-3:#292212;--md-primary:#FFB000;--md-on-primary:#1A0F00;--md-primary-cont:#2E1A00;--md-on-pri-cont:#FFCC44}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{
-  background:var(--md-surface);color:var(--md-on-surf);
-  font-family:var(--font-display);font-size:14px;line-height:1.5;
-  min-height:100vh;display:flex;
-  -webkit-font-smoothing:antialiased
-}
-.rail{
-  width:80px;background:var(--md-surface-1);
-  border-right:1px solid var(--md-outline);
-  display:flex;flex-direction:column;align-items:center;
-  padding:var(--sp-3) 0;gap:var(--sp-1);flex-shrink:0
-}
-.rail-logo{
-  width:40px;height:40px;background:var(--md-primary-cont);
-  border-radius:var(--shape-md);display:flex;align-items:center;justify-content:center;
-  margin-bottom:var(--sp-4)
-}
-.rail-logo i{color:var(--md-primary);font-size:20px}
-.main{
-  flex:1;overflow-y:auto;padding:var(--sp-6);
-  display:flex;flex-direction:column;gap:var(--sp-4)
-}
-.page-header{margin-bottom:4px}
-.page-header h1{font-size:24px;font-weight:600;letter-spacing:-.01em;line-height:1.2}
-.page-header p{font-size:13px;color:var(--md-on-surf-var);margin-top:2px}
-.card{
-  background:var(--md-surface-1);border:1px solid var(--md-outline);
-  border-radius:var(--shape-lg);padding:var(--sp-5)
-}
-.card-title{
-  font-size:14px;font-weight:500;color:var(--md-on-surf);
-  margin-bottom:var(--sp-4);display:flex;align-items:center;gap:var(--sp-2)
-}
-.card-title i{color:var(--md-on-surf-var);font-size:16px}
-.steps-row{
-  display:flex;gap:var(--sp-3);margin-bottom:var(--sp-4);flex-wrap:wrap
-}
-.step-chip{
-  display:flex;align-items:center;gap:var(--sp-2);
-  background:var(--md-surface-2);border:1px solid var(--md-outline);
-  border-radius:var(--shape-xl);padding:var(--sp-2) var(--sp-4);
-  font-size:13px;font-weight:500;color:var(--md-on-surf-var)
-}
-.step-num{
-  width:24px;height:24px;border-radius:50%;
-  background:var(--md-primary-cont);color:var(--md-on-pri-cont);
-  display:flex;align-items:center;justify-content:center;
-  font-size:12px;font-weight:700;flex-shrink:0
-}
-.browser-row{
-  display:flex;align-items:center;gap:var(--sp-3);
-  padding:var(--sp-3);border-radius:var(--shape-md);
-  background:var(--md-surface-2);border:1px solid transparent;
-  text-decoration:none;color:inherit;
-  transition:all .15s;margin-bottom:var(--sp-2)
-}
-.browser-row:last-child{margin-bottom:0}
-.browser-row:hover{
-  background:var(--md-surface-3);border-color:var(--md-primary);
-  transform:translateY(-1px)
-}
-.br-icon{
-  width:42px;height:42px;border-radius:var(--shape-md);flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;font-weight:700;color:#fff
-}
-.br-chrome{background:linear-gradient(135deg,#4285F4,#34A853)}
-.br-edge{background:linear-gradient(135deg,#0078D4,#00BCF2)}
-.br-brave{background:linear-gradient(135deg,#FB542B,#FF5500)}
-.br-firefox{background:linear-gradient(135deg,#FF7139,#FFA436)}
-.br-zen{background:linear-gradient(135deg,#7B68EE,#9370DB)}
-.br-info{flex:1;min-width:0}
-.br-name{font-size:13px;font-weight:600}
-.br-hint{
-  font-size:11px;color:var(--md-on-surf-dim);margin-top:2px;
-  font-family:var(--font-mono)
-}
-.br-dl{
-  display:flex;align-items:center;gap:6px;
-  font-size:12px;font-weight:500;color:var(--md-primary);
-  flex-shrink:0;opacity:1;transition:all .15s;
-  border:1px solid color-mix(in srgb,var(--md-primary) 35%,transparent);
-  background:var(--md-primary-cont);padding:7px 10px;border-radius:8px
-}
-.browser-row:hover .br-dl{background:var(--md-primary);color:var(--md-on-primary)}
-.section-divider{
-  display:flex;align-items:center;gap:var(--sp-3);
-  margin:var(--sp-4) 0 var(--sp-3)
-}
-.section-divider::after{
-  content:'';flex:1;height:1px;background:var(--md-outline)
-}
-.section-label{
-  font-size:12px;font-weight:500;color:var(--md-on-surf-var);
-  text-transform:uppercase;letter-spacing:.05em;flex-shrink:0
-}
-.status-row{
-  display:flex;align-items:center;gap:var(--sp-2);
-  padding-top:var(--sp-4);border-top:1px solid var(--md-outline);
-  font-size:12px;color:var(--md-on-surf-var)
-}
-.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.status-dot.online{background:var(--md-tertiary);box-shadow:0 0 6px var(--md-tertiary)}
-.status-dot.offline{background:var(--md-error)}
-.status-dot.checking{background:var(--md-secondary);animation:pulse 1.2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.footer-note{margin-top:var(--sp-4);font-size:11px;color:var(--md-on-surf-var);line-height:1.6}
-.footer-note a{color:var(--md-on-surf-var)}
-@media(max-width:600px){body{flex-direction:column}.rail{width:100%;flex-direction:row;padding:var(--sp-2);gap:var(--sp-2)}.main{padding:var(--sp-3)}.rail-logo{margin-bottom:0;margin-right:auto}}
-</style>
-</head>
-<body>
-
-<div class="rail">
-  <div class="rail-logo">
-    <span aria-hidden="true">◷</span>
-  </div>
-</div>
-
-<main class="main">
-
-  <div class="page-header">
-    <h1>Browser Extensions</h1>
-    <p>Install the extension to track tabs, domains, and audible media in your activity timeline.</p>
-  </div>
-
-  <div class="steps-row">
-    <div class="step-chip"><span class="step-num">1</span> Download the zip</div>
-    <div class="step-chip"><span class="step-num">2</span> Extract to a folder</div>
-    <div class="step-chip"><span class="step-num">3</span> Load unpacked in browser</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">
-      <span aria-hidden="true">◎</span>
-      Chromium Browsers
-    </div>
-
-    <a class="browser-row" href="/extension/download/chromium" download>
-      <div class="br-icon br-chrome">C</div>
-      <div class="br-info">
-        <div class="br-name">Google Chrome</div>
-        <div class="br-hint">chrome://extensions</div>
-      </div>
-      <div class="br-dl">Download ZIP ↓</div>
-    </a>
-
-    <a class="browser-row" href="/extension/download/chromium" download>
-      <div class="br-icon br-edge">E</div>
-      <div class="br-info">
-        <div class="br-name">Microsoft Edge</div>
-        <div class="br-hint">edge://extensions</div>
-      </div>
-      <div class="br-dl">Download ZIP ↓</div>
-    </a>
-
-    <a class="browser-row" href="/extension/download/chromium" download>
-      <div class="br-icon br-brave">B</div>
-      <div class="br-info">
-        <div class="br-name">Brave / Arc / Opera / Vivaldi</div>
-        <div class="br-hint">Any Chromium extensions page</div>
-      </div>
-      <div class="br-dl">Download ZIP ↓</div>
-    </a>
-
-    <div class="section-divider">
-      <span class="section-label">Firefox Family</span>
-    </div>
-
-    <a class="browser-row" href="/extension/download/firefox" download>
-      <div class="br-icon br-firefox">F</div>
-      <div class="br-info">
-        <div class="br-name">Mozilla Firefox</div>
-        <div class="br-hint">about:debugging</div>
-      </div>
-      <div class="br-dl">Download ZIP ↓</div>
-    </a>
-
-    <a class="browser-row" href="/extension/download/firefox" download>
-      <div class="br-icon br-zen">Z</div>
-      <div class="br-info">
-        <div class="br-name">Zen Browser</div>
-        <div class="br-hint">about:debugging</div>
-      </div>
-      <div class="br-dl">Download ZIP ↓</div>
-    </a>
-
-    <div class="status-row">
-      <div class="status-dot checking" id="sd"></div>
-      <span id="st">Checking extension connection...</span>
-    </div>
-  </div>
-
-  <div class="footer-note">
-    After extracting the ZIP, open the extensions page shown above, enable <strong>Developer mode</strong>, choose <strong>Load unpacked</strong>, and select the extracted folder. Firefox users should choose <strong>Load Temporary Add-on</strong> and select <strong>manifest.json</strong>.
-  </div>
-
-</main>
-
-<script>
-  function setStatus(kind, text){
-    document.getElementById('sd').className = 'status-dot ' + kind;
-    document.getElementById('st').textContent = text;
-  }
-  fetch('/api/settings').then(function(r){
-    if(!r.ok) throw new Error('app unavailable');
-    return r.json();
-  }).then(function(s){
-    if(s && s.theme && s.theme !== 'default') document.documentElement.className = 'theme-' + s.theme;
-  }).catch(function(){ setStatus('offline','TimeLens is not responding — restart TimeLens.exe'); });
-
-  function checkExtension(){
-    fetch('/api/extension-status', {cache:'no-store'})
-      .then(function(r){ if(!r.ok) throw new Error(); return r.json(); })
-      .then(function(s){
-        if(s.connected) setStatus('online','Extension connected · ' + s.browser + ' · v' + s.version);
-        else setStatus('checking','TimeLens is running — install or reload the extension to connect');
-      })
-      .catch(function(){ setStatus('offline','TimeLens is not responding — restart TimeLens.exe'); });
-  }
-  checkExtension();
-  setInterval(checkExtension,15000);
-</script>
-
-</body>
-</html>
-""");
+            ctx.Response.Redirect("https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/", permanent: false);
+            return Task.CompletedTask;
         });
 
         app.MapGet("/api/db-size", async (HttpContext ctx) =>
@@ -1807,6 +1561,7 @@ body{
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(BlockEntry[]))]
+[JsonSerializable(typeof(UpdateStatusDto))]
 internal partial class AppJsonContext : JsonSerializerContext { }
 
 public sealed record BlockEntry(string I, string M, string? E)

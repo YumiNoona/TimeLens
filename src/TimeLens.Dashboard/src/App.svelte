@@ -70,6 +70,12 @@
     applyInterfacePreferences();
   }
 
+  function applyPollInterval(seconds: number) {
+    pollInterval = Math.max(5, seconds);
+    stopPoll();
+    if (!document.hidden) startPoll();
+  }
+
   function applyInterfacePreferences() {
     const root = document.documentElement;
     for (const name of [...root.classList]) {
@@ -346,7 +352,14 @@
           <p class="page-purpose">Configure tracking, privacy, appearance, reminders, storage, and goals.</p>
         </div>
       </div>
-      <div class="content"><SettingsView ontheme={applyTheme} ondensity={applyDensity} onmotion={applyMotion} /></div>
+      <div class="content"><SettingsView
+        ontheme={applyTheme}
+        ondensity={applyDensity}
+        onmotion={applyMotion}
+        ontimelinegrouped={(value) => timelineGrouped = value}
+        onshowtitles={(value) => showTitles = value}
+        onpollinterval={applyPollInterval}
+      /></div>
     {:else if !$data}
       <div class="placeholder-view">
         <i class="ti ti-loader" aria-hidden="true"></i>
@@ -430,7 +443,7 @@
     font-weight: var(--weight-semibold);
     color: var(--clr-text-pri);
     letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 1.15;
   }
 
   .today-purpose, .page-purpose {

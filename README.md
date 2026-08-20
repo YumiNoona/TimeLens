@@ -72,16 +72,18 @@ The published browser extension is maintained by the browser store and is intent
 
 ## Website and Vercel
 
-Connect this repository to Vercel using the repository root. `vercel.json` installs and builds only `web/`, publishes `web/dist`, and retains the serverless endpoints under `api/`. Desktop source, build output, and local data are excluded by `.vercelignore`.
+Connect this repository to Vercel using the repository root. `vercel.json` enters `web/` explicitly for dependency installation and the build, publishes `web/dist`, and retains the serverless endpoints under `api/`. Desktop source, build output, and local data are excluded by `.vercelignore`.
 
 Set these Vercel environment variables:
 
 | Variable | Purpose |
 |---|---|
-| `GITHUB_TOKEN` | Fine-grained token with read-only **Contents** access to this repository; required after the repository becomes private |
+| `GITHUB_TOKEN` | Optional for a public repository; required for a private repository and recommended for steadier API rate limits. Use a fine-grained token with read-only **Contents** access only to this repository |
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
 | `GITHUB_RELEASE_MAJOR` | `1` for the production-v1 update channel |
+
+All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 
 `/api/download` authenticates server-side and redirects to GitHub's short-lived signed asset URL. The EXE bypasses Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while the executable download stays public; anyone with the website download URL can still obtain the EXE by design.
 

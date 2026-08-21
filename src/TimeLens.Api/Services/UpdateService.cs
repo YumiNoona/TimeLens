@@ -9,7 +9,7 @@ namespace TimeLens.Api.Services;
 
 public sealed class UpdateService : IDisposable
 {
-    public const string DefaultFeedUrl = "https://time-lens-web.vercel.app/api/latest-release";
+    public const string DefaultFeedUrl = "https://timelens-veilafk.vercel.app/api/latest-release";
     private const long MaximumDownloadBytes = 250L * 1024 * 1024;
     private readonly HttpClient _httpClient;
     private readonly string _feedUrl;
@@ -27,7 +27,7 @@ public sealed class UpdateService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TimeLens-Updater/1.0");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TimeLens-Updater/3.0");
     }
 
     public async Task<UpdateStatusDto> CheckAsync(CancellationToken cancellationToken = default)

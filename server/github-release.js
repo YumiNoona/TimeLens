@@ -31,7 +31,7 @@ async function githubFetch(url, accept) {
 
 export async function getLatestRelease() {
   const assetName = process.env.GITHUB_RELEASE_ASSET || 'TimeLens.exe';
-  const releaseMajor = String(process.env.GITHUB_RELEASE_MAJOR || '1');
+  const releaseMajor = String(process.env.GITHUB_RELEASE_MAJOR || '3');
   if (!/^\d+$/.test(releaseMajor)) throw new Error('GITHUB_RELEASE_MAJOR must be a number.');
 
   const response = await githubFetch(`${githubApi}/repos/${repository()}/releases?per_page=50`);

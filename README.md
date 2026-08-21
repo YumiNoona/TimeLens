@@ -11,11 +11,11 @@
 
 TimeLens turns foreground apps, browser activity, input, audio, idle time, and sessions into a useful local dashboard. Activity stays in a SQLite database on the user's computer—there is no account, telemetry service, or cloud activity store.
 
-[**Download TimeLens.exe**](https://time-lens-web.vercel.app/api/download) · [**Get the Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [Documentation](https://time-lens-web.vercel.app/docs)
+[**Download TimeLens.exe**](https://timelens-veilafk.vercel.app/api/download) · [**Get the Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [Documentation](https://timelens-veilafk.vercel.app/docs)
 
 </div>
 
-## Production v1
+## Production v3
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -26,7 +26,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 ## Install
 
-1. [Download the latest production EXE](https://time-lens-web.vercel.app/api/download).
+1. [Download the latest production EXE](https://timelens-veilafk.vercel.app/api/download).
 2. Put `TimeLens.exe` in a user-writable folder and run it.
 3. Open the tray menu and choose **Open Dashboard**.
 4. Choose **Install Browser Extension** to open the official [TimeLens Tracker listing](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/).
@@ -81,13 +81,13 @@ Set these Vercel environment variables:
 | `GITHUB_TOKEN` | Optional for a public repository; required for a private repository and recommended for steadier API rate limits. Use a fine-grained token with read-only **Contents** access only to this repository |
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
-| `GITHUB_RELEASE_MAJOR` | `1` for the production-v1 update channel |
+| `GITHUB_RELEASE_MAJOR` | `3` for the production-v3 update channel |
 
 All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 
 `/api/download` authenticates server-side and redirects to GitHub's short-lived signed asset URL. The EXE bypasses Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while the executable download stays public; anyone with the website download URL can still obtain the EXE by design.
 
-`/api/latest-release` returns only sanitized version, size, checksum, publication time, and same-site download information. A valid release must be non-draft, non-prerelease, use a `v1.x.x` tag, and contain both `TimeLens.exe` and `SHA256SUMS.txt`.
+`/api/latest-release` returns only sanitized version, size, checksum, publication time, and same-site download information. A valid release must be non-draft, non-prerelease, use a `v3.x.x` tag, and contain both `TimeLens.exe` and `SHA256SUMS.txt`.
 
 ## Releasing and updates
 
@@ -96,7 +96,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens.exe`
 - `SHA256SUMS.txt`
 
-Historical tags already use `v1.0.0`, so this production source is versioned `1.0.1`. Create the `v1.0.1` tag when the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
+The production desktop and dashboard are versioned `3.0.0`. Create the matching `v3.0.0` tag only after the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

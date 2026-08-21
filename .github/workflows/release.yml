@@ -23,6 +23,13 @@ jobs:
           cache: "npm"
           cache-dependency-path: src/TimeLens.Dashboard/package-lock.json
 
+      - name: Extract version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+
       - name: Build dashboard
         working-directory: src/TimeLens.Dashboard
         run: |
@@ -33,13 +40,6 @@ jobs:
         run: |
           dotnet publish src\TimeLens.TrayApp -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
-
-      - name: Extract version from tag
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag -replace '^v', ''
-          echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Verify release version metadata
         shell: pwsh
@@ -58,14 +58,30 @@ jobs:
           }
           Write-Host "Desktop release: $expected"
 
-      - name: Prepare release assets
+      - name: Prepare desktop executable
         shell: pwsh
         run: |
           $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $compiler "/DAppVersion=${{ env.VERSION }}" "installer\TimeLens.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
+          Copy-Item "installer\output\TimeLens-Setup.exe" "TimeLens-Setup.exe"
+
+      - name: Generate release checksums
+        shell: pwsh
+        run: |
           $assets = @(
-            "TimeLens.exe"
+            "TimeLens.exe",
+            "TimeLens-Setup.exe"
           )
           $checksums = foreach ($asset in $assets) {
             $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
@@ -77,5 +93,6 @@ jobs:
         with:
           files: |
             TimeLens.exe
+            TimeLens-Setup.exe
             SHA256SUMS.txt
           generate_release_notes: true

@@ -13,7 +13,7 @@
     <header class="docs-topbar">
       <a class="wordmark" href="/" aria-label="TimeLens home"><span class="mark" aria-hidden="true"><i></i></span><span>TIMELENS</span></a>
       <span class="docs-label">DOCUMENTATION / PRODUCTION</span>
-      <a class="download" href="/api/download">DOWNLOAD EXE <i data-lucide="download" aria-hidden="true"></i></a>
+      <a class="download" href="/api/download">DOWNLOAD SETUP <i data-lucide="download" aria-hidden="true"></i></a>
     </header>
 
     <div class="docs-shell">
@@ -36,7 +36,7 @@
           <p class="kicker">TIMELENS / USER GUIDE</p>
           <h1>Understand the day.<br /><span>Keep it yours.</span></h1>
           <p>Everything you need to install TimeLens, connect your browser, understand every dashboard tab, create useful rules, and build focus boundaries that are difficult to bypass accidentally.</p>
-          <div class="hero-meta"><span>Windows 10 / 11</span><span>Standalone EXE</span><span>Local SQLite</span><span>No account</span></div>
+          <div class="hero-meta"><span>Windows 10 / 11</span><span>Guided setup</span><span>Local SQLite</span><span>No account</span></div>
         </section>
 
         <article id="overview" data-search="overview local tracker system tray dashboard getting started">
@@ -54,12 +54,12 @@
         <article id="install" data-search="install setup exe windows smart screen tray dashboard autostart">
           <header><span>02</span><div><p>SETUP</p><h2>Install the Windows app</h2></div></header>
           <ol class="steps">
-            <li><span>1</span><div><b>Download TimeLens.exe</b><p>Save the standalone file anywhere you keep applications. It does not require a separate runtime or installer.</p></div></li>
-            <li><span>2</span><div><b>Run the executable</b><p>A TimeLens icon appears in the notification area. If Windows hides it, open the tray overflow menu.</p></div></li>
-            <li><span>3</span><div><b>Open the dashboard</b><p>Right-click the tray icon and choose <em>Open Dashboard</em>, or visit <code>http://127.0.0.1:47821/</code>.</p></div></li>
-            <li><span>4</span><div><b>Choose startup behavior</b><p>Enable <em>Launch with Windows</em> in Settings if you want tracking to begin after sign-in.</p></div></li>
+            <li><span>1</span><div><b>Download TimeLens Setup</b><p>The installer includes the complete self-contained desktop app; no separate runtime is required.</p></div></li>
+            <li><span>2</span><div><b>Choose your preferences</b><p>Select the installation folder, startup behavior, and optional desktop shortcut before installing.</p></div></li>
+            <li><span>3</span><div><b>Launch TimeLens</b><p>Finish setup with <em>Launch TimeLens</em> selected. Its icon appears in the notification area.</p></div></li>
+            <li><span>4</span><div><b>Open the dashboard</b><p>Right-click the tray icon and choose <em>Open Dashboard</em>, or visit <code>http://127.0.0.1:47821/</code>.</p></div></li>
           </ol>
-          <div class="tip"><strong>First launch</strong><p>TimeLens creates its local database and runtime folder automatically. Moving the EXE later does not move or erase your activity history.</p></div>
+          <div class="tip"><strong>First launch</strong><p>TimeLens installs to your user profile by default and creates its local database and runtime folder automatically. Updates and uninstalling the app do not move or silently erase your activity history.</p></div>
         </article>
 
         <article id="extension" data-search="chrome edge brave firefox zen extension install unpacked developer mode browser tracking web blocking">
@@ -166,12 +166,12 @@
           <header><span>15</span><div><p>REFERENCE</p><h2>Update or remove TimeLens</h2></div></header>
           <div class="split">
             <section><p class="mini">UPDATE</p><h3>Update from Settings</h3><p>Open Settings → Software updates, check for a release, and choose Update now. TimeLens verifies the download, replaces the EXE, and restarts without moving your local database.</p></section>
-            <section><p class="mini">REMOVE</p><h3>Uninstall manually</h3><p>Exit TimeLens, disable Launch with Windows, remove the EXE and browser extension, then delete <code>%LOCALAPPDATA%\TimeLens</code> only if you also want to erase history and settings.</p></section>
+            <section><p class="mini">REMOVE</p><h3>Use Windows uninstall</h3><p>Exit TimeLens, then remove it from Windows Settings → Apps → Installed apps. Delete <code>%LOCALAPPDATA%\TimeLens</code> separately only if you also want to permanently erase history and settings.</p></section>
           </div>
         </article>
 
         <section id="no-results" hidden><p>NO MATCHES</p><h2>Try a different search.</h2></section>
-        <footer><p>TimeLens production documentation</p><a href="/">Back to TimeLens</a><a href="/api/download">Download EXE</a></footer>
+        <footer><p>TimeLens production documentation</p><a href="/">Back to TimeLens</a><a href="/api/download">Download Setup</a></footer>
       </main>
     </div>
     <script type="module" src="/src/docs.js"></script>

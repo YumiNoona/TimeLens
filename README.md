@@ -11,36 +11,38 @@
 
 TimeLens turns foreground apps, browser activity, input, audio, idle time, and sessions into a useful local dashboard. Activity stays in a SQLite database on the user's computer—there is no account, telemetry service, or cloud activity store.
 
-[**Download TimeLens.exe**](https://timelens-veilafk.vercel.app/api/download) · [**Get the Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [Documentation](https://timelens-veilafk.vercel.app/docs)
+[**Download TimeLens Setup**](https://timelens.venusapp.in/api/download) · [**Get the Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [Documentation](https://timelens.venusapp.in/docs)
 
 </div>
 
-## Production v3
+## Production v4
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
 - App and domain focus controls with timed targets, four enforcement modes, and optional password protection
 - Persistent user-arranged dashboard cards, configurable density/motion/tracking, themes, reminders, retention, exports, and goals
 - Store-managed browser extension installation from Mozilla Add-ons
+- Per-user Windows installer with install-location, startup, desktop-shortcut, and launch options plus a clean uninstaller
 - Built-in updater with startup notification, manual check, SHA-256 verification, and one-click replacement from Settings
 
 ## Install
 
-1. [Download the latest production EXE](https://timelens-veilafk.vercel.app/api/download).
-2. Put `TimeLens.exe` in a user-writable folder and run it.
-3. Open the tray menu and choose **Open Dashboard**.
+1. [Download the latest TimeLens installer](https://timelens.venusapp.in/api/download).
+2. Choose an installation folder and whether TimeLens should start with Windows or create a desktop shortcut.
+3. Finish setup and open the tray menu to choose **Open Dashboard**.
 4. Choose **Install Browser Extension** to open the official [TimeLens Tracker listing](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/).
 
-The executable is self-contained. On first launch it extracts the native SQLite library, category data, and tray icon to `%LOCALAPPDATA%\TimeLens\runtime`. The local dashboard is available only at `http://127.0.0.1:47821`.
+Setup installs the self-contained app to `%LOCALAPPDATA%\Programs\TimeLens` by default, without requesting administrator access. On first launch TimeLens extracts the native SQLite library, category data, and tray icon to `%LOCALAPPDATA%\TimeLens\runtime`. The local dashboard is available only at `http://127.0.0.1:47821`, and uninstalling the app does not silently erase activity history.
 
 ## Build
 
-Prerequisites: .NET 9 SDK and Node.js 22 or newer.
+Prerequisites: .NET 9 SDK, Node.js 22 or newer, and Inno Setup 6.
 
 ```powershell
-.\scripts\publish.ps1                 # dashboard + standalone root EXE
+.\scripts\publish.ps1                 # dashboard + app EXE + Windows installer
 .\scripts\publish.ps1 -Launch         # build and launch
 .\scripts\publish.ps1 -SkipDashboard  # reuse the current dashboard build
+.\scripts\publish.ps1 -SkipInstaller  # build only the standalone app EXE
 ```
 
 Website commands:
@@ -58,6 +60,7 @@ TimeLens/
 ├── api/                         # Vercel release metadata/download proxy
 ├── server/                      # server-only GitHub release integration
 ├── web/                         # public landing page and documentation
+├── installer/                   # Inno Setup per-user Windows installer
 ├── src/
 │   ├── TimeLens.Core/           # models and interfaces
 │   ├── TimeLens.Api/            # local Kestrel API and updater
@@ -81,22 +84,24 @@ Set these Vercel environment variables:
 | `GITHUB_TOKEN` | Optional for a public repository; required for a private repository and recommended for steadier API rate limits. Use a fine-grained token with read-only **Contents** access only to this repository |
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
-| `GITHUB_RELEASE_MAJOR` | `3` for the production-v3 update channel |
+| `GITHUB_DOWNLOAD_ASSET` | `TimeLens-Setup.exe` |
+| `GITHUB_RELEASE_MAJOR` | `4` for the production-v4 update channel |
 
 All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 
-`/api/download` authenticates server-side and redirects to GitHub's short-lived signed asset URL. The EXE bypasses Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while the executable download stays public; anyone with the website download URL can still obtain the EXE by design.
+`/api/download` redirects website visitors to the installer, while `/api/app-download` is reserved for the verified raw-EXE updater flow. Both authenticate server-side and redirect to GitHub's short-lived signed asset URLs. The binaries bypass Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while downloads remain available through the website by design.
 
-`/api/latest-release` returns only sanitized version, size, checksum, publication time, and same-site download information. A valid release must be non-draft, non-prerelease, use a `v3.x.x` tag, and contain both `TimeLens.exe` and `SHA256SUMS.txt`.
+`/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a `v4.x.x` tag, and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
 
 ## Releasing and updates
 
 The release workflow builds the dashboard, publishes the Native AOT app, verifies matching desktop/dashboard versions, and uploads:
 
 - `TimeLens.exe`
+- `TimeLens-Setup.exe`
 - `SHA256SUMS.txt`
 
-The production desktop and dashboard are versioned `3.0.0`. Create the matching `v3.0.0` tag only after the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
+The production desktop, dashboard, website, and installer are versioned `4.0.0`. Create the matching `v4.0.0` tag only after the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -129,4 +134,5 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 - Svelte 5, Vite, TypeScript, local fonts and icons
 - Raw Win32 tray integration and Windows activity/audio/session APIs
 - Vercel static hosting and serverless release proxy
+- Inno Setup per-user installer
 - GitHub Actions release automation

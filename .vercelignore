@@ -2,6 +2,7 @@
 /.github/
 /runtime/
 /scripts/
+/installer/
 /src/
 /tools/
 /TimeLens.exe

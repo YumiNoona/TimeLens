@@ -1,4 +1,9 @@
-import { getLatestRelease, getReleaseChecksum, releaseVersion } from '../server/github-release.js';
+import {
+  applicationAssetName,
+  getLatestRelease,
+  getReleaseChecksum,
+  releaseVersion,
+} from '../server/github-release.js';
 
 export default async function handler(request, response) {
   if (request.method !== 'GET') {
@@ -7,7 +12,7 @@ export default async function handler(request, response) {
   }
 
   try {
-    const { release, executable } = await getLatestRelease();
+    const { release, asset: executable } = await getLatestRelease(applicationAssetName());
     const sha256 = await getReleaseChecksum(release, executable.name);
     const protocol = request.headers['x-forwarded-proto'] || 'https';
     const host = request.headers['x-forwarded-host'] || request.headers.host;
@@ -17,7 +22,7 @@ export default async function handler(request, response) {
       publishedAt: release.published_at,
       size: executable.size,
       sha256,
-      downloadUrl: `${protocol}://${host}/api/download`,
+      downloadUrl: `${protocol}://${host}/api/app-download`,
     });
   } catch (error) {
     console.error('Latest release lookup failed:', error);

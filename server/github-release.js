@@ -29,9 +29,16 @@ async function githubFetch(url, accept) {
   return response;
 }
 
-export async function getLatestRelease() {
-  const assetName = process.env.GITHUB_RELEASE_ASSET || 'TimeLens.exe';
-  const releaseMajor = String(process.env.GITHUB_RELEASE_MAJOR || '3');
+export function applicationAssetName() {
+  return process.env.GITHUB_RELEASE_ASSET || 'TimeLens.exe';
+}
+
+export function installerAssetName() {
+  return process.env.GITHUB_DOWNLOAD_ASSET || 'TimeLens-Setup.exe';
+}
+
+export async function getLatestRelease(assetName = applicationAssetName()) {
+  const releaseMajor = String(process.env.GITHUB_RELEASE_MAJOR || '4');
   if (!/^\d+$/.test(releaseMajor)) throw new Error('GITHUB_RELEASE_MAJOR must be a number.');
 
   const response = await githubFetch(`${githubApi}/repos/${repository()}/releases?per_page=50`);
@@ -41,12 +48,15 @@ export async function getLatestRelease() {
     const assetNames = new Set((candidate.assets || []).map((asset) => asset.name));
     return !candidate.draft && !candidate.prerelease &&
       version.startsWith(`${releaseMajor}.`) &&
-      assetNames.has(assetName) && assetNames.has('SHA256SUMS.txt');
+      assetNames.has(applicationAssetName()) &&
+      assetNames.has(installerAssetName()) &&
+      assetNames.has(assetName) &&
+      assetNames.has('SHA256SUMS.txt');
   });
   if (!release) throw new Error(`No production v${releaseMajor} release contains the required assets.`);
 
-  const executable = release.assets.find((asset) => asset.name === assetName);
-  return { release, executable };
+  const asset = release.assets.find((candidate) => candidate.name === assetName);
+  return { release, asset };
 }
 
 export async function getReleaseChecksum(release, assetName) {

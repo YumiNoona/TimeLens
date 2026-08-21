@@ -7,6 +7,7 @@ param(
     [ValidateSet("Debug", "Release")]
     [string]$Config = "Release",
     [switch]$SkipDashboard,
+    [switch]$SkipInstaller,
     [switch]$Launch
 )
 
@@ -17,6 +18,9 @@ $trayAppDir = "$root\src\TimeLens.TrayApp"
 $publishDir = "$trayAppDir\bin\$Config\net9.0\win-x64\publish"
 $exePath = "$publishDir\TimeLens.TrayApp.exe"
 $rootExePath = "$root\TimeLens.exe"
+$installerScript = "$root\installer\TimeLens.iss"
+$installerOutput = "$root\installer\output\TimeLens-Setup.exe"
+$rootInstallerPath = "$root\TimeLens-Setup.exe"
 
 $header = { Write-Host "`n$($args[0])" -ForegroundColor Cyan }
 $ok = { Write-Host "  [ok] $($args[0])" -ForegroundColor Green }
@@ -94,11 +98,41 @@ try {
     exit 1
 }
 
+$innoCompiler = $null
+if (-not $SkipInstaller) {
+    $innoCandidates = @(
+        (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue).Source,
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    $innoCompiler = $innoCandidates | Select-Object -First 1
+    if (-not $innoCompiler) {
+        & $fail "Inno Setup 6 is not installed"
+        Write-Host "       Install with: winget install --id JRSoftware.InnoSetup -e" -ForegroundColor Yellow
+        exit 1
+    }
+    & $ok "Inno Setup $innoCompiler"
+}
+
 # --- Deploy to root (double-click ready) ---
 & $header "=== Deploying to root ==="
 if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 & $ok "Standalone root TimeLens.exe ready"
+
+# --- Build installer ---
+if (-not $SkipInstaller) {
+    & $header "=== Building Windows installer ==="
+    [xml]$trayProject = Get-Content "$trayAppDir\TimeLens.TrayApp.csproj"
+    $appVersion = [string]$trayProject.Project.PropertyGroup.Version
+    & $innoCompiler "/DAppVersion=$appVersion" $installerScript
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
+    Copy-Item -Force $installerOutput $rootInstallerPath
+    & $ok "TimeLens-Setup.exe ready"
+} else {
+    Write-Host "  Skipping installer build (--SkipInstaller)" -ForegroundColor DarkGray
+}
 
 # --- Summary ---
 & $header "=== Build summary ==="
@@ -109,6 +143,11 @@ Write-Host "  Exe size:    ${exeSizeMB} MB" -ForegroundColor White
 Write-Host "  Packaging:   Single self-contained executable" -ForegroundColor White
 Write-Host "  Config:      $Config" -ForegroundColor White
 Write-Host "  Output:      $publishDir" -ForegroundColor White
+if (-not $SkipInstaller) {
+    $installerItem = Get-Item $rootInstallerPath -ErrorAction SilentlyContinue
+    $installerSizeMB = if ($installerItem) { [math]::Round($installerItem.Length / 1MB, 1) } else { 0 }
+    Write-Host "  Installer:   $rootInstallerPath (${installerSizeMB} MB)" -ForegroundColor White
+}
 
 # --- Launch ---
 if ($Launch) {

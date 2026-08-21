@@ -1,4 +1,8 @@
-import { assetRedirectUrl, getLatestRelease, installerAssetName } from '../server/github-release.js';
+import {
+  applicationAssetName,
+  assetRedirectUrl,
+  getLatestRelease,
+} from '../server/github-release.js';
 
 export default async function handler(request, response) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -7,14 +11,14 @@ export default async function handler(request, response) {
   }
 
   try {
-    const { asset } = await getLatestRelease(installerAssetName());
+    const { asset } = await getLatestRelease(applicationAssetName());
     const downloadUrl = await assetRedirectUrl(asset);
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader('Location', downloadUrl);
     return response.status(302).end();
   } catch (error) {
-    console.error('Release download failed:', error);
+    console.error('Application update download failed:', error);
     response.setHeader('Cache-Control', 'no-store');
-    return response.status(503).json({ error: 'The TimeLens download is temporarily unavailable.' });
+    return response.status(503).json({ error: 'The TimeLens update is temporarily unavailable.' });
   }
 }

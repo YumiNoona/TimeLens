@@ -70,6 +70,7 @@ Thumbs.db
 
 # Root-level deploy (built by publish.ps1)
 /TimeLens.exe
+/TimeLens-Setup.exe
 /dashboard/
 /*.dll
 /*.pdb
@@ -87,6 +88,9 @@ src/TimeLens.TrayApp/Public/
 
 # Vercel
 .vercel/
+
+# Installer output
+/installer/output/
 
 # SQLite
 *.db

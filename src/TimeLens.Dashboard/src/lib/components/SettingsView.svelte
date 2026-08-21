@@ -329,7 +329,7 @@
   <section class="card card-wide update-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-refresh" aria-hidden="true"></i></span>
-      <div><h2>Software updates</h2><p>Check, verify, and install the latest standalone EXE.</p></div>
+      <div><h2>Software updates</h2><p>Check, verify, and install the latest desktop release.</p></div>
     </div>
     <div class="update-row">
       <div class="update-copy">

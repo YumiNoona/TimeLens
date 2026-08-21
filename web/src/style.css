@@ -80,7 +80,7 @@ dialog{width:min(920px,calc(100% - 32px));padding:0;border:1px solid var(--paper
 @media(max-width:700px){.statement-copy h2{font-size:clamp(48px,13.5vw,70px)}}
 @media(max-width:700px){.top-actions .docs-link{display:inline-flex;font-size:9px}}
 .privacy-top{justify-content:flex-end}
-@media(max-width:700px){footer{display:flex;align-items:flex-start;flex-direction:column;gap:20px}.footer-brand p,.footer-credit{order:initial;width:auto}.footer-credit,.footer-year{align-self:flex-start}}
+@media(max-width:700px){footer{display:flex;align-items:flex-start;flex-direction:column;gap:20px}.footer-brand p{order:initial;width:auto}.footer-credit{order:3;align-self:center;width:100%;text-align:center}.footer-year{align-self:flex-start}}
 
 /* Consistent Lucide icon language */
 .lucide{width:17px;height:17px;stroke-width:1.8;flex:0 0 auto}

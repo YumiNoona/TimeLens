@@ -101,7 +101,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Setup.exe`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, website, and installer are versioned `4.0.0`. Create the matching `v4.0.0` tag only after the reviewed changes are ready; after GitHub publishes the release, Vercel and installed apps discover it automatically.
+The production desktop, dashboard, website, and installer are released as [`v4.0.0`](https://github.com/YumiNoona/TimeLens/releases/tag/v4.0.0). Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -136,3 +136,5 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 - Vercel static hosting and serverless release proxy
 - Inno Setup per-user installer
 - GitHub Actions release automation
+
+<p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>

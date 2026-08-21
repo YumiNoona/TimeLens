@@ -85,7 +85,7 @@ Set these Vercel environment variables:
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
 | `GITHUB_DOWNLOAD_ASSET` | `TimeLens-Setup.exe` |
-| `GITHUB_RELEASE_MAJOR` | `4` for the production-v4 update channel |
+| `GITHUB_RELEASE_MAJOR` | `4` for the production-v4 update channel; stale lower values are safely raised to the current production minimum |
 
 All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 

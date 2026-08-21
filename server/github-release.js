@@ -1,4 +1,5 @@
 const githubApi = 'https://api.github.com';
+const minimumReleaseMajor = 4;
 
 function repository() {
   return process.env.GITHUB_REPOSITORY || 'YumiNoona/TimeLens';
@@ -38,8 +39,9 @@ export function installerAssetName() {
 }
 
 export async function getLatestRelease(assetName = applicationAssetName()) {
-  const releaseMajor = String(process.env.GITHUB_RELEASE_MAJOR || '4');
-  if (!/^\d+$/.test(releaseMajor)) throw new Error('GITHUB_RELEASE_MAJOR must be a number.');
+  const configuredMajor = String(process.env.GITHUB_RELEASE_MAJOR || minimumReleaseMajor);
+  if (!/^\d+$/.test(configuredMajor)) throw new Error('GITHUB_RELEASE_MAJOR must be a number.');
+  const releaseMajor = String(Math.max(Number(configuredMajor), minimumReleaseMajor));
 
   const response = await githubFetch(`${githubApi}/repos/${repository()}/releases?per_page=50`);
   const releases = await response.json();

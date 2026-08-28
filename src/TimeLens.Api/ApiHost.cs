@@ -90,7 +90,11 @@ public static class ApiHost
 
         var analytics = new AnalyticsService(dbPath);
 
-        var builder = WebApplication.CreateSlimBuilder();
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+        {
+            // Shortcuts and Windows startup need not use the installation folder as CWD.
+            ContentRootPath = AppContext.BaseDirectory
+        });
         builder.WebHost.UseUrls($"http://127.0.0.1:{DefaultPort}");
 
         builder.Services.ConfigureHttpJsonOptions(o =>
@@ -153,7 +157,7 @@ public static class ApiHost
             catch (Exception ex)
             {
                 System.IO.File.AppendAllText(
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens", "api_error.log"),
+                    Path.Combine(Path.GetDirectoryName(dbPath)!, "api_error.log"),
                     $"{DateTime.UtcNow:o} {ctx.Request.Method} {ctx.Request.Path}: {ex}{Environment.NewLine}");
                 ctx.Response.StatusCode = 500;
                 ctx.Response.ContentType = "application/json";
@@ -1352,7 +1356,7 @@ public static class ApiHost
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens", "query_error.log"), $"{DateTime.UtcNow:o} summary: {ex}{Environment.NewLine}");
+                System.IO.File.AppendAllText(Path.Combine(Path.GetDirectoryName(dbPath)!, "query_error.log"), $"{DateTime.UtcNow:o} summary: {ex}{Environment.NewLine}");
                 ctx.Response.StatusCode = 500;
                 ctx.Response.ContentType = "application/json";
                 await ctx.Response.WriteAsync("{\"error\":\"" + ex.Message.Replace("\"", "'") + "\"}");

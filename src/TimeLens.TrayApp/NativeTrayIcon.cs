@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
 namespace TimeLens.TrayApp;
@@ -11,6 +13,10 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint WM_DESTROY = 0x0002;
     private const uint WM_RBUTTONUP = 0x0205;
     private const uint WM_LBUTTONUP = 0x0202;
+    private const uint WM_CONTEXTMENU = 0x007B;
+    private const uint WM_TIMER = 0x0113;
+    private const uint NIN_SELECT = WM_USER;
+    private const uint NIN_KEYSELECT = WM_USER + 1;
 
     private const uint NIM_ADD = 0;
     private const uint NIM_MODIFY = 1;
@@ -26,7 +32,7 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint NIS_HIDDEN = 8;
 
     private const uint WS_EX_TOOLWINDOW = 0x00000080;
-    private static readonly IntPtr HWND_MESSAGE = new(-3);
+    private static readonly UIntPtr TrayRetryTimerId = new(1);
 
     private const uint MF_STRING = 0;
     private const uint TPM_LEFTALIGN = 0;
@@ -47,6 +53,15 @@ public sealed class NativeTrayIcon : IDisposable
     private WndProc? _wndProc;
     private bool _iconAdded;
     private bool _disposed;
+    private ExceptionDispatchInfo? _callbackError;
+    private readonly string _iconPath;
+
+    public NativeTrayIcon(string? iconPath = null)
+    {
+        _iconPath = iconPath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TimeLens", "runtime", "TimeLens.ico");
+    }
 
     public event Action? OpenDashboardRequested;
     public event Action? InstallExtensionRequested;
@@ -166,8 +181,14 @@ public sealed class NativeTrayIcon : IDisposable
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetModuleHandleW(string? lpModuleName);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetMessageW(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern UIntPtr SetTimer(IntPtr hWnd, UIntPtr id, uint interval, IntPtr timerProc);
+
     [DllImport("user32.dll")]
-    private static extern bool GetMessageW(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+    private static extern bool KillTimer(IntPtr hWnd, UIntPtr id);
 
     [DllImport("user32.dll")]
     private static extern bool TranslateMessage(ref MSG lpMsg);
@@ -199,16 +220,15 @@ public sealed class NativeTrayIcon : IDisposable
         if (atom == 0)
             throw new InvalidOperationException("Failed to register window class.");
 
+        // A message-only window never receives the TaskbarCreated broadcast. Use an
+        // invisible top-level tool window so Explorer restarts restore our icon.
         _hWnd = CreateWindowExW(
             WS_EX_TOOLWINDOW, WindowClass, "TimeLens",
-            0, 0, 0, 0, 0, HWND_MESSAGE, IntPtr.Zero, hInstance, IntPtr.Zero);
+            0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
 
-        var iconPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TimeLens", "runtime", "TimeLens.ico");
-        _hIcon = LoadImageFromFile(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
+        _hIcon = LoadImageFromFile(IntPtr.Zero, _iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
         if (_hIcon == IntPtr.Zero)
             _hIcon = LoadImageW(IntPtr.Zero, new IntPtr(32512), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE); // IDI_APPLICATION
 
@@ -225,11 +245,15 @@ public sealed class NativeTrayIcon : IDisposable
         PostMessageW(_hWnd, WM_STARTUP, IntPtr.Zero, IntPtr.Zero);
 
         // Message loop
-        while (GetMessageW(out var msg, IntPtr.Zero, 0, 0))
+        int result;
+        while ((result = GetMessageW(out var msg, IntPtr.Zero, 0, 0)) > 0)
         {
             TranslateMessage(ref msg);
             DispatchMessageW(ref msg);
         }
+        _callbackError?.Throw();
+        if (result == -1)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "The tray message loop failed.");
     }
 
     public void ShowBalloon(string title, string text, bool warning = false)
@@ -260,8 +284,15 @@ public sealed class NativeTrayIcon : IDisposable
             szTip = "TimeLens",
         };
         if (!Shell_NotifyIconW(NIM_ADD, ref nid))
-            throw new InvalidOperationException("Failed to create tray icon.");
+        {
+            // Explorer may not be ready yet during sign-in. Keep the message pump
+            // alive and retry without blocking startup or throwing across WndProc.
+            if (SetTimer(_hWnd, TrayRetryTimerId, 2000, IntPtr.Zero) == UIntPtr.Zero)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not schedule tray icon recovery.");
+            return;
+        }
         _iconAdded = true;
+        KillTimer(_hWnd, TrayRetryTimerId);
 
         nid.uVersion = NOTIFYICON_VERSION_4;
         Shell_NotifyIconW(NIM_SETVERSION, ref nid);
@@ -282,8 +313,25 @@ public sealed class NativeTrayIcon : IDisposable
 
     private IntPtr WindowProcedure(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        try
+        {
+            return HandleMessage(hWnd, msg, wParam, lParam);
+        }
+        catch (Exception ex)
+        {
+            // Managed exceptions must not unwind through the native callback. Rethrow
+            // after the loop so Program can write the crash log and show an error.
+            _callbackError ??= ExceptionDispatchInfo.Capture(ex);
+            PostQuitMessage(1);
+            return IntPtr.Zero;
+        }
+    }
+
+    private IntPtr HandleMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
         if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
         {
+            _iconAdded = false;
             AddTrayIcon();
             return IntPtr.Zero;
         }
@@ -302,9 +350,12 @@ public sealed class NativeTrayIcon : IDisposable
                     switch (notifyMsg)
                     {
                         case WM_RBUTTONUP:
+                        case WM_CONTEXTMENU:
                             ShowContextMenu();
                             break;
-                        case WM_LBUTTONUP:
+                        case WM_LBUTTONUP when version4Id == 0:
+                        case NIN_SELECT:
+                        case NIN_KEYSELECT:
                             OpenDashboardRequested?.Invoke();
                             break;
                     }
@@ -321,7 +372,12 @@ public sealed class NativeTrayIcon : IDisposable
                     ExitRequested?.Invoke();
                 return IntPtr.Zero;
 
+            case WM_TIMER when unchecked((ulong)wParam.ToInt64()) == TrayRetryTimerId.ToUInt64():
+                if (!_iconAdded) AddTrayIcon();
+                return IntPtr.Zero;
+
             case WM_DESTROY:
+                KillTimer(hWnd, TrayRetryTimerId);
                 RemoveTrayIcon();
                 PostQuitMessage(0);
                 return IntPtr.Zero;
@@ -353,7 +409,7 @@ public sealed class NativeTrayIcon : IDisposable
 
     private const uint WM_NULL = 0x0000;
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     public void Dispose()

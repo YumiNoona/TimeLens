@@ -1,10 +1,11 @@
 using Microsoft.Data.Sqlite;
+using TimeLens.Api;
 
 namespace TimeLens.TrayApp.Services;
 
 public static class DatabaseInitializer
 {
-    public static void Initialize(string dbPath, int retentionDays = 90)
+    public static AppSettings Initialize(string dbPath)
     {
         using var conn = new SqliteConnection($"Data Source={dbPath}");
         conn.Open();
@@ -78,7 +79,6 @@ public static class DatabaseInitializer
                 target TEXT NOT NULL DEFAULT 'exe',
                 priority INTEGER NOT NULL DEFAULT 0
             );
-            CREATE INDEX IF NOT EXISTS idx_custom_rules_priority ON custom_rules(priority);
 
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -143,6 +143,10 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "custom_rules", "rule_type", "TEXT NOT NULL DEFAULT 'substring'");
         MigrateAddColumn(conn, "custom_rules", "target", "TEXT NOT NULL DEFAULT 'exe'");
         MigrateAddColumn(conn, "custom_rules", "priority", "INTEGER NOT NULL DEFAULT 0");
+        // Older installations do not have priority until the migration above runs.
+        using var rulesIndex = conn.CreateCommand();
+        rulesIndex.CommandText = "CREATE INDEX IF NOT EXISTS idx_custom_rules_priority ON custom_rules(priority)";
+        rulesIndex.ExecuteNonQuery();
         // Migrate old primary-key-based rows to new auto-increment schema
         using var migRules = conn.CreateCommand();
         migRules.CommandText = "UPDATE custom_rules SET rule_type='substring', target='exe' WHERE rule_type IS NULL";
@@ -220,8 +224,10 @@ public static class DatabaseInitializer
             """;
         backfill2.ExecuteNonQuery();
 
-        // Retention: purge rows older than 90 days
-        var cutoff = DateTime.UtcNow.AddDays(-retentionDays).ToString("o");
+        // Create/migrate the schema before reading settings. A fresh installation has
+        // no settings table yet. Load the saved retention before deleting any history.
+        var settings = new SettingsService(dbPath).Load();
+        var cutoff = DateTime.UtcNow.AddDays(-settings.RetentionDays).ToString("o");
         using var purge = conn.CreateCommand();
         purge.CommandText = $"""
             DELETE FROM app_events WHERE start_time < $cutoff;
@@ -246,6 +252,8 @@ public static class DatabaseInitializer
             v1.CommandText = "PRAGMA incremental_vacuum;";
             v1.ExecuteNonQuery();
         }
+
+        return settings;
     }
 
     private static void MigrateAddColumn(SqliteConnection conn, string table, string column, string def)
@@ -256,7 +264,8 @@ public static class DatabaseInitializer
             cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {def};";
             cmd.ExecuteNonQuery();
         }
-        catch
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 &&
+            ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
         {
             // Column already exists — ignore
         }

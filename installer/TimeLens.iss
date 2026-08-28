@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "4.0.0"
+  #define AppVersion "4.0.1"
 #endif
 
 #define AppName "TimeLens"
@@ -47,6 +47,9 @@ VersionInfoProductVersion={#AppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Messages]
+FinishedLabel=Setup has installed [name] on your computer.%n%nTimeLens runs in the notification area beside the Windows clock. If its icon is hidden, open the ^ menu to find it. Right-click the icon and choose Open Dashboard.
 
 [Tasks]
 Name: "startup"; Description: "Start TimeLens automatically when I sign in"; GroupDescription: "Startup"; Flags: unchecked

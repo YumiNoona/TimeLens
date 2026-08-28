@@ -17,41 +17,57 @@ internal static class Program
     private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        // The release smoke test runs the real startup with isolated data, no setup
+        // prompts, and no registry changes. Normal launches always use LocalAppData.
+        var smokeTest = args.Length == 2 && args[0] == "--smoke-test";
+        var dataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
         using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
         if (!isFirstInstance)
             return;
 
         try
         {
+            if (smokeTest)
+            {
+                dataDir = Path.GetFullPath(args[1]);
+                if (Directory.Exists(dataDir) || File.Exists(dataDir))
+                    throw new InvalidOperationException("Smoke tests require a new, empty data directory.");
+            }
             // Native AOT cannot load SQLite directly from an assembly resource. Extract the
             // embedded runtime payload on first launch so TimeLens.exe remains copy-and-run.
-            var sqlitePath = EnsureRuntimeFile("runtime/e_sqlite3.dll", "e_sqlite3.dll");
-            var categoriesPath = EnsureRuntimeFile("runtime/categories.csv", "categories.csv");
-            EnsureRuntimeFile("runtime/TimeLens.ico", "TimeLens.ico");
+            var sqlitePath = EnsureRuntimeFile(dataDir, "runtime/e_sqlite3.dll", "e_sqlite3.dll");
+            var categoriesPath = EnsureRuntimeFile(dataDir, "runtime/categories.csv", "categories.csv");
+            var iconPath = EnsureRuntimeFile(dataDir, "runtime/TimeLens.ico", "TimeLens.ico");
             NativeLibrary.Load(sqlitePath);
 
-            MainImpl(categoriesPath);
+            MainImpl(dataDir, categoriesPath, iconPath, smokeTest);
         }
         catch (Exception ex)
         {
-            var dataDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TimeLens");
-            Directory.CreateDirectory(dataDir);
-            File.AppendAllText(
-                Path.Combine(dataDir, "crash.log"),
-                $"{DateTime.UtcNow:o} Fatal: {ex}{Environment.NewLine}");
+            var logPath = Path.Combine(dataDir, "crash.log");
+            var logWritten = false;
+            try
+            {
+                Directory.CreateDirectory(dataDir);
+                File.AppendAllText(logPath,
+                    $"{DateTime.UtcNow:o} Fatal: {ex}{Environment.NewLine}");
+                logWritten = true;
+            }
+            catch { /* A logging failure must not hide the original startup error. */ }
+            if (!smokeTest) MessageBox(IntPtr.Zero,
+                $"TimeLens could not start.\n\n{ex.Message}\n\n" +
+                (logWritten ? $"Diagnostic details: {logPath}" : "The diagnostic log could not be written."),
+                "TimeLens startup error", 0x10);
             Environment.Exit(1);
         }
     }
 
-    private static string EnsureRuntimeFile(string resourceName, string fileName)
+    private static string EnsureRuntimeFile(string dataDir, string resourceName, string fileName)
     {
-        var runtimeDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TimeLens", "runtime");
+        var runtimeDir = Path.Combine(dataDir, "runtime");
         Directory.CreateDirectory(runtimeDir);
 
         var targetPath = Path.Combine(runtimeDir, fileName);
@@ -76,27 +92,21 @@ internal static class Program
         return targetPath;
     }
 
-    private static void MainImpl(string builtinCsvPath)
+    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest)
     {
-        var dbPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TimeLens", "activity.db");
+        var dbPath = Path.Combine(dataDir, "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
         var settingsSvc = new SettingsService(dbPath);
-        var settings = settingsSvc.Load();
+        var settings = DatabaseInitializer.Initialize(dbPath);
         RuntimeConfig.Settings = settings;
         LiveStatusStore.Settings = settings;
-
-        DatabaseInitializer.Initialize(dbPath, settings.RetentionDays);
 
         var writer = new EventWriter(dbPath);
         var classifier = new CategoryClassifier();
 
         // Load community built-in rules first (lowest priority, overridden by user rules)
-        var userCsvPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TimeLens", "categories.csv");
+        var userCsvPath = Path.Combine(dataDir, "categories.csv");
         var csvPath = File.Exists(userCsvPath) ? userCsvPath : builtinCsvPath;
         classifier.LoadBuiltins(csvPath);
 
@@ -174,9 +184,7 @@ internal static class Program
             try
             {
                 System.IO.File.AppendAllText(
-                    Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "TimeLens", "crash.log"),
+                    Path.Combine(dataDir, "crash.log"),
                     $"{DateTime.UtcNow:o} {message}{Environment.NewLine}");
             }
             catch { }
@@ -514,8 +522,9 @@ internal static class Program
             firstRunDone = frCmd.ExecuteScalar() is not null;
         }
 
-        if (!firstRunDone)
+        void CompleteFirstRun()
         {
+            if (firstRunDone || smokeTest) return;
             var result = MessageBox(IntPtr.Zero,
                 "Start TimeLens automatically when you log in?",
                 "TimeLens Setup",
@@ -614,7 +623,7 @@ internal static class Program
 
         int consecutiveActiveMinutes = 0;
 
-        using var trayDispose = tray = new NativeTrayIcon();
+        using var trayDispose = tray = new NativeTrayIcon(iconPath);
         var executablePath = Environment.ProcessPath;
         var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)
             ? File.GetLastWriteTimeUtc(executablePath).Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture)
@@ -623,6 +632,8 @@ internal static class Program
         if (settings.TrackAudio) audioMonitor.SessionAudioChanged += OnAudioChanged;
         tray.StartupRequested += () =>
         {
+            // Show the tray icon before any modal first-run setup dialog.
+            CompleteFirstRun();
             winWatcher.Start();
             sessionWatcher.Start();
             if (settings.TrackInput) inputMonitor.Start();
@@ -632,6 +643,7 @@ internal static class Program
             {
                 try
                 {
+                    if (smokeTest) return;
                     await System.Threading.Tasks.Task.Delay(5_000, apiCts.Token);
                     var update = await updateService.CheckAsync(apiCts.Token);
                     if (update.UpdateAvailable && update.LatestVersion is not null)

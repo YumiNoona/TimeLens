@@ -86,10 +86,14 @@ if (-not $SkipDashboard) {
 }
 
 # --- Publish .NET ---
+& $header "=== Checking database startup regressions ==="
+dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release
+if ($LASTEXITCODE -ne 0) { throw "Startup regression checks failed" }
+
 & $header "=== Publishing TimeLens (Native AOT, $Config) ==="
 try {
     dotnet publish "$trayAppDir" -c $Config -r win-x64 --self-contained true `
-        -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
+        -p:PublishTrimmed=true
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish exited with code $LASTEXITCODE" }
     & $ok "Native AOT publish complete"
 } catch {
@@ -105,6 +109,7 @@ if (-not $SkipInstaller) {
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+        "$root\.cache\InnoSetup\ISCC.exe"
     ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
     $innoCompiler = $innoCandidates | Select-Object -First 1
     if (-not $innoCompiler) {
@@ -117,7 +122,6 @@ if (-not $SkipInstaller) {
 
 # --- Deploy to root (double-click ready) ---
 & $header "=== Deploying to root ==="
-if (Test-Path "$root\dashboard") { Remove-Item -Recurse -Force "$root\dashboard" }
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 & $ok "Standalone root TimeLens.exe ready"
 
@@ -153,7 +157,7 @@ if (-not $SkipInstaller) {
 if ($Launch) {
     & $header "=== Launching ==="
     if (Test-Path $rootExePath) {
-        Start-Process -FilePath $rootExePath -WorkingDirectory $root
+        Start-Process -FilePath $rootExePath -WorkingDirectory $root -WindowStyle Hidden
         & $ok "TimeLens started"
         Write-Host "  Dashboard: http://127.0.0.1:47821/" -ForegroundColor Cyan
     } else {

@@ -36,10 +36,13 @@ jobs:
           npm ci
           npm run build
 
+      - name: Check fresh-install and database migration regressions
+        run: dotnet run --project tests/TimeLens.Startup.Tests -c Release
+
       - name: Publish TrayApp (Native AOT)
         run: |
           dotnet publish src\TimeLens.TrayApp -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true -p:PublishTrimmed=true -p:EnableCompressionInSingleFile=true
+            -p:PublishTrimmed=true
 
       - name: Verify release version metadata
         shell: pwsh

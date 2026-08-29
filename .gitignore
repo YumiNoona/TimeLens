@@ -63,6 +63,7 @@ Thumbs.db
 # Build artifacts (root)
 /TimeLens-v*.zip
 /TimeLens-portable-*.zip
+/TimeLens-*-Extension.zip
 /SHA256SUMS.txt
 /publish-test/
 /.tmp-*/

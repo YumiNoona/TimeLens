@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "TimeLens Tracker",
+  "version": "4.2.0",
+  "description": "Tracks activity and provides Notify or Strict website focus modes for TimeLens",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_title": "Open TimeLens Dashboard"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}

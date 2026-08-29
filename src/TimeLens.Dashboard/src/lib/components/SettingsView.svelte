@@ -101,10 +101,6 @@
   const layoutTargets = [
     { id: 'today', label: 'Today' },
     { id: 'history', label: 'History' },
-    { id: 'browser', label: 'Browser' },
-    { id: 'block', label: 'Block' },
-    { id: 'rules', label: 'Rules' },
-    { id: 'settings', label: 'Settings' },
   ];
 
   function fmtSize(bytes: number): string {
@@ -308,20 +304,6 @@
 </script>
 
 <div class="settings">
-  <div class="settings-status">
-    <div class="status-copy">
-      <span class="status-icon"><i class="ti ti-device-desktop-cog" aria-hidden="true"></i></span>
-      <div>
-        <strong>Workspace preferences</strong>
-        <span>Changes are saved locally and apply to this device.</span>
-      </div>
-    </div>
-    <div class="status-side">
-      {#if saveMessage}<span class:error={saveMessage !== 'Saved'}>{saveMessage}</span>{/if}
-      <span class="privacy-badge"><i class="ti ti-lock" aria-hidden="true"></i> Local only</span>
-    </div>
-  </div>
-
   {#if !apiReachable}
     <div class="warning" role="alert"><i class="ti ti-plug-off" aria-hidden="true"></i> Tray app is unavailable. Changes will not persist until it reconnects.</div>
   {/if}
@@ -351,7 +333,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card compact-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-layout-dashboard" aria-hidden="true"></i></span>
       <div><h2>General</h2><p>Choose how TimeLens opens and feels.</p></div>
@@ -378,7 +360,7 @@
     </label>
   </section>
 
-  <section class="card">
+  <section class="card compact-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-activity-heartbeat" aria-hidden="true"></i></span>
       <div><h2>Tracking</h2><p>Control which signals contribute to activity.</p></div>
@@ -462,7 +444,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card compact-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-bell-ringing" aria-hidden="true"></i></span>
       <div><h2>Focus & reminders</h2><p>Support healthy sessions and distraction controls.</p></div>
@@ -477,14 +459,6 @@
         {#each [25, 30, 45, 50, 60, 90] as minutes}<option value={minutes}>{minutes} min</option>{/each}
       </select>
     </div>
-    <label class="setting-row">
-      <div class="setting-info"><span class="setting-label">Focus mode</span><span class="setting-desc">Enforce the targets configured in Block</span></div>
-      {#if blockProtectionEnabled && focusMode}
-        <span class="protected-value"><i class="ti ti-lock" aria-hidden="true"></i> On · protected</span>
-      {:else}
-        <input type="checkbox" class="toggle" checked={focusMode} onchange={(e) => setToggle('focusMode', e, value => focusMode = value)} />
-      {/if}
-    </label>
   </section>
 
   <section class="card card-wide protection-card">
@@ -494,17 +468,6 @@
       <span class="protection-state" class:enabled={blockProtectionEnabled}><i class="ti {blockProtectionEnabled ? 'ti-shield-lock' : 'ti-shield-off'}" aria-hidden="true"></i>{blockProtectionEnabled ? 'Protected' : 'Optional'}</span>
     </div>
     <div class="protection-body">
-      <div class="protection-explainer">
-        <strong>{blockProtectionEnabled ? 'Your blocklist is protected' : 'Prevent casual bypasses on a shared PC'}</strong>
-        <span>{blockProtectionEnabled
-          ? 'Turning off Focus, weakening the action, or removing an active target now requires your password. Successful unlocks last five minutes.'
-          : 'The password is hashed locally and never shown or sent outside this computer. Use at least 6 characters.'}</span>
-        <div class="protection-points">
-          <span><i class="ti ti-check"></i> Salted PBKDF2 hash</span>
-          <span><i class="ti ti-check"></i> Attempt throttling</span>
-          <span><i class="ti ti-check"></i> Server-enforced changes</span>
-        </div>
-      </div>
       <div class="protection-form">
         {#if blockProtectionEnabled}
           <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
@@ -604,34 +567,24 @@
     </div>
   </section>
 
-  <section class="about card-wide">
-    <i class="ti ti-shield-lock" aria-hidden="true"></i>
-    <div><strong>Private by design</strong><span>TimeLens stores activity locally in SQLite and serves this dashboard only on 127.0.0.1.</span></div>
-    <span class="version">TimeLens {__APP_VERSION__} · Production</span>
-  </section>
 </div>
 
 <style>
-  .settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-  .card-wide, .settings-status, .warning, .about { grid-column: 1 / -1; }
-  .settings-status { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; background: linear-gradient(110deg, color-mix(in srgb, var(--md-primary) 9%, var(--clr-bg-sec)), var(--clr-bg-sec) 54%); border: 1px solid color-mix(in srgb, var(--md-primary) 18%, var(--clr-border)); border-radius: var(--shape-lg); }
-  .status-copy, .status-side, .card-header, .button-group, .goal-fields, .about { display: flex; align-items: center; }
-  .status-copy { gap: 12px; }
-  .status-copy div, .card-header div, .about div { display: flex; flex-direction: column; gap: 2px; }
-  .status-copy strong { font-size: 14px; color: var(--clr-text-pri); }
-  .status-copy span, .status-side { font-size: 12px; color: var(--clr-text-sec); }
-  .status-icon, .section-icon, .goal-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 20%, transparent); }
-  .status-icon { width: 38px; height: 38px; border-radius: 11px; font-size: 18px; }
-  .status-side { gap: 10px; }
-  .status-side .error { color: var(--md-error); }
-  .privacy-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: var(--shape-full); background: var(--clr-bg-ter); color: var(--clr-text-sec); }
+  .settings { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+  .card, .card-wide, .warning { grid-column: 1; }
+  .card-header, .button-group, .goal-fields { display: flex; align-items: center; }
+  .card-header div { display: flex; flex-direction: column; gap: 2px; }
+  .section-icon, .goal-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 20%, transparent); }
   .warning { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: var(--md-error); background: color-mix(in srgb, var(--md-error) 10%, transparent); border: 1px solid color-mix(in srgb, var(--md-error) 22%, transparent); border-radius: var(--shape-md); font-size: 12px; }
   .card { background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-lg); overflow: hidden; padding: 0; }
-  .card-header { gap: 10px; padding: 16px 18px 12px; }
+  .compact-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compact-card .card-header { grid-column: 1 / -1; }
+  .compact-card .setting-row:nth-child(odd) { border-left: 1px solid var(--clr-border); }
+  .card-header { gap: 10px; padding: 13px 16px; }
   .section-icon { width: 32px; height: 32px; border-radius: 9px; font-size: 16px; }
   .card-header h2 { margin: 0; font-size: var(--type-section-title); color: var(--clr-text-pri); }
-  .card-header p { margin: 0; font-size: var(--type-section-subtitle); line-height: 1.4; color: var(--clr-text-sec); }
-  .setting-row { min-height: 59px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--clr-border); }
+  .card-header p { display: none; }
+  .setting-row { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--clr-border); }
   .update-row { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 18px 16px; border-top: 1px solid var(--clr-border); }
   .update-copy { min-width: 0; display: flex; align-items: center; gap: 10px; color: var(--clr-text-sec); font-size: 11px; }
   .update-copy .error { color: var(--md-error); }
@@ -639,7 +592,6 @@
   .update-badge.available { color: var(--md-primary); background: var(--md-primary-cont); }
   .update-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
   .setting-row.muted { opacity: .48; }
-  .protected-value { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
   .setting-desc { color: var(--clr-text-sec); font-size: 11px; line-height: 1.35; }
@@ -681,24 +633,14 @@
   .goal-form > label { display: block; margin-bottom: 8px; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
   .goal-fields { gap: 8px; }
   .text-input { flex: 1; min-width: 180px; padding: 0 10px; font-family: var(--font-mono); }
-  .about { min-height: 62px; gap: 12px; padding: 12px 16px; border: 1px solid var(--clr-border); border-radius: var(--shape-lg); background: color-mix(in srgb, var(--clr-bg-sec) 76%, transparent); color: var(--md-primary); }
-  .about strong { color: var(--clr-text-pri); font-size: 13px; }
-  .about span { color: var(--clr-text-sec); font-size: 11px; }
-  .about .version { margin-left: auto; white-space: nowrap; color: var(--clr-text-ter); font-family: var(--font-mono); }
   .protection-header { border-bottom: 1px solid var(--clr-border); }
   .protection-header > div { flex: 1; }
   .protection-state { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
   .protection-state.enabled { color: var(--md-primary); background: var(--md-primary-cont); }
-  .protection-body { display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr); gap: 20px; padding: 18px; }
-  .protection-explainer { display: flex; flex-direction: column; gap: 7px; padding: 16px; background: linear-gradient(145deg, color-mix(in srgb, var(--md-primary) 8%, var(--clr-bg-ter)), var(--clr-bg-ter)); border: 1px solid color-mix(in srgb, var(--md-primary) 14%, var(--clr-border)); border-radius: var(--shape-md); }
-  .protection-explainer strong { color: var(--clr-text-pri); font-size: 13px; }
-  .protection-explainer > span { color: var(--clr-text-sec); font-size: 11px; line-height: 1.55; }
-  .protection-points { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: auto; padding-top: 8px; }
-  .protection-points span { display: inline-flex; align-items: center; gap: 4px; color: var(--clr-text-sec); font-size: 10px; }
-  .protection-points i { color: var(--md-primary); }
-  .protection-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+  .protection-body { padding: 14px 16px 16px; }
+  .protection-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
   .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
-  .protection-form label:first-child:nth-last-child(3) { grid-column: 1 / -1; }
+  .protection-form label:first-child:nth-last-child(3) { grid-column: auto; }
   .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
   .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
   .protection-feedback { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 8px 9px; border-radius: var(--shape-sm); font-size: 10px; }
@@ -708,18 +650,18 @@
   .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .danger-btn:hover { background: var(--md-err-cont); }
   @media (max-width: 960px) {
-    .settings { grid-template-columns: 1fr; }
-    .card-wide, .settings-status, .warning, .about { grid-column: 1; }
+    .compact-card { grid-template-columns: 1fr; }
+    .compact-card .setting-row:nth-child(odd) { border-left: 0; }
     .settings-columns { grid-template-columns: 1fr; }
     .settings-columns .setting-row:nth-child(even) { border-left: 0; }
     .theme-grid { grid-template-columns: repeat(2, 1fr); }
-    .protection-body { grid-template-columns: 1fr; }
+    .protection-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 620px) {
     .layout-reset-row { align-items: stretch; flex-direction: column; }
     .layout-reset-row label { min-width: 0; }
     .layout-reset-row .button-group { flex-wrap: wrap; }
-    .settings-status { align-items: flex-start; flex-direction: column; }
+    .protection-form { grid-template-columns: 1fr; }
     .setting-row.export-row, .goal-fields { align-items: stretch; flex-direction: column; }
     .theme-grid { grid-template-columns: 1fr; }
     .select, .select.wide { min-width: 112px; }

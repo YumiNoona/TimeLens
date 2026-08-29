@@ -35,10 +35,12 @@ public static class TimeLensBlockModeProbe {
 }
 
 function Save-BlockSettings([string]$mode) {
+    $blocklist = ConvertTo-Json -InputObject @(@{ i = 'timelensblockprobe.exe'; m = 'u'; a = $mode }) -Compress
     $payload = @{
         focusMode = $true
-        focusBlocklist = '[{"i":"timelensblockprobe.exe","m":"u"}]'
-        blockAction = $mode
+        focusBlocklist = $blocklist
+        # Keep a different legacy default so this test proves the per-target mode wins.
+        blockAction = 'hide'
     } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod "$api/api/settings" -Method Post -ContentType 'application/json' -Body $payload -TimeoutSec 5
 }

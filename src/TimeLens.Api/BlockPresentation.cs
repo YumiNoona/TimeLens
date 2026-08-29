@@ -31,6 +31,27 @@ public static class BlockEnforcement
     }
 }
 
+public static class BlockTargetAction
+{
+    public static string? Normalize(string identifier, string? action)
+    {
+        var normalized = action?.Trim().ToLowerInvariant();
+        if (identifier.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return normalized is "notify" or "hide" or "kill" or "strict" ? normalized : null;
+        return normalized is "notify" or "strict" ? normalized : null;
+    }
+
+    public static string Resolve(string identifier, string? action, string? fallback)
+    {
+        var explicitAction = Normalize(identifier, action);
+        if (explicitAction is not null) return explicitAction;
+        var legacy = BlockActionPlan.From(fallback).Id;
+        return identifier.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? legacy
+            : legacy == "notify" ? "notify" : "strict";
+    }
+}
+
 public static class BlockNotification
 {
     public const string DefaultTitle = "Focus Mode";

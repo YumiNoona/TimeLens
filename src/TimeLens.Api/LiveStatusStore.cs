@@ -9,9 +9,11 @@ public static class LiveStatusStore
     public static bool AudioActive { get; set; }
     public static string SystemState { get; set; } = "active";
     public static bool PendingIdleReturn { get; set; }
-    public static string? PendingFocusBlock { get; set; }
+    public static PendingBrowserBlockEvent? PendingBrowserBlock { get; set; }
     public static DateTime LastExtensionHeartbeat { get; set; } = DateTime.MinValue;
     public static string LastExtensionBrowser { get; set; } = "unknown";
     public static string LastExtensionVersion { get; set; } = "unknown";
     public static AppSettings Settings { get; set; } = new();
 }
+
+public sealed record PendingBrowserBlockEvent(string Target, string Action);

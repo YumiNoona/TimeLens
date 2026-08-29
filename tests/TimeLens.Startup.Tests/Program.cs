@@ -54,6 +54,14 @@ internal static class Program
                 Check(BlockNotification.NormalizeTitle("  Deep   work\r\nnow  ") == "Deep work now", "Block title whitespace was not normalized.");
                 Check(BlockNotification.NormalizeMessage("") == BlockNotification.DefaultMessage, "Empty block message did not restore the default.");
             });
+            Run("Per-target app and website actions remain distinct", () =>
+            {
+                Check(BlockTargetAction.Resolve("discord.exe", "kill", "hide") == "kill", "Explicit app action did not override the legacy default.");
+                Check(BlockTargetAction.Resolve("youtube.com", "notify", "strict") == "notify", "Website Notify was not preserved.");
+                Check(BlockTargetAction.Normalize("youtube.com", "hide") is null, "A desktop-only mode was accepted for a website.");
+                Check(BlockTargetAction.Resolve("reddit.com", "hide", "hide") == "strict", "Legacy desktop actions were not safely mapped to website Strict.");
+                Check(BlockTargetAction.Resolve("editor.exe", null, "hide") == "hide", "Legacy app action was not retained.");
+            });
             Run("Empty database from a failed first launch recovers", () =>
             {
                 var path = Path.Combine(directory, "empty.db");

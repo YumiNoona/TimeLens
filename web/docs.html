@@ -69,7 +69,7 @@
             <section><p class="mini">OFFICIAL ADD-ON</p><h3>Install from Firefox Add-ons</h3><ol><li>Right-click the TimeLens tray icon.</li><li>Choose <em>Install Browser Extension</em>.</li><li>Select <em>Add to Firefox</em> on the official listing.</li><li>Keep the TimeLens desktop app running while you browse.</li></ol><p><a href="https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/" target="_blank" rel="noopener noreferrer">Open the TimeLens Tracker listing →</a></p></section>
             <section><p class="mini">CONNECTION</p><h3>Desktop + browser</h3><ol><li>Launch TimeLens.exe first.</li><li>Install the published browser extension.</li><li>Open or reload a browser tab.</li><li>Check the Browser tab in the dashboard for domain activity.</li></ol></section>
           </div>
-          <div class="note"><strong>No manual ZIP installation.</strong><p>The legacy unpacked-extension setup page has been removed. The tray menu and website now open the approved extension listing directly.</p></div>
+          <div class="note"><strong>Use the signed add-on when possible.</strong><p>The Firefox listing is the normal install path. Versioned Chrome and Firefox packages are also attached to each GitHub release for review and developer installation.</p></div>
         </article>
 
         <article id="today" data-search="today active time focus score keystrokes clicks idle top apps categories cards drag layout">
@@ -107,12 +107,12 @@
           <header><span>09</span><div><p>CONTROL</p><h2>Block & Focus Mode</h2></div></header>
           <p>Add an exact executable name such as <code>discord.exe</code> or a domain such as <code>youtube.com</code>, choose how long it should remain blocked, and enable Focus Mode to enforce the list.</p>
           <div class="mode-grid">
-            <div><span>01</span><i data-lucide="bell-ring" aria-hidden="true"></i><b>Notify</b><p>Shows a reminder when the target opens. It does not close or hide anything.</p></div>
-            <div><span>02</span><i data-lucide="eye-off" aria-hidden="true"></i><b>Hide</b><p>Automatically minimizes a matching application window.</p></div>
-            <div><span>03</span><i data-lucide="octagon-x" aria-hidden="true"></i><b>Kill</b><p>Terminates a matching process immediately.</p></div>
-            <div><span>04</span><i data-lucide="shield-check" aria-hidden="true"></i><b>Strict</b><p>Combines termination, minimization, and repeated checks every five seconds.</p></div>
+            <div><span>01</span><i data-lucide="bell-ring" aria-hidden="true"></i><b>Notify</b><p>Shows the saved reminder. Websites keep a repeating toast on the left while remaining usable.</p></div>
+            <div><span>02</span><i data-lucide="eye-off" aria-hidden="true"></i><b>Hide</b><p>Minimizes a matching desktop application window.</p></div>
+            <div><span>03</span><i data-lucide="octagon-x" aria-hidden="true"></i><b>Kill</b><p>Terminates a matching desktop process immediately.</p></div>
+            <div><span>04</span><i data-lucide="shield-check" aria-hidden="true"></i><b>Strict</b><p>Stops desktop relaunches or shows the custom full-page website screen.</p></div>
           </div>
-          <ol class="steps compact"><li><span>1</span><div><b>Choose the enforcement action</b><p>Start with Notify or Hide until you know the target matches correctly.</p></div></li><li><span>2</span><div><b>Add an app or domain</b><p>The Scan control helps find currently running executables.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Use a timed block or keep it active until manually removed.</p></div></li><li><span>4</span><div><b>Enable Focus Mode</b><p>Blocks are listed even when Focus Mode is off, but enforcement requires it.</p></div></li></ol>
+          <ol class="steps compact"><li><span>1</span><div><b>Choose App or Website</b><p>Apps offer all four modes; websites offer only Notify and Strict.</p></div></li><li><span>2</span><div><b>Pick a mode and target</b><p>Search running executables or paste a website URL.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Use a timed block or keep it active until manually removed.</p></div></li><li><span>4</span><div><b>Enable protection</b><p>Removing a target makes it usable again immediately.</p></div></li></ol>
           <div class="warning"><strong>Use Kill and Strict carefully.</strong><p>Unsaved work in a terminated application can be lost. Never target Windows shells, security software, or TimeLens itself.</p></div>
         </article>
 

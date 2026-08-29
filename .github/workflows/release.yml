@@ -50,9 +50,13 @@ jobs:
           $expected = "${{ env.VERSION }}"
           [xml]$project = Get-Content "src\TimeLens.TrayApp\TimeLens.TrayApp.csproj"
           $dashboard = Get-Content "src\TimeLens.Dashboard\package.json" | ConvertFrom-Json
+          $chromeExtension = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
+          $firefoxExtension = Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json
           $actual = @{
             TrayApp = [string]$project.Project.PropertyGroup.Version
             Dashboard = [string]$dashboard.version
+            ChromeExtension = [string]$chromeExtension.version
+            FirefoxExtension = [string]$firefoxExtension.version
           }
           foreach ($entry in $actual.GetEnumerator()) {
             if ($entry.Value -ne $expected) {
@@ -66,6 +70,12 @@ jobs:
         run: |
           $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
+
+      - name: Package browser extensions
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-Chrome-Extension.zip"
+          Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-Firefox-Extension.zip"
 
       - name: Install Inno Setup
         shell: pwsh
@@ -84,7 +94,9 @@ jobs:
         run: |
           $assets = @(
             "TimeLens.exe",
-            "TimeLens-Setup.exe"
+            "TimeLens-Setup.exe",
+            "TimeLens-Chrome-Extension.zip",
+            "TimeLens-Firefox-Extension.zip"
           )
           $checksums = foreach ($asset in $assets) {
             $hash = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
@@ -97,5 +109,7 @@ jobs:
           files: |
             TimeLens.exe
             TimeLens-Setup.exe
+            TimeLens-Chrome-Extension.zip
+            TimeLens-Firefox-Extension.zip
             SHA256SUMS.txt
           generate_release_notes: true

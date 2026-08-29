@@ -197,13 +197,11 @@ internal static class Program
             lock (focusBlockLock) return focusBlocked.ToArray();
         }
 
-        bool IsBlockedExecutable(string executable) =>
-            BlocklistSnapshot().Any(entry => !entry.IsExpired() &&
+        BlockEntry? FindBlockedExecutable(string executable) =>
+            BlocklistSnapshot().FirstOrDefault(entry => !entry.IsExpired() &&
                 BlockEntryHelper.MatchesExecutable(entry, executable));
 
-        string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
-
-        void ShowBlockToast(string target, bool force = false)
+        void ShowBlockToast(string target, string? action = null, bool force = false)
         {
             var now = DateTime.UtcNow;
             if (!force)
@@ -214,14 +212,15 @@ internal static class Program
             }
 
             var currentSettings = LiveStatusStore.Settings;
+            var effectiveAction = BlockActionPlan.From(action ?? currentSettings.BlockAction).Id;
             var imagePath = !string.IsNullOrEmpty(currentSettings.BlockImageVersion) && File.Exists(blockImagePath)
                 ? blockImagePath
                 : null;
             try
             {
                 tray?.ShowBalloon(
-                    BlockNotification.FormatTitle(currentSettings.BlockTitle, target, currentSettings.BlockAction),
-                    BlockNotification.Format(currentSettings.BlockMessage, target, currentSettings.BlockAction),
+                    BlockNotification.FormatTitle(currentSettings.BlockTitle, target, effectiveAction),
+                    BlockNotification.Format(currentSettings.BlockMessage, target, effectiveAction),
                     warning: true,
                     imagePath: imagePath);
             }
@@ -293,11 +292,13 @@ internal static class Program
             var normalized = BlockEntryHelper.NormalizeIdentifier(exeName);
             if (!LiveStatusStore.Settings.FocusMode || normalized is null ||
                 !normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-                BlockEntryHelper.IsProtected(normalized) || !IsBlockedExecutable(normalized))
+                BlockEntryHelper.IsProtected(normalized))
                 return false;
 
-            var plan = BlockActionPlan.From(GetBlockAction());
-            ShowBlockToast(normalized);
+            var entry = FindBlockedExecutable(normalized);
+            if (entry is null) return false;
+            var plan = BlockActionPlan.From(BlockEntryHelper.ActionFor(entry, LiveStatusStore.Settings.BlockAction));
+            ShowBlockToast(normalized, plan.Id);
 
             try
             {
@@ -369,12 +370,12 @@ internal static class Program
                     PersistBlocklist();
                 }
 
-                var plan = BlockActionPlan.From(GetBlockAction());
-                if (!LiveStatusStore.Settings.FocusMode || !plan.RepeatEveryFiveSeconds) return;
+                if (!LiveStatusStore.Settings.FocusMode) return;
 
                 foreach (var blocked in active)
                 {
                     if (!BlockEntryHelper.IsExecutable(blocked)) continue;
+                    if (!BlockActionPlan.From(BlockEntryHelper.ActionFor(blocked, LiveStatusStore.Settings.BlockAction)).RepeatEveryFiveSeconds) continue;
                     if (!IsExecutableRunning(blocked.I)) continue;
                     EnforceBlock(blocked.I);
                 }
@@ -486,7 +487,7 @@ internal static class Program
             // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && state == "active")
             {
-                var blocked = IsBlockedExecutable(exe);
+                var blocked = FindBlockedExecutable(exe) is not null;
                 if (blocked)
                     EnforceBlock(exe);
             }
@@ -541,12 +542,11 @@ internal static class Program
         using var idleTimer = new Timer(_ =>
         {
             // Focus mode — browser domain block check
-            var blocked = LiveStatusStore.PendingFocusBlock;
+            var blocked = LiveStatusStore.PendingBrowserBlock;
             if (blocked is not null && LiveStatusStore.Settings.FocusMode)
             {
-                LiveStatusStore.PendingFocusBlock = null;
-                ShowBlockToast(blocked);
-                writer.InsertBlockLog(blocked, BlockActionPlan.From(GetBlockAction()).Id);
+                LiveStatusStore.PendingBrowserBlock = null;
+                writer.InsertBlockLog(blocked.Target, blocked.Action);
             }
 
             var curState = idleMonitor.GetState();

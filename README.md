@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 4.1.0 adds local custom block reminder titles, messages, PNG/JPEG images, and desktop previews. It also adds separate App/Website entry flows, instant remove with Undo, extension readiness, and distinct tested behavior for Notify, Hide, Kill, and Strict. Strict minimizes before termination and exclusively owns the five-second re-check. Card rearranging is limited to Today and History. Version 4.0.2 hardened Windows startup registration, verified registry writes, repaired stale executable paths, and kept the dashboard setting synchronized with Windows. Database schema creation and migration precede settings reads; startup errors display a message and write `%LOCALAPPDATA%\TimeLens\crash.log` when possible.
+Version 4.2.0 gives every target its own mode and simplifies the Block and Settings layouts. Desktop apps support Notify, Hide, Kill, and Strict. Websites expose only Notify and Strict: Notify renders a repeating browser-side toast while leaving the page usable, and Strict renders the saved custom title, message, and image. Removing a target releases its desktop enforcement immediately and strict browser pages re-check every second. Card rearranging remains limited to Today and History. Version 4.0.2 hardened Windows startup registration, verified registry writes, repaired stale executable paths, and kept the dashboard setting synchronized with Windows.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -80,13 +80,14 @@ TimeLens/
 │   ├── TimeLens.Core/           # models and interfaces
 │   ├── TimeLens.Api/            # local Kestrel API and updater
 │   ├── TimeLens.Dashboard/      # embedded Svelte dashboard
-│   └── TimeLens.TrayApp/        # Win32 tray host, watchers, and services
+│   ├── TimeLens.TrayApp/        # Win32 tray host, watchers, and services
+│   └── browser-extensions/      # Chrome and Firefox companion sources
 ├── scripts/                     # local publish/install helpers
 ├── .github/workflows/release.yml
 └── vercel.json                  # builds only web/ and exposes api/
 ```
 
-The published browser extension is maintained by the browser store and is intentionally not included in this repository or desktop release.
+The release includes Chrome and Firefox extension packages alongside the desktop binaries. The Firefox Add-ons listing remains the recommended signed installation; release packages are useful for review and developer installation.
 
 ## Website and Vercel
 
@@ -114,9 +115,11 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 
 - `TimeLens.exe`
 - `TimeLens-Setup.exe`
+- `TimeLens-Chrome-Extension.zip`
+- `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, and installer are released as [`v4.1.0`](https://github.com/YumiNoona/TimeLens/releases/tag/v4.1.0). Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -133,6 +136,7 @@ Base URL: `http://127.0.0.1:47821`
 | `POST` | `/api/rules` | Add or update a rule |
 | `DELETE` | `/api/rules/{pattern}` | Delete a rule |
 | `POST` | `/api/browser-event` | Receive an event from the installed extension |
+| `GET` | `/api/browser-block-state?domain=…` | Return the current browser action and custom presentation |
 | `GET` | `/api/extension-status` | Extension connection state |
 | `GET` | `/api/update/status` | Check the production update feed |
 | `POST` | `/api/update/install` | Verify, stage, and restart into an update |

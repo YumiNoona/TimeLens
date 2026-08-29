@@ -36,14 +36,30 @@ public static class ApiHost
         _ => 0
     };
 
-    private static string BrowserBlockResponse(bool blocked, string action) => action switch
+    private static BrowserBlockResponseDto BrowserBlockResponse(string? host)
     {
-        "notify" => "{\"ok\":true,\"blocked\":false,\"action\":\"notify\"}",
-        "hide" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"hide\"}",
-        "kill" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"kill\"}",
-        "strict" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"strict\"}",
-        _ => "{\"ok\":true,\"blocked\":false,\"action\":\"none\"}"
-    };
+        if (!LiveStatusStore.Settings.FocusMode || string.IsNullOrWhiteSpace(host))
+            return new(true, false, "none", null);
+
+        var entry = (BlockEntryHelper.TryParseBlockEntries(LiveStatusStore.Settings.FocusBlocklist) ?? [])
+            .FirstOrDefault(item => !item.IsExpired() && BlockEntryHelper.MatchesDomain(item, host));
+        if (entry is null) return new(true, false, "none", null);
+
+        var action = BlockEntryHelper.ActionFor(entry, LiveStatusStore.Settings.BlockAction);
+        if (action != "notify") action = "strict";
+        var target = entry.I;
+        var settings = LiveStatusStore.Settings;
+        var presentation = new BrowserBlockPresentationDto(
+            target,
+            BlockNotification.FormatTitle(settings.BlockTitle, target, action),
+            BlockNotification.Format(settings.BlockMessage, target, action),
+            string.IsNullOrEmpty(settings.BlockImageVersion)
+                ? null
+                : $"http://127.0.0.1:{DefaultPort}/api/block/image?v={Uri.EscapeDataString(settings.BlockImageVersion)}",
+            action == "notify",
+            "browser");
+        return new(true, action == "strict", action, presentation);
+    }
 
     private static bool WeakensBlocklist(string currentJson, string nextJson)
     {
@@ -59,6 +75,9 @@ public static class ApiHost
                 DateTime.TryParse(existing.E, null, DateTimeStyles.RoundtripKind, out var existingExpiry) &&
                 DateTime.TryParse(replacement.E, null, DateTimeStyles.RoundtripKind, out var replacementExpiry) &&
                 replacementExpiry < existingExpiry) return true;
+            var fallback = LiveStatusStore.Settings.BlockAction;
+            if (BlockActionStrength(BlockEntryHelper.ActionFor(replacement, fallback)) <
+                BlockActionStrength(BlockEntryHelper.ActionFor(existing, fallback))) return true;
         }
         return false;
     }
@@ -875,43 +894,15 @@ public static class ApiHost
             }
 
             // Focus mode block check — runs regardless of TrackBrowser setting
-            var domainBlocked = false;
-            var browserBlockAction = "none";
-            if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
-            {
-                var blocklist = LiveStatusStore.Settings.FocusBlocklist;
-                if (!string.IsNullOrEmpty(blocklist) && blocklist != "[]")
-                {
-                    try
-                    {
-                        var items = BlockEntryHelper.TryParseBlockEntries(blocklist);
-                        if (items is not null)
-                        {
-                            foreach (var be in items)
-                            {
-                                if (string.IsNullOrEmpty(be.I)) continue;
-                                if (be.IsExpired()) continue;
-                                if (BlockEntryHelper.MatchesDomain(be, evt.Domain))
-                                {
-                                    // Notify leaves navigation alone; the extension blocks
-                                    // matching sites for the three enforcement modes.
-                                    browserBlockAction = BlockActionPlan.From(LiveStatusStore.Settings.BlockAction).Id;
-                                    domainBlocked = browserBlockAction != "notify";
-                                    LiveStatusStore.PendingFocusBlock = evt.Domain;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
+            var browserBlock = BrowserBlockResponse(evt.Domain);
+            if (browserBlock.Action != "none" && browserBlock.Presentation is not null)
+                LiveStatusStore.PendingBrowserBlock = new(browserBlock.Presentation.Target, browserBlock.Action);
 
             if (!LiveStatusStore.Settings.TrackBrowser)
             {
                 ctx.Response.StatusCode = 200;
                 ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync(BrowserBlockResponse(domainBlocked, browserBlockAction));
+                await ctx.Response.WriteAsJsonAsync(browserBlock, AppJsonContext.Default.BrowserBlockResponseDto);
                 return;
             }
 
@@ -953,7 +944,14 @@ public static class ApiHost
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync(BrowserBlockResponse(domainBlocked, browserBlockAction));
+            await ctx.Response.WriteAsJsonAsync(browserBlock, AppJsonContext.Default.BrowserBlockResponseDto);
+        });
+
+        app.MapGet("/api/browser-block-state", async (HttpContext ctx) =>
+        {
+            var domain = ctx.Request.Query["domain"].FirstOrDefault();
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsJsonAsync(BrowserBlockResponse(domain), AppJsonContext.Default.BrowserBlockResponseDto);
         });
 
         app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
@@ -1733,10 +1731,17 @@ public static class ApiHost
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(BlockEntry[]))]
+[JsonSerializable(typeof(BrowserBlockResponseDto))]
 [JsonSerializable(typeof(UpdateStatusDto))]
 internal partial class AppJsonContext : JsonSerializerContext { }
 
-public sealed record BlockEntry(string I, string M, string? E)
+public sealed record BrowserBlockPresentationDto(
+    string Target, string Title, string Message, string? ImageUrl, bool Continuous, string Surface);
+
+public sealed record BrowserBlockResponseDto(
+    bool Ok, bool Blocked, string Action, BrowserBlockPresentationDto? Presentation);
+
+public sealed record BlockEntry(string I, string M, string? E, string? A = null)
 {
     public bool IsExpired() => M == "t" && E is not null &&
         DateTime.TryParse(E, null, DateTimeStyles.RoundtripKind, out var expires) &&
@@ -1767,7 +1772,7 @@ public static class BlockEntryHelper
             try
             {
                 var legacy = System.Text.Json.JsonSerializer.Deserialize(json, AppJsonContext.Default.StringArray);
-                parsed = legacy?.Select(s => new BlockEntry(s, "u", null)).ToArray();
+                parsed = legacy?.Select(s => new BlockEntry(s, "u", null, null)).ToArray();
             }
             catch { }
         }
@@ -1784,7 +1789,7 @@ public static class BlockEntryHelper
             if (mode == "t" && (entry.E is null ||
                 !DateTime.TryParse(entry.E, null, DateTimeStyles.RoundtripKind, out _)))
                 continue;
-            normalized.Add(new BlockEntry(id, mode, mode == "t" ? entry.E : null));
+            normalized.Add(new BlockEntry(id, mode, mode == "t" ? entry.E : null, NormalizeAction(id, entry.A)));
             if (normalized.Count == 200) break;
         }
         return normalized.Count == 0 ? null : normalized.ToArray();
@@ -1820,6 +1825,14 @@ public static class BlockEntryHelper
 
     public static bool IsExecutable(BlockEntry entry) =>
         entry.I.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+
+    public static string? NormalizeAction(string identifier, string? action)
+        => BlockTargetAction.Normalize(identifier, action);
+
+    public static string ActionFor(BlockEntry entry, string? fallback)
+    {
+        return BlockTargetAction.Resolve(entry.I, entry.A, fallback);
+    }
 
     public static bool IsProtected(string identifier) => ProtectedTargets.Contains(identifier);
 

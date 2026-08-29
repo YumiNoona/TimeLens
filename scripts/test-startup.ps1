@@ -81,8 +81,8 @@ try {
         throw 'Custom block notification settings did not persist.'
     }
 
-    # The browser extension receives the selected action as well as a block flag.
-    # Notify must allow navigation; the other modes must request enforcement.
+    # Websites intentionally expose only Notify and Strict. Legacy desktop-only
+    # actions safely migrate to Strict and the extension receives presentation data.
     $blocklistJson = '[{"i":"example.com","m":"u"}]'
     $tabId = 6000
     foreach ($mode in @('notify', 'hide', 'kill', 'strict')) {
@@ -90,12 +90,26 @@ try {
         $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $modeSettings -TimeoutSec 5
         $browserEvent = @{ domain = 'www.example.com'; url = 'https://www.example.com/path'; title = 'Block contract'; browser = 'test'; tabId = $tabId } | ConvertTo-Json -Compress
         $browserResult = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-event' -Method Post -ContentType 'application/json' -Body $browserEvent -TimeoutSec 5
-        $expectedBlocked = $mode -ne 'notify'
-        if ($browserResult.action -ne $mode -or [bool]$browserResult.blocked -ne $expectedBlocked) {
+        $expectedAction = if ($mode -eq 'notify') { 'notify' } else { 'strict' }
+        $expectedBlocked = $expectedAction -eq 'strict'
+        if ($browserResult.action -ne $expectedAction -or [bool]$browserResult.blocked -ne $expectedBlocked -or
+            $browserResult.presentation.surface -ne 'browser' -or $browserResult.presentation.target -ne 'example.com') {
             throw "Browser block response was incorrect for $mode mode."
         }
         $tabId++
     }
+    foreach ($mode in @('notify', 'strict')) {
+        $perTargetBlocklist = "[{`"i`":`"example.com`",`"m`":`"u`",`"a`":`"$mode`"}]"
+        $modeSettings = @{ focusMode = $true; blockAction = 'hide'; focusBlocklist = $perTargetBlocklist } | ConvertTo-Json -Compress
+        $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $modeSettings -TimeoutSec 5
+        $state = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=www.example.com' -TimeoutSec 5
+        if ($state.action -ne $mode -or [bool]$state.blocked -ne ($mode -eq 'strict')) {
+            throw "Per-target website response was incorrect for $mode mode."
+        }
+    }
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body (@{ focusBlocklist = '[]' } | ConvertTo-Json -Compress) -TimeoutSec 5
+    $unblockedState = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=www.example.com' -TimeoutSec 5
+    if ($unblockedState.action -ne 'none' -or [bool]$unblockedState.blocked) { throw 'Removing a website did not unblock it immediately.' }
     $resetBlockSettings = @{ focusMode = $false; blockAction = 'hide'; focusBlocklist = '[]' } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $resetBlockSettings -TimeoutSec 5
 

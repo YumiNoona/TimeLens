@@ -42,7 +42,8 @@ $process = $null
 $window = [IntPtr]::Zero
 try {
     # Run the shipped EXE with no sibling DLLs required and an unrelated working directory.
-    $process = Start-Process -FilePath $exe -ArgumentList ('--smoke-test "{0}"' -f $dataDir) `
+    # --startup is the exact switch stored in HKCU\...\Run on Windows 10 and 11.
+    $process = Start-Process -FilePath $exe -ArgumentList ('--startup --smoke-test "{0}"' -f $dataDir) `
         -WorkingDirectory "$env:WINDIR\System32" -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $testRoot 'stdout.log') `
         -RedirectStandardError (Join-Path $testRoot 'stderr.log')

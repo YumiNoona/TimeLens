@@ -361,6 +361,13 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"focusMode must be a boolean\"}");
                     return;
                 }
+                if (prop.Name == "autoStart" && prop.Value.ValueKind is not
+                    (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"autoStart must be a boolean\"}");
+                    return;
+                }
                 if (prop.Name == "defaultView" && value is not ("today" or "history" or "apps" or "browser" or "timeline" or "block" or "rules" or "settings"))
                 {
                     ctx.Response.StatusCode = 400;
@@ -481,6 +488,9 @@ public static class ApiHost
                         {
                             TimelineGrouped = value == "true"
                         };
+                        break;
+                    case "autoStart":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { AutoStart = value == "true" };
                         break;
                     case "retentionDays":
                         if (int.TryParse(value, out var days))

@@ -21,7 +21,8 @@ internal static class Program
     {
         // The release smoke test runs the real startup with isolated data, no setup
         // prompts, and no registry changes. Normal launches always use LocalAppData.
-        var smokeTest = args.Length == 2 && args[0] == "--smoke-test";
+        var smokeTestIndex = Array.IndexOf(args, "--smoke-test");
+        var smokeTest = smokeTestIndex >= 0;
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
         using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
@@ -32,7 +33,9 @@ internal static class Program
         {
             if (smokeTest)
             {
-                dataDir = Path.GetFullPath(args[1]);
+                if (smokeTestIndex + 1 >= args.Length)
+                    throw new ArgumentException("--smoke-test requires a data directory.");
+                dataDir = Path.GetFullPath(args[smokeTestIndex + 1]);
                 if (Directory.Exists(dataDir) || File.Exists(dataDir))
                     throw new InvalidOperationException("Smoke tests require a new, empty data directory.");
             }
@@ -99,6 +102,26 @@ internal static class Program
 
         var settingsSvc = new SettingsService(dbPath);
         var settings = DatabaseInitializer.Initialize(dbPath);
+        if (!smokeTest)
+        {
+            if (settings.AutoStart)
+            {
+                // Repair stale paths after moving/reinstalling TimeLens or updating from
+                // an older startup entry that did not include the explicit startup switch.
+                if (!AutoStartManager.IsAutoStartEnabled() &&
+                    !AutoStartManager.TrySetAutoStart(true, out _))
+                {
+                    settingsSvc.Save("auto_start", "false");
+                    settings = settings with { AutoStart = false };
+                }
+            }
+            else if (AutoStartManager.IsAutoStartEnabled())
+            {
+                // The installer can enable startup before the database has been created.
+                settingsSvc.Save("auto_start", "true");
+                settings = settings with { AutoStart = true };
+            }
+        }
         RuntimeConfig.Settings = settings;
         LiveStatusStore.Settings = settings;
 
@@ -530,11 +553,17 @@ internal static class Program
                 "TimeLens Setup",
                 MB_YESNO | MB_ICONQUESTION);
             var wantAutoStart = result == IDYES;
-            AutoStartManager.SetAutoStart(wantAutoStart);
-            settingsSvc.Save("auto_start", wantAutoStart ? "true" : "false");
+            if (!AutoStartManager.TrySetAutoStart(wantAutoStart, out var error))
+            {
+                MessageBox(IntPtr.Zero,
+                    $"Windows could not update the startup setting.\n\n{error}",
+                    "TimeLens startup setting", 0x10);
+            }
+            var actualAutoStart = AutoStartManager.IsAutoStartEnabled();
+            settingsSvc.Save("auto_start", actualAutoStart ? "true" : "false");
 
             // Sync LiveStatusStore so GET /api/settings returns the right value
-            LiveStatusStore.Settings = LiveStatusStore.Settings with { AutoStart = wantAutoStart };
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { AutoStart = actualAutoStart };
 
             settingsSvc.Save("first_run_done", "true");
         }
@@ -549,9 +578,12 @@ internal static class Program
         _ = ApiHost.StartAsync(dbPath, apiCts.Token,
             saveSetting: (k, v) =>
             {
-                settingsSvc.Save(k, v);
                 if (k == "auto_start")
-                    AutoStartManager.SetAutoStart(v == "true");
+                {
+                    if (!AutoStartManager.TrySetAutoStart(v == "true", out var error))
+                        throw new InvalidOperationException($"Windows could not update the startup setting: {error}");
+                }
+                settingsSvc.Save(k, v);
                 if (k == "focus_blocklist")
                 {
                     LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = v };

@@ -83,6 +83,27 @@ internal static class Program
                 SqliteConnection.ClearAllPools();
                 Check(File.ReadAllText(path) == "not a sqlite database", "Corrupt data was overwritten.");
             });
+            Run("Per-user Windows startup registration is quoted, verified, and removable", () =>
+            {
+                var testKey = $@"Software\TimeLens\StartupTests\{Guid.NewGuid():N}\Run";
+                const string valueName = "TimeLens-Test";
+                var executablePath = Path.Combine(directory, "Program Files", "TimeLens.exe");
+                try
+                {
+                    Check(!AutoStartManager.IsAutoStartEnabled(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, executablePath), "Missing startup entry reported enabled.");
+                    AutoStartManager.SetAutoStart(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, executablePath, true);
+                    using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(testKey))
+                        Check(string.Equals(key?.GetValue(valueName) as string, $"\"{Path.GetFullPath(executablePath)}\" --startup", StringComparison.Ordinal), "Startup command was not safely quoted.");
+                    Check(AutoStartManager.IsAutoStartEnabled(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, executablePath), "Valid startup entry was not detected.");
+                    Check(!AutoStartManager.IsAutoStartEnabled(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, Path.Combine(directory, "moved.exe")), "Stale executable path reported enabled.");
+                    AutoStartManager.SetAutoStart(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, executablePath, false);
+                    Check(!AutoStartManager.IsAutoStartEnabled(Microsoft.Win32.Registry.CurrentUser, testKey, valueName, executablePath), "Startup entry was not removed.");
+                }
+                finally
+                {
+                    Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(testKey[..testKey.LastIndexOf("\\Run", StringComparison.Ordinal)], throwOnMissingSubKey: false);
+                }
+            });
             if (args.Contains("--tray"))
                 Run("Native tray registration, activation, and Explorer recovery", TestTray);
             Console.WriteLine("All startup regression checks passed.");

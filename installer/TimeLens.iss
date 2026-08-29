@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "4.0.1"
+  #define AppVersion "4.0.2"
 #endif
 
 #define AppName "TimeLens"
@@ -63,7 +63,7 @@ Name: "{group}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
 Name: "{autodesktop}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "TimeLens"; ValueData: """{app}\{#AppExeName}"""; Tasks: startup; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "TimeLens"; ValueData: """{app}\{#AppExeName}"" --startup"; Tasks: startup; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch TimeLens"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent

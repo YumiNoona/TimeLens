@@ -19,8 +19,8 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
-- App and domain focus controls with timed targets, four enforcement modes, and optional password protection
-- Persistent user-arranged dashboard cards, configurable density/motion/tracking, themes, reminders, retention, exports, and goals
+- App and domain focus controls with timed targets, four enforcement modes, custom text/image reminders, and optional password protection
+- User-arranged cards on Today and History, plus configurable density/motion/tracking, themes, reminders, retention, exports, and goals
 - Store-managed browser extension installation from Mozilla Add-ons
 - Per-user Windows installer with install-location, startup, desktop-shortcut, and launch options plus a clean uninstaller
 - Built-in updater with startup notification, manual check, SHA-256 verification, and one-click replacement from Settings
@@ -55,15 +55,16 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 4.0.2 also hardens Windows startup registration, verifies registry writes, repairs stale executable paths, and keeps the dashboard setting synchronized with Windows. Version 4.0.1 fixed first-launch failure on a fresh database and tray recovery after Explorer restarts. Database schema creation and migration now precede settings reads; retention cleanup still uses the user's saved setting. Startup errors display a message and write `%LOCALAPPDATA%\TimeLens\crash.log` when possible.
+Version 4.1.0 adds local custom block reminder titles, messages, PNG/JPEG images, and desktop previews. It also adds separate App/Website entry flows, instant remove with Undo, extension readiness, and distinct tested behavior for Notify, Hide, Kill, and Strict. Strict minimizes before termination and exclusively owns the five-second re-check. Card rearranging is limited to Today and History. Version 4.0.2 hardened Windows startup registration, verified registry writes, repaired stale executable paths, and kept the dashboard setting synchronized with Windows. Database schema creation and migration precede settings reads; startup errors display a message and write `%LOCALAPPDATA%\TimeLens\crash.log` when possible.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
 dotnet run --project tests/TimeLens.Startup.Tests -c Release -- --tray
 .\scripts\test-startup.ps1 -ExePath .\TimeLens.exe
+.\scripts\test-block-modes.ps1 -ExePath .\TimeLens.exe
 ```
 
-The first command tests fresh and failed-first-launch databases, saved retention, legacy rules, corrupt data, and per-user Windows startup registration. It also runs in the publish script and release workflow. `--tray` additionally tests native shell registration, keyboard activation, and icon restoration on an interactive Windows desktop.
+The first command tests fresh and failed-first-launch databases, saved retention, legacy rules, corrupt data, and per-user Windows startup registration. It also runs in the publish script and release workflow. `--tray` additionally tests native shell registration, keyboard activation, and icon restoration on an interactive Windows desktop. The block-mode script launches an isolated copy plus an off-screen Win32 probe and verifies that Notify leaves it alone, Hide minimizes it, Kill terminates it, and Strict terminates both immediately and after relaunch.
 
 Close any running TimeLens instance before the packaged startup test. This test launches the exact EXE from an unrelated working directory, checks the native tray and embedded dashboard/API, then closes it. Its `--smoke-test` launch mode uses a new data directory under `artifacts/`, skips onboarding and update checks, and does not change the normal activity database or startup registration. Logs remain in the isolated directory for diagnosis. This local test does not replace testing the installer on a clean Windows VM.
 
@@ -115,7 +116,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Setup.exe`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, and installer are released as [`v4.0.2`](https://github.com/YumiNoona/TimeLens/releases/tag/v4.0.2). Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, and installer are released as [`v4.1.0`](https://github.com/YumiNoona/TimeLens/releases/tag/v4.1.0). Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

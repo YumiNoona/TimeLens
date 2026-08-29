@@ -6,10 +6,12 @@ namespace TimeLens.TrayApp.Services;
 public sealed class SettingsService
 {
     private readonly string _connectionString;
+    private readonly string _blockImagePath;
 
     public SettingsService(string dbPath)
     {
         _connectionString = $"Data Source={dbPath}";
+        _blockImagePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "block-notification.png");
     }
 
     public AppSettings Load()
@@ -41,6 +43,9 @@ public sealed class SettingsService
             TimeFormat = dict.GetValueOrDefault("time_format", "12h"),
             PollIntervalSeconds = int.TryParse(dict.GetValueOrDefault("poll_interval_seconds", "30"), out var pis) ? pis : 30,
             BlockAction = dict.GetValueOrDefault("block_action", "hide"),
+            BlockTitle = BlockNotification.NormalizeTitle(dict.GetValueOrDefault("block_title")),
+            BlockMessage = BlockNotification.NormalizeMessage(dict.GetValueOrDefault("block_message")),
+            BlockImageVersion = File.Exists(_blockImagePath) ? dict.GetValueOrDefault("block_image_version", "") : "",
             DefaultView = dict.GetValueOrDefault("default_view", "today"),
             Density = dict.GetValueOrDefault("density", "comfortable"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",

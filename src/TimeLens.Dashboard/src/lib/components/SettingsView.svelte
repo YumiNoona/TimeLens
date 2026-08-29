@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { reorderable, resetCardLayouts } from '../actions/reorderable';
+  import { resetCardLayouts } from '../actions/reorderable';
   import {
     heatmapDays as heatmapDaysStore,
     timeFormat as timeFormatStore,
@@ -307,7 +307,7 @@
   onMount(() => { void load(); void checkUpdates(); });
 </script>
 
-<div class="settings" use:reorderable={{ key: 'settings:cards', draggable: ':scope > .card' }}>
+<div class="settings">
   <div class="settings-status">
     <div class="status-copy">
       <span class="status-icon"><i class="ti ti-device-desktop-cog" aria-hidden="true"></i></span>

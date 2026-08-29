@@ -19,6 +19,7 @@ public static class ApiHost
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     public const int DefaultPort = 47821;
+    private const int MaxBlockImageBytes = 2 * 1024 * 1024;
     private static readonly ConcurrentDictionary<string, long> OpenBrowserEvents = new(StringComparer.OrdinalIgnoreCase);
 
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
@@ -33,6 +34,15 @@ public static class ApiHost
         "kill" => 2,
         "hide" => 1,
         _ => 0
+    };
+
+    private static string BrowserBlockResponse(bool blocked, string action) => action switch
+    {
+        "notify" => "{\"ok\":true,\"blocked\":false,\"action\":\"notify\"}",
+        "hide" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"hide\"}",
+        "kill" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"kill\"}",
+        "strict" when blocked => "{\"ok\":true,\"blocked\":true,\"action\":\"strict\"}",
+        _ => "{\"ok\":true,\"blocked\":false,\"action\":\"none\"}"
     };
 
     private static bool WeakensBlocklist(string currentJson, string nextJson)
@@ -82,6 +92,7 @@ public static class ApiHost
         Action<string, string, string, string, int>? upsertRule = null,
         Action<string>? deleteRule = null,
         Func<string, bool>? enforceBlock = null,
+        Action<string>? showBlockPreview = null,
         UpdateService? updateService = null,
         Action? requestShutdown = null)
     {
@@ -361,6 +372,27 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"focusMode must be a boolean\"}");
                     return;
                 }
+                if (prop.Name is "blockTitle" or "blockMessage")
+                {
+                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String)
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsync("{\"error\":\"Block notification text must be a string\"}");
+                        return;
+                    }
+                    var limit = prop.Name == "blockTitle"
+                        ? BlockNotification.MaxTitleLength
+                        : BlockNotification.MaxMessageLength;
+                    if (value.Length > limit)
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsync($"{{\"error\":\"{prop.Name} must be {limit} characters or fewer\"}}");
+                        return;
+                    }
+                    value = prop.Name == "blockTitle"
+                        ? BlockNotification.NormalizeTitle(value)
+                        : BlockNotification.NormalizeMessage(value);
+                }
                 if (prop.Name == "autoStart" && prop.Value.ValueKind is not
                     (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
                 {
@@ -445,6 +477,8 @@ public static class ApiHost
                     "focusMode" => "focus_mode",
                     "focusBlocklist" => "focus_blocklist",
                     "blockAction" => "block_action",
+                    "blockTitle" => "block_title",
+                    "blockMessage" => "block_message",
                     "pollIntervalSeconds" => "poll_interval_seconds",
                     "timeFormat" => "time_format",
                     "defaultView" => "default_view",
@@ -842,6 +876,7 @@ public static class ApiHost
 
             // Focus mode block check — runs regardless of TrackBrowser setting
             var domainBlocked = false;
+            var browserBlockAction = "none";
             if (LiveStatusStore.Settings.FocusMode && !string.IsNullOrEmpty(evt.Domain))
             {
                 var blocklist = LiveStatusStore.Settings.FocusBlocklist;
@@ -858,7 +893,10 @@ public static class ApiHost
                                 if (be.IsExpired()) continue;
                                 if (BlockEntryHelper.MatchesDomain(be, evt.Domain))
                                 {
-                                    domainBlocked = true;
+                                    // Notify leaves navigation alone; the extension blocks
+                                    // matching sites for the three enforcement modes.
+                                    browserBlockAction = BlockActionPlan.From(LiveStatusStore.Settings.BlockAction).Id;
+                                    domainBlocked = browserBlockAction != "notify";
                                     LiveStatusStore.PendingFocusBlock = evt.Domain;
                                     break;
                                 }
@@ -873,7 +911,7 @@ public static class ApiHost
             {
                 ctx.Response.StatusCode = 200;
                 ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync(domainBlocked ? "{\"blocked\":true}" : "{\"ok\":true}");
+                await ctx.Response.WriteAsync(BrowserBlockResponse(domainBlocked, browserBlockAction));
                 return;
             }
 
@@ -915,7 +953,7 @@ public static class ApiHost
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync(domainBlocked ? "{\"ok\":true,\"blocked\":true}" : "{\"ok\":true}");
+            await ctx.Response.WriteAsync(BrowserBlockResponse(domainBlocked, browserBlockAction));
         });
 
         app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
@@ -1521,6 +1559,90 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapPost("/api/block/preview", async (HttpContext ctx) =>
+        {
+            if (showBlockPreview is null)
+            {
+                ctx.Response.StatusCode = 503;
+                await ctx.Response.WriteAsync("{\"error\":\"Notification preview is unavailable\"}");
+                return;
+            }
+            var target = "example.exe";
+            if (ctx.Request.ContentLength is > 0)
+            {
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
+                if (doc.RootElement.TryGetProperty("target", out var targetProp) && targetProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                    target = BlockEntryHelper.NormalizeIdentifier(targetProp.GetString()) ?? target;
+            }
+            showBlockPreview(target);
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
+        var blockImagePath = Path.Combine(Path.GetDirectoryName(dbPath)!, "block-notification.png");
+        app.MapGet("/api/block/image", async (HttpContext ctx) =>
+        {
+            if (!File.Exists(blockImagePath))
+            {
+                ctx.Response.StatusCode = 404;
+                return;
+            }
+            ctx.Response.ContentType = "image/png";
+            ctx.Response.Headers.CacheControl = "no-store";
+            await ctx.Response.SendFileAsync(blockImagePath, ctx.RequestAborted);
+        });
+
+        app.MapPost("/api/block/image", async (HttpContext ctx) =>
+        {
+            if (ctx.Request.ContentLength is > MaxBlockImageBytes * 2L)
+            {
+                ctx.Response.StatusCode = 413;
+                await ctx.Response.WriteAsync("{\"error\":\"Image must be 2 MB or smaller\"}");
+                return;
+            }
+
+            try
+            {
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
+                var dataUrl = doc.RootElement.TryGetProperty("dataUrl", out var dataProp) ? dataProp.GetString() : null;
+                if (string.IsNullOrWhiteSpace(dataUrl) ||
+                    !(dataUrl.StartsWith("data:image/png;base64,", StringComparison.OrdinalIgnoreCase) ||
+                      dataUrl.StartsWith("data:image/jpeg;base64,", StringComparison.OrdinalIgnoreCase)))
+                    throw new ArgumentException("Choose a PNG or JPEG image");
+
+                var comma = dataUrl.IndexOf(',');
+                var bytes = Convert.FromBase64String(dataUrl[(comma + 1)..]);
+                if (bytes.Length == 0 || bytes.Length > MaxBlockImageBytes)
+                    throw new ArgumentException("Image must be 2 MB or smaller");
+
+                SaveBlockImage(bytes, blockImagePath);
+                var version = DateTime.UtcNow.Ticks.ToString("x", CultureInfo.InvariantCulture);
+                saveSetting?.Invoke("block_image_version", version);
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync($"{{\"ok\":true,\"version\":\"{version}\"}}");
+            }
+            catch (Exception ex) when (ex is ArgumentException or FormatException or OutOfMemoryException)
+            {
+                ctx.Response.StatusCode = 400;
+                ctx.Response.ContentType = "application/json";
+                await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+                json.WriteStartObject();
+                json.WriteString("error", ex is FormatException or OutOfMemoryException
+                    ? "The selected file is not a valid PNG or JPEG image"
+                    : ex.Message);
+                json.WriteEndObject();
+                await json.FlushAsync(ctx.RequestAborted);
+            }
+        });
+
+        app.MapDelete("/api/block/image", async (HttpContext ctx) =>
+        {
+            if (File.Exists(blockImagePath)) File.Delete(blockImagePath);
+            saveSetting?.Invoke("block_image_version", "");
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         app.MapGet("/api/block/stats", async (HttpContext ctx) =>
         {
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
@@ -1557,6 +1679,42 @@ public static class ApiHost
     {
         if (context.Request.Path.StartsWithSegments("/assets"))
             context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    }
+
+    [SupportedOSPlatform("windows6.1")]
+    private static void SaveBlockImage(byte[] bytes, string destinationPath)
+    {
+        using var input = new MemoryStream(bytes, writable: false);
+        using var source = Image.FromStream(input, useEmbeddedColorManagement: false, validateImageData: true);
+        if (source.Width < 1 || source.Height < 1 || source.Width > 4096 || source.Height > 4096 ||
+            (long)source.Width * source.Height > 16_000_000)
+            throw new ArgumentException("Image dimensions must be between 1 and 4096 pixels");
+
+        const int size = 192;
+        using var output = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        using (var graphics = Graphics.FromImage(output))
+        {
+            graphics.Clear(Color.Transparent);
+            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            var scale = Math.Min((double)size / source.Width, (double)size / source.Height);
+            var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+            var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+            graphics.DrawImage(source, (size - width) / 2, (size - height) / 2, width, height);
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        var temporaryPath = destinationPath + ".new";
+        try
+        {
+            output.Save(temporaryPath, ImageFormat.Png);
+            File.Move(temporaryPath, destinationPath, true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
     }
 }
 

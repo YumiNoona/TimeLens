@@ -169,7 +169,8 @@ internal static class Program
         // Blocklist enforcement — entries: {i: identifier, m: 'u'|'t', e?: expiresAt}
         var focusBlockLock = new object();
         BlockEntry[] focusBlocked = [];
-        DateTime lastFocusToast = DateTime.MinValue;
+        var focusToastTimes = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+        var blockImagePath = Path.Combine(dataDir, "block-notification.png");
         NativeTrayIcon? tray = null;
 
         void ReloadBlocklist()
@@ -201,6 +202,43 @@ internal static class Program
                 BlockEntryHelper.MatchesExecutable(entry, executable));
 
         string GetBlockAction() => LiveStatusStore.Settings.BlockAction;
+
+        void ShowBlockToast(string target, bool force = false)
+        {
+            var now = DateTime.UtcNow;
+            if (!force)
+            {
+                var previous = focusToastTimes.GetOrAdd(target, DateTime.MinValue);
+                if ((now - previous).TotalMinutes < 1) return;
+                focusToastTimes[target] = now;
+            }
+
+            var currentSettings = LiveStatusStore.Settings;
+            var imagePath = !string.IsNullOrEmpty(currentSettings.BlockImageVersion) && File.Exists(blockImagePath)
+                ? blockImagePath
+                : null;
+            try
+            {
+                tray?.ShowBalloon(
+                    BlockNotification.FormatTitle(currentSettings.BlockTitle, target, currentSettings.BlockAction),
+                    BlockNotification.Format(currentSettings.BlockMessage, target, currentSettings.BlockAction),
+                    warning: true,
+                    imagePath: imagePath);
+            }
+            catch { }
+        }
+
+        static bool IsExecutableRunning(string executable)
+        {
+            try
+            {
+                var processName = Path.GetFileNameWithoutExtension(executable);
+                var processes = System.Diagnostics.Process.GetProcessesByName(processName);
+                foreach (var process in processes) process.Dispose();
+                return processes.Length > 0;
+            }
+            catch { return false; }
+        }
 
         void LogCrash(string message)
         {
@@ -258,58 +296,58 @@ internal static class Program
                 BlockEntryHelper.IsProtected(normalized) || !IsBlockedExecutable(normalized))
                 return false;
 
-            var action = GetBlockAction();
-            if (action is not ("notify" or "hide" or "kill" or "strict")) action = "hide";
-
-            // Always show toast when a blocked app is detected
-            if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 1)
-            {
-                lastFocusToast = DateTime.UtcNow;
-                try { tray?.ShowBalloon("Focus Mode", $"'{normalized}' is blocked — get back to work!", true); } catch { }
-            }
-
-            if (action == "notify") return true;
+            var plan = BlockActionPlan.From(GetBlockAction());
+            ShowBlockToast(normalized);
 
             try
             {
                 var exeOnly = System.IO.Path.GetFileNameWithoutExtension(normalized);
                 var procs = System.Diagnostics.Process.GetProcessesByName(exeOnly);
-                var enforced = false;
-
-                foreach (var proc in procs)
+                bool MinimizeWindows()
                 {
-                    using (proc)
-                    {
-                        try
-                        {
-                            if ((action == "kill" || action == "strict") && proc.Id != Environment.ProcessId)
-                            {
-                                proc.Kill(entireProcessTree: true);
-                                enforced = true;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogCrash($"EnforceBlock kill '{normalized}' pid={proc.Id}: {ex}");
-                        }
-                    }
-                }
-
-                if (action == "hide" || action == "strict")
-                {
-                    // Minimize any visible windows of this process
+                    var minimized = false;
                     var windows = Win32.FindWindowsForProcess(exeOnly);
                     foreach (var hwnd in windows)
                     {
                         if (!Win32.IsIconic(hwnd))
                         {
                             Win32.ShowWindow(hwnd, Win32.SW_MINIMIZE);
-                            enforced = true;
+                            minimized = true;
                         }
                     }
+                    return minimized;
                 }
 
-                if (enforced) writer.InsertBlockLog(normalized, action);
+                bool TerminateProcesses()
+                {
+                    var terminated = false;
+                    foreach (var proc in procs)
+                    {
+                        using (proc)
+                        {
+                            try
+                            {
+                                if (proc.Id != Environment.ProcessId)
+                                {
+                                    proc.Kill(entireProcessTree: true);
+                                    terminated = true;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogCrash($"EnforceBlock kill '{normalized}' pid={proc.Id}: {ex}");
+                            }
+                        }
+                    }
+                    return terminated;
+                }
+
+                // Strict minimizes first so the hide part is effective even if process
+                // termination is delayed or denied by Windows.
+                var intervened = BlockEnforcement.Apply(plan, procs.Length > 0, MinimizeWindows, TerminateProcesses);
+                if (!plan.TerminateProcesses)
+                    foreach (var proc in procs) proc.Dispose();
+                if (intervened) writer.InsertBlockLog(normalized, plan.Id);
             }
             catch (Exception ex)
             {
@@ -319,12 +357,10 @@ internal static class Program
         }
 
         // Timer to periodically enforce blocks + auto-remove expired
-        var blockTimer = new Timer(_ =>
+        using var blockTimer = new Timer(_ =>
         {
             try
             {
-                if (!LiveStatusStore.Settings.FocusMode) return;
-
                 var before = BlocklistSnapshot();
                 var active = before.Where(entry => !entry.IsExpired()).ToArray();
                 if (active.Length != before.Length)
@@ -333,9 +369,13 @@ internal static class Program
                     PersistBlocklist();
                 }
 
+                var plan = BlockActionPlan.From(GetBlockAction());
+                if (!LiveStatusStore.Settings.FocusMode || !plan.RepeatEveryFiveSeconds) return;
+
                 foreach (var blocked in active)
                 {
                     if (!BlockEntryHelper.IsExecutable(blocked)) continue;
+                    if (!IsExecutableRunning(blocked.I)) continue;
                     EnforceBlock(blocked.I);
                 }
             }
@@ -347,7 +387,7 @@ internal static class Program
         }, null, 5_000, 5_000);
 
         var goalDbPath = $"Data Source={dbPath}";
-        var goalTimer = new Timer(_ =>
+        using var goalTimer = new Timer(_ =>
         {
             try
             {
@@ -498,18 +538,15 @@ internal static class Program
 
         var lastSystemState = idleMonitor.GetState();
 
-        var idleTimer = new Timer(_ =>
+        using var idleTimer = new Timer(_ =>
         {
             // Focus mode — browser domain block check
             var blocked = LiveStatusStore.PendingFocusBlock;
             if (blocked is not null && LiveStatusStore.Settings.FocusMode)
             {
                 LiveStatusStore.PendingFocusBlock = null;
-                if ((DateTime.UtcNow - lastFocusToast).TotalMinutes > 5)
-                {
-                    lastFocusToast = DateTime.UtcNow;
-                    tray!.ShowBalloon("Focus Mode", $"'{blocked}' is blocked — get back to work!", true);
-                }
+                ShowBlockToast(blocked);
+                writer.InsertBlockLog(blocked, BlockActionPlan.From(GetBlockAction()).Id);
             }
 
             var curState = idleMonitor.GetState();
@@ -594,12 +631,19 @@ internal static class Program
                     LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockAction = v };
                     ReloadBlocklist();
                 }
+                if (k == "block_title")
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockTitle = BlockNotification.NormalizeTitle(v) };
+                if (k == "block_message")
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockMessage = BlockNotification.NormalizeMessage(v) };
+                if (k == "block_image_version")
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockImageVersion = v };
             },
             setTrackAudio: ApplyTrackAudio,
             setTrackInput: ApplyTrackInput,
             upsertRule: UpsertRule,
             deleteRule: DeleteRule,
             enforceBlock: EnforceBlock,
+            showBlockPreview: target => ShowBlockToast(target, force: true),
             updateService: updateService,
             requestShutdown: RequestShutdown);
 
@@ -656,6 +700,7 @@ internal static class Program
         int consecutiveActiveMinutes = 0;
 
         using var trayDispose = tray = new NativeTrayIcon(iconPath);
+        tray.ToastFailed += ex => LogCrash($"Toast: {ex}");
         var executablePath = Environment.ProcessPath;
         var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)
             ? File.GetLastWriteTimeUtc(executablePath).Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture)

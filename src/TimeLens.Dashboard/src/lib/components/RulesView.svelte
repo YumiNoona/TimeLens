@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { colorForCategory } from '../colors';
   import { live } from '../stores/activity';
-  import { reorderable } from '../actions/reorderable';
 
   type Rule = { pattern: string; category: string; ruleType: string; target: string; priority: number; id: number };
 
@@ -193,7 +192,7 @@
   onMount(() => { load(); });
 </script>
 
-<div class="rules" use:reorderable={{ key: 'rules:cards', draggable: ':scope > .card' }}>
+<div class="rules">
   {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
   <div class="add-bar">
     <div class="combo-wrapper">

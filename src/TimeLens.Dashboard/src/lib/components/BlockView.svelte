@@ -1,22 +1,35 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { appIcon } from '../appIcons';
-  import { reorderable } from '../actions/reorderable';
 
   type BlockEntry = { i: string; m: 'u' | 't'; e?: string };
   type RetryAction = () => Promise<void>;
+  type TargetKind = 'app' | 'website';
+  const DEFAULT_BLOCK_MESSAGE = "'{target}' is blocked — get back to work!";
+  const TARGET_PLACEHOLDER = '{target}';
+  const MODE_PLACEHOLDER = '{mode}';
 
   let items = $state<BlockEntry[]>([]);
   let newItem = $state('');
+  let targetKind = $state<TargetKind>('app');
   let blockAction = $state('hide');
+  let blockTitle = $state('Focus Mode');
+  let blockMessage = $state(DEFAULT_BLOCK_MESSAGE);
+  let blockImageVersion = $state('');
+  let notificationDirty = $state(false);
+  let notificationSaving = $state(false);
+  let imageUploading = $state(false);
+  let notificationStatus = $state<string | null>(null);
   let focusMode = $state(false);
   let apiOk = $state(true);
   let showAddDropdown = $state(false);
   let runningProcs = $state<string[]>([]);
+  let extensionConnected = $state(false);
+  let extensionBrowser = $state('');
   let blockStats = $state<{ exe: string; action: string; count: number }[]>([]);
   let lastBlockToast = $state<string | null>(null);
   let addingDuration = $state(0);
-  let confirmRemove = $state<number | null>(null);
+  let recentlyRemoved = $state<{ entry: BlockEntry; index: number } | null>(null);
   let errorMessage = $state<string | null>(null);
   let saving = $state(false);
   let blockProtectionEnabled = $state(false);
@@ -26,6 +39,7 @@
   let unlockError = $state('');
   let unlocking = $state(false);
   let pendingAction: (() => Promise<void>) | null = null;
+  let undoTimer: ReturnType<typeof setTimeout> | undefined;
 
   const API = '';
   const DURATIONS = [
@@ -43,6 +57,10 @@
       if (!r.ok) throw new Error(`Settings request failed (${r.status})`);
       const s = await r.json();
       blockAction = s.blockAction || 'hide';
+      blockTitle = s.blockTitle || 'Focus Mode';
+      blockMessage = s.blockMessage || DEFAULT_BLOCK_MESSAGE;
+      blockImageVersion = s.blockImageVersion || '';
+      notificationDirty = false;
       focusMode = s.focusMode ?? false;
       blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       const raw = s.focusBlocklist || '[]';
@@ -58,6 +76,7 @@
     }
     loadRunning();
     loadStats();
+    loadExtensionStatus();
   }
 
   async function loadRunning() {
@@ -171,7 +190,110 @@
     }
   }
 
-  function sanitizeEntry(raw: string): string {
+  async function loadExtensionStatus() {
+    try {
+      const r = await fetch(`${API}/api/extension-status`);
+      if (!r.ok) throw new Error();
+      const status = await r.json();
+      extensionConnected = status.connected === true;
+      extensionBrowser = typeof status.browser === 'string' && status.browser !== 'unknown' ? status.browser : '';
+    } catch {
+      extensionConnected = false;
+      extensionBrowser = '';
+    }
+  }
+
+  async function saveNotification(): Promise<boolean> {
+    if (notificationSaving) return false;
+    notificationSaving = true;
+    notificationStatus = null;
+    try {
+      const response = await fetch(`${API}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockTitle, blockMessage }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Save failed (${response.status})`);
+      blockTitle = blockTitle.replace(/\s+/g, ' ').trim() || 'Focus Mode';
+      blockMessage = blockMessage.replace(/\s+/g, ' ').trim() || DEFAULT_BLOCK_MESSAGE;
+      notificationDirty = false;
+      notificationStatus = 'Saved';
+      return true;
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not save the reminder';
+      return false;
+    } finally { notificationSaving = false; }
+  }
+
+  async function previewNotification() {
+    if (notificationDirty && !await saveNotification()) return;
+    try {
+      const response = await fetch(`${API}/api/block/preview`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: 'example.exe' }),
+      });
+      if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+      notificationStatus = 'Preview sent to your desktop';
+      setTimeout(() => notificationStatus = null, 3000);
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not show the preview';
+    }
+  }
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not read image'));
+      reader.onerror = () => reject(new Error('Could not read image'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadNotificationImage(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      errorMessage = 'Choose a PNG or JPEG image';
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      errorMessage = 'Image must be 2 MB or smaller';
+      return;
+    }
+
+    imageUploading = true;
+    notificationStatus = null;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const response = await fetch(`${API}/api/block/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Upload failed (${response.status})`);
+      blockImageVersion = result.version || Date.now().toString();
+      notificationStatus = 'Image added';
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not upload the image';
+    } finally { imageUploading = false; }
+  }
+
+  async function removeNotificationImage() {
+    imageUploading = true;
+    try {
+      const response = await fetch(`${API}/api/block/image`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(`Remove failed (${response.status})`);
+      blockImageVersion = '';
+      notificationStatus = 'Image removed';
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not remove the image';
+    } finally { imageUploading = false; }
+  }
+
+  function sanitizeWebsite(raw: string): string {
     // Strip URLs down to just the hostname (e.g. https://learn.microsoft.com/en-us → learn.microsoft.com)
     try {
       const u = new URL(raw);
@@ -182,12 +304,26 @@
     }
   }
 
+  function sanitizeApp(raw: string): string {
+    let value = raw.trim().replace(/^['"]|['"]$/g, '').split(/[\\/]/).pop() ?? '';
+    if (value && !value.toLowerCase().endsWith('.exe')) value += '.exe';
+    return value.toLowerCase();
+  }
+
+  function normalizeTarget(raw: string): string {
+    return targetKind === 'app' ? sanitizeApp(raw) : sanitizeWebsite(raw).toLowerCase();
+  }
+
   async function add() {
-    let val = newItem.trim().toLowerCase();
+    let val = newItem.trim();
     if (!val) return;
-    val = sanitizeEntry(val);
-    if (!/^[a-z0-9][a-z0-9.-]*$/.test(val) || (!val.endsWith('.exe') && !val.includes('.'))) {
-      errorMessage = 'Enter an executable such as discord.exe or a domain such as youtube.com';
+    val = normalizeTarget(val);
+    const validApp = targetKind === 'app' && /^[a-z0-9][a-z0-9._ -]*\.exe$/.test(val);
+    const validWebsite = targetKind === 'website' && /^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+$/.test(val);
+    if (!validApp && !validWebsite) {
+      errorMessage = targetKind === 'app'
+        ? 'Enter an app such as discord.exe'
+        : 'Enter a website such as youtube.com or paste its URL';
       return;
     }
     if (items.some(e => e.i === val)) { newItem = ''; return; }
@@ -207,31 +343,51 @@
     if (!await saveAll(next, null)) items = previous;
   }
 
+  function showUndo(entry: BlockEntry, index: number) {
+    recentlyRemoved = { entry, index };
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => recentlyRemoved = null, 6000);
+  }
+
   async function remove(i: number) {
-    const previous = items;
+    const previous = [...items];
+    const removed = items[i];
+    if (!removed) return;
     const next = items.filter((_, idx) => idx !== i);
     items = next;
-    confirmRemove = null;
     if (!await saveAll(next, async () => {
       items = next;
-      if (!await saveAll(next, null)) items = previous;
-    })) items = previous;
+      if (await saveAll(next, null)) showUndo(removed, i);
+      else items = previous;
+    })) {
+      items = previous;
+      return;
+    }
+    showUndo(removed, i);
   }
 
-  function requestRemove(i: number) {
-    confirmRemove = i;
-  }
-
-  function cancelRemove() {
-    confirmRemove = null;
+  async function undoRemove() {
+    const removed = recentlyRemoved;
+    if (!removed) return;
+    recentlyRemoved = null;
+    if (undoTimer) clearTimeout(undoTimer);
+    const previous = [...items];
+    const next = [...items];
+    next.splice(Math.min(removed.index, next.length), 0, removed.entry);
+    items = next;
+    if (!await saveAll(next, null)) {
+      items = previous;
+      showUndo(removed.entry, removed.index);
+    }
   }
 
   async function enforceNow(exe: string) {
     try {
-      const response = await fetch(`${API}/api/block/enforce`, {
+      const endpoint = blockAction === 'notify' ? '/api/block/preview' : '/api/block/enforce';
+      const response = await fetch(`${API}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exe }),
+        body: JSON.stringify(blockAction === 'notify' ? { target: exe } : { exe }),
       });
       if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || `Enforcement failed (${response.status})`);
       lastBlockToast = exe;
@@ -244,10 +400,11 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') add();
-    if (e.key === 'Escape') { showAddDropdown = false; confirmRemove = null; }
+    if (e.key === 'Escape') showAddDropdown = false;
   }
 
   let filteredProcs = $derived.by(() => {
+    if (targetKind !== 'app') return [];
     const q = newItem.trim().toLowerCase();
     const ids = new Set(items.map(e => e.i));
     if (!q) return runningProcs.filter(p => !ids.has(p));
@@ -255,7 +412,8 @@
   });
 
   async function selectProc(exe: string) {
-    exe = sanitizeEntry(exe);
+    targetKind = 'app';
+    exe = sanitizeApp(exe);
     if (items.some(e => e.i === exe)) { newItem = ''; showAddDropdown = false; return; }
     let entry: BlockEntry;
     if (addingDuration > 0) {
@@ -298,16 +456,27 @@
   }
 
   const modeOptions = [
-    { id: 'notify', icon: 'ti-bell', label: 'Notify', desc: 'Show a reminder toast when a blocked app is opened — no enforcement' },
-    { id: 'hide', icon: 'ti-eye-off', label: 'Hide', desc: 'Automatically minimize blocked app windows when detected' },
-    { id: 'kill', icon: 'ti-x', label: 'Kill', desc: 'Terminate blocked processes immediately' },
-    { id: 'strict', icon: 'ti-shield', label: 'Strict', desc: 'Kill + minimize + re-check every 5s — no escape' },
+    { id: 'notify', icon: 'ti-bell', label: 'Notify', desc: 'Remind without interrupting', app: 'Show the custom desktop toast and leave the app open.', web: 'Show the same reminder and allow the website to stay open.' },
+    { id: 'hide', icon: 'ti-eye-off', label: 'Hide', desc: 'Move distractions out of sight', app: 'Minimize every visible window owned by the blocked app.', web: 'Replace the matching page with the extension block screen.' },
+    { id: 'kill', icon: 'ti-x', label: 'Kill', desc: 'Stop the distraction now', app: 'Terminate the blocked process and its child processes immediately.', web: 'Block the matching page while leaving the browser itself running.' },
+    { id: 'strict', icon: 'ti-shield', label: 'Strict', desc: 'Keep checking for relaunches', app: 'Minimize, terminate, then check every 5 seconds and stop relaunches.', web: 'Block every matching visit while Focus Mode remains active.' },
   ];
+  let activeMode = $derived(modeOptions.find(option => option.id === blockAction) ?? modeOptions[1]);
+  let hasWebsiteTargets = $derived(items.some(entry => !entry.i.endsWith('.exe')));
 
-  onMount(() => { load(); const t = setInterval(loadRunning, 5000); return () => clearInterval(t); });
+  onMount(() => {
+    load();
+    const processTimer = setInterval(loadRunning, 5000);
+    const extensionTimer = setInterval(loadExtensionStatus, 15000);
+    return () => {
+      clearInterval(processTimer);
+      clearInterval(extensionTimer);
+      if (undoTimer) clearTimeout(undoTimer);
+    };
+  });
 </script>
 
-<div class="block" use:reorderable={{ key: 'block:cards', draggable: ':scope > .card' }}>
+<div class="block">
     {#if !apiOk}<span class="warning">Tray app not running</span>{/if}
     {#if errorMessage}<button class="warning error-dismiss" onclick={() => errorMessage = null}>{errorMessage} <span>×</span></button>{/if}
   <div class="card focus-workflow">
@@ -341,14 +510,74 @@
           </button>
         {/each}
       </div>
+      <div class="mode-outcome" aria-live="polite">
+        <div class="outcome-title">
+          <span class="mode-icon"><i class="ti {activeMode.icon}" aria-hidden="true"></i></span>
+          <div><span>Selected behavior</span><strong>{activeMode.label}</strong></div>
+        </div>
+        <div class="outcome-item">
+          <span class="outcome-kind"><i class="ti ti-app-window" aria-hidden="true"></i>Desktop apps</span>
+          <p>{activeMode.app}</p>
+        </div>
+        <div class="outcome-item">
+          <span class="outcome-kind"><i class="ti ti-world" aria-hidden="true"></i>Websites</span>
+          <p>{activeMode.web}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card reminder-card">
+    <div class="card-header flex-between">
+      <div class="section-heading compact"><span class="step-number">2</span><div><strong>Customize reminder</strong><span>Notify uses this toast alone; other modes show it before enforcement</span></div></div>
+      {#if notificationStatus}<span class="save-status"><i class="ti ti-check" aria-hidden="true"></i>{notificationStatus}</span>{/if}
+    </div>
+    <div class="reminder-layout">
+      <div class="preview-column">
+        <span class="preview-label"><i class="ti ti-layout-sidebar-left" aria-hidden="true"></i>Desktop toast preview</span>
+        <div class="reminder-preview" class:with-image={!!blockImageVersion}>
+          {#if blockImageVersion}
+            <img src={`${API}/api/block/image?v=${encodeURIComponent(blockImageVersion)}`} alt="Custom reminder" />
+          {:else}
+            <span class="preview-icon"><i class="ti ti-focus-2" aria-hidden="true"></i></span>
+          {/if}
+          <div><strong>{(blockTitle || 'Focus Mode').replace(/\{target\}/gi, 'example.exe').replace(/\{mode\}/gi, blockAction)}</strong><p>{(blockMessage || DEFAULT_BLOCK_MESSAGE).replace(/\{target\}/gi, 'example.exe').replace(/\{mode\}/gi, blockAction)}</p></div>
+        </div>
+      </div>
+      <div class="reminder-fields">
+        <label class="reminder-field" for="block-title">
+          <span>Title</span>
+          <input id="block-title" maxlength="60" bind:value={blockTitle} oninput={() => { notificationDirty = true; notificationStatus = null; }} placeholder="Focus Mode" />
+        </label>
+        <label class="reminder-field" for="block-message">
+          <span>Message</span>
+          <textarea id="block-message" maxlength="240" rows="3" bind:value={blockMessage} oninput={() => { notificationDirty = true; notificationStatus = null; }} placeholder={DEFAULT_BLOCK_MESSAGE}></textarea>
+        </label>
+        <span class="placeholder-hint">Use <code>{TARGET_PLACEHOLDER}</code> for the app or site and <code>{MODE_PLACEHOLDER}</code> for the active mode.</span>
+      </div>
+    </div>
+    <div class="reminder-actions">
+      <label class="image-button" class:disabled={imageUploading}>
+        <i class="ti ti-photo-plus" aria-hidden="true"></i>{blockImageVersion ? 'Replace image' : 'Add image'}
+        <input type="file" accept="image/png,image/jpeg" onchange={uploadNotificationImage} disabled={imageUploading} />
+      </label>
+      {#if blockImageVersion}<button class="remove-image" onclick={removeNotificationImage} disabled={imageUploading}><i class="ti ti-trash" aria-hidden="true"></i>Remove image</button>{/if}
+      <span class="image-note">PNG or JPEG, up to 2 MB</span>
+      <button class="save-reminder" onclick={saveNotification} disabled={!notificationDirty || notificationSaving}><i class="ti ti-device-floppy" aria-hidden="true"></i>{notificationSaving ? 'Saving…' : 'Save'}</button>
+      <button class="preview-button" onclick={previewNotification} disabled={notificationSaving || imageUploading}><i class="ti ti-bell" aria-hidden="true"></i>Save & preview</button>
     </div>
   </div>
 
   <!-- Blocklist -->
   <div class="card blocklist-card">
     <div class="card-header flex-between">
-      <div class="section-heading compact"><span class="step-number">2</span><div><strong>Apps & sites</strong><span>{items.length} target{items.length === 1 ? '' : 's'} configured</span></div></div>
-      <button class="scanner-btn" onclick={loadRunning} title="Scan running apps"><i class="ti ti-search"></i> Scan</button>
+      <div class="section-heading compact"><span class="step-number">3</span><div><strong>Apps & sites</strong><span>{items.length} target{items.length === 1 ? '' : 's'} configured</span></div></div>
+      <div class="target-header-actions">
+        <span class="extension-status" class:connected={extensionConnected} title={extensionConnected ? `Browser extension connected${extensionBrowser ? ` in ${extensionBrowser}` : ''}` : 'Website blocking needs the TimeLens browser extension'}>
+          <span></span>{extensionConnected ? `Web ready${extensionBrowser ? ` · ${extensionBrowser}` : ''}` : 'Web extension offline'}
+        </span>
+        <button class="scanner-btn" onclick={loadRunning} title="Refresh running apps"><i class="ti ti-refresh"></i> Running apps</button>
+      </div>
     </div>
 
     {#if !focusMode}
@@ -358,13 +587,26 @@
       </div>
     {/if}
 
+    {#if hasWebsiteTargets && !extensionConnected}
+      <div class="extension-banner">
+        <i class="ti ti-plug-off" aria-hidden="true"></i>
+        <div><strong>Website targets need the browser extension</strong><span>App blocking still works. Connect the TimeLens extension to enforce website entries.</span></div>
+      </div>
+    {/if}
+
     <div class="add-row">
       <div class="add-field target-field">
-        <label for="block-target">Target</label>
+        <div class="target-kind-row">
+          <span class="field-label">Add</span>
+          <div class="target-kind" role="group" aria-label="Target type">
+            <button type="button" class:active={targetKind === 'app'} onclick={() => { targetKind = 'app'; newItem = ''; showAddDropdown = false; }}><i class="ti ti-app-window" aria-hidden="true"></i>App</button>
+            <button type="button" class:active={targetKind === 'website'} onclick={() => { targetKind = 'website'; newItem = ''; showAddDropdown = false; }}><i class="ti ti-world" aria-hidden="true"></i>Website</button>
+          </div>
+        </div>
         <div class="combo-wrapper">
-          <i class="ti ti-search input-icon" aria-hidden="true"></i>
-          <input id="block-target" class="add-input" placeholder="discord.exe or youtube.com"
-            bind:value={newItem} onfocus={() => { loadRunning(); showAddDropdown = true; }} oninput={() => showAddDropdown = true}
+          <i class="ti {targetKind === 'app' ? 'ti-search' : 'ti-link'} input-icon" aria-hidden="true"></i>
+          <input id="block-target" class="add-input" aria-label={targetKind === 'app' ? 'App name' : 'Website address'} placeholder={targetKind === 'app' ? 'Search running apps or type discord.exe' : 'Paste youtube.com or a full URL'}
+            bind:value={newItem} onfocus={() => { if (targetKind === 'app') { loadRunning(); showAddDropdown = true; } }} oninput={() => showAddDropdown = targetKind === 'app'}
             onkeydown={onKeydown} onblur={() => showAddDropdown = false} autocomplete="off" />
           {#if showAddDropdown && filteredProcs.length > 0}
             <div class="suggestions">
@@ -390,7 +632,7 @@
         </div>
       </div>
       <button class="add-btn" onclick={add} disabled={!newItem.trim() || saving}>
-        <i class="ti ti-plus"></i> Add target
+        <i class="ti ti-plus"></i> Add {targetKind === 'app' ? 'app' : 'website'}
       </button>
     </div>
 
@@ -408,25 +650,20 @@
             <code class="bl-name">{entry.i}</code>
             <span class="bl-tag">{typeLabel(entry.i)}</span>
             <span class="bl-mode">{modeLabel(entry)}</span>
-            <button class="bl-enforce" onclick={() => enforceNow(entry.i)} title="Enforce now" disabled={blockAction === 'notify' || !focusMode || !entry.i.endsWith('.exe')}>
+            <button class="bl-enforce" onclick={() => enforceNow(entry.i)} title={blockAction === 'notify' ? 'Send reminder now' : 'Enforce now'} disabled={!focusMode || !entry.i.endsWith('.exe')}>
               <i class="ti ti-player-play"></i>
             </button>
-            {#if confirmRemove === i}
-              <div class="confirm-group">
-                <button class="bl-confirm-yes" onclick={() => remove(i)} aria-label="Confirm remove {entry.i}">
-                  <i class="ti ti-check"></i>
-                </button>
-                <button class="bl-confirm-no" onclick={cancelRemove} aria-label="Cancel">
-                  <i class="ti ti-x"></i>
-                </button>
-              </div>
-            {:else}
-              <button class="bl-remove" onclick={() => requestRemove(i)} aria-label="Remove {entry.i}">
-                <i class="ti ti-trash"></i>
-              </button>
-            {/if}
+            <button class="bl-remove" onclick={() => remove(i)} aria-label="Remove {entry.i}" title="Remove target">
+              <i class="ti ti-trash"></i>
+            </button>
           </div>
         {/each}
+      </div>
+    {/if}
+    {#if recentlyRemoved}
+      <div class="undo-bar" role="status">
+        <span><i class="ti ti-trash" aria-hidden="true"></i>Removed <code>{recentlyRemoved.entry.i}</code></span>
+        <button type="button" onclick={undoRemove}>Undo</button>
       </div>
     {/if}
   </div>
@@ -614,16 +851,6 @@
   }
   .bl-tag-sm { font-size: 10px; margin-left: auto; color: var(--md-error); font-style: italic; }
   .bl-mode { font-size: 11px; color: var(--clr-text-ter); font-family: var(--font-mono); flex-shrink: 0; min-width: 48px; text-align: right; }
-  .confirm-group { display: flex; gap: 4px; }
-  .bl-confirm-yes, .bl-confirm-no {
-    background: none; border: 1px solid var(--clr-border); border-radius: var(--shape-sm);
-    cursor: pointer; padding: var(--sp-1); font-size: 14px; transition: all 0.15s;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .bl-confirm-yes { color: var(--md-error); border-color: var(--md-error); }
-  .bl-confirm-yes:hover { background: var(--md-err-cont); }
-  .bl-confirm-no { color: var(--clr-text-sec); }
-  .bl-confirm-no:hover { background: var(--clr-bg-ter); }
   .bl-enforce {
     background: none; border: 1px solid var(--clr-border); color: var(--clr-text-ter);
     cursor: pointer; padding: var(--sp-1); border-radius: var(--shape-sm);
@@ -703,11 +930,64 @@
   .mode-copy strong { color: inherit; font-size: 12px; }
   .mode-copy small { color: var(--clr-text-sec); font-size: 9px; line-height: 1.25; }
   .mode-check { color: var(--md-primary); font-size: 14px; }
+  .mode-outcome { display: grid; grid-template-columns: minmax(180px, .65fr) repeat(2, minmax(240px, 1fr)); gap: 8px; margin-top: 10px; padding: 8px; border: 1px solid var(--clr-border); border-radius: var(--shape-md); background: color-mix(in srgb, var(--clr-bg-ter) 65%, transparent); }
+  .outcome-title, .outcome-item { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--shape-sm); background: var(--clr-bg-sec); }
+  .outcome-title > div { display: flex; flex-direction: column; gap: 1px; }
+  .outcome-title > div span { color: var(--clr-text-ter); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .outcome-title strong { color: var(--clr-text-pri); font-size: 12px; }
+  .outcome-item { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .outcome-kind { display: inline-flex; align-items: center; gap: 5px; color: var(--md-primary); font-size: 10px; font-weight: 700; }
+  .outcome-item p { margin: 0; color: var(--clr-text-sec); font-size: 10px; line-height: 1.45; }
+  .reminder-card { overflow: hidden; }
+  .reminder-card .card-header { padding: 14px 18px; }
+  .save-status { display: inline-flex; align-items: center; gap: 5px; color: var(--md-primary); font-size: 10px; font-weight: 600; }
+  .reminder-layout { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(460px, 1.2fr); gap: 18px; padding: 16px 18px; border-top: 1px solid var(--clr-border); }
+  .preview-column { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+  .preview-label { display: inline-flex; align-items: center; gap: 5px; color: var(--clr-text-sec); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .reminder-fields { display: grid; grid-template-columns: minmax(180px, .45fr) minmax(280px, 1fr); gap: 10px; align-items: start; }
+  .reminder-field { display: flex; flex-direction: column; gap: 7px; }
+  .reminder-field > span { color: var(--clr-text-sec); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .reminder-field input, .reminder-field textarea { width: 100%; box-sizing: border-box; padding: 9px 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px inherit; outline: none; resize: vertical; }
+  .reminder-field input { height: 38px; }
+  .reminder-field textarea { min-height: 70px; line-height: 1.45; }
+  .reminder-field input:focus, .reminder-field textarea:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 8%, transparent); }
+  .placeholder-hint { grid-column: 1 / -1; color: var(--clr-text-ter); font-size: 10px; }
+  .placeholder-hint code { color: var(--md-primary); font-family: var(--font-mono); }
+  .reminder-preview { min-height: 90px; display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--md-primary) 20%, var(--clr-border)); border-left: 4px solid var(--md-primary); border-radius: var(--shape-md); background: #1a1a1a; box-shadow: 0 10px 28px rgba(0,0,0,.24); }
+  .reminder-preview img, .preview-icon { width: 48px; height: 48px; border-radius: 10px; }
+  .reminder-preview img { object-fit: contain; background: rgba(255,255,255,.04); }
+  .preview-icon { display: grid; place-items: center; color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 12%, #1a1a1a); font-size: 21px; }
+  .reminder-preview div { min-width: 0; }
+  .reminder-preview strong { display: block; overflow: hidden; color: #fff; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .reminder-preview p { display: -webkit-box; margin: 5px 0 0; overflow: hidden; color: #aaa; font-size: 11px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .reminder-actions { min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-top: 1px solid var(--clr-border); background: color-mix(in srgb, var(--clr-bg-ter) 45%, transparent); }
+  .image-button, .remove-image, .save-reminder, .preview-button { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border-radius: var(--shape-sm); font: 11px inherit; cursor: pointer; }
+  .image-button, .remove-image, .save-reminder { color: var(--clr-text-sec); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); }
+  .image-button:hover, .remove-image:hover, .save-reminder:hover:not(:disabled) { color: var(--md-primary); border-color: var(--md-primary); }
+  .image-button input { display: none; }
+  .image-button.disabled, .remove-image:disabled, .save-reminder:disabled, .preview-button:disabled { opacity: .4; cursor: default; }
+  .remove-image:hover:not(:disabled) { color: var(--md-error); border-color: var(--md-error); }
+  .image-note { flex: 1; color: var(--clr-text-ter); font-size: 10px; }
+  .preview-button { color: var(--md-on-primary); background: var(--md-primary); border: 1px solid var(--md-primary); font-weight: 600; }
   .blocklist-card .card-header { padding: 14px 18px; }
+  .target-header-actions { display: flex; align-items: center; gap: 8px; }
+  .extension-status { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; color: var(--clr-text-ter); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-full); font-size: 9px; font-weight: 600; white-space: nowrap; }
+  .extension-status > span { width: 6px; height: 6px; border-radius: 50%; background: var(--md-error); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-error) 12%, transparent); }
+  .extension-status.connected { color: var(--md-tertiary); }
+  .extension-status.connected > span { background: var(--md-tertiary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-tertiary) 12%, transparent); }
   .block-banner { margin: 12px 18px 0; }
+  .extension-banner { display: flex; align-items: center; gap: 10px; margin: 12px 18px 0; padding: 10px 12px; color: var(--clr-text-sec); background: color-mix(in srgb, var(--md-error) 7%, var(--clr-bg-ter)); border: 1px solid color-mix(in srgb, var(--md-error) 20%, var(--clr-border)); border-radius: var(--shape-sm); }
+  .extension-banner > i { color: var(--md-error); font-size: 17px; }
+  .extension-banner > div { display: flex; flex-direction: column; gap: 2px; }
+  .extension-banner strong { color: var(--clr-text-pri); font-size: 11px; }
+  .extension-banner span { font-size: 10px; }
   .add-row { display: grid; grid-template-columns: minmax(250px, 1.2fr) minmax(420px, 2fr) auto; align-items: end; gap: 12px; padding: 16px 18px; }
   .add-field { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
-  .add-field label, .field-label { color: var(--clr-text-sec); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .field-label { color: var(--clr-text-sec); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .target-kind-row { display: flex; align-items: center; justify-content: space-between; min-height: 24px; }
+  .target-kind { display: inline-flex; padding: 2px; border: 1px solid var(--clr-border); border-radius: var(--shape-sm); background: var(--clr-bg-ter); }
+  .target-kind button { height: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; color: var(--clr-text-ter); background: transparent; border: 0; border-radius: 5px; font: 9px inherit; cursor: pointer; }
+  .target-kind button.active { color: var(--md-on-pri-cont); background: var(--md-primary-cont); }
   .input-icon { position: absolute; z-index: 2; left: 11px; top: 50%; transform: translateY(-50%); color: var(--clr-text-ter); font-size: 14px; }
   .add-input { padding-left: 34px; height: 36px; background: var(--clr-bg-ter); }
   .duration-picker { display: grid; grid-template-columns: repeat(6, minmax(62px, 1fr)); gap: 5px; }
@@ -721,6 +1001,10 @@
   .empty > span:not(.empty-hint):not(.empty-icon) { color: var(--clr-text-sec); font-size: 12px; }
   .bl-row { min-height: 54px; padding: 8px 18px; }
   .bl-icon { width: 32px; height: 32px; }
+  .undo-bar { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 18px; color: var(--clr-text-sec); background: color-mix(in srgb, var(--md-primary) 7%, var(--clr-bg-ter)); border-top: 1px solid var(--clr-border); font-size: 11px; }
+  .undo-bar span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+  .undo-bar code { max-width: 260px; overflow: hidden; color: var(--clr-text-pri); font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+  .undo-bar button { padding: 5px 10px; color: var(--md-primary); background: transparent; border: 1px solid color-mix(in srgb, var(--md-primary) 35%, transparent); border-radius: var(--shape-sm); font: 10px inherit; font-weight: 700; cursor: pointer; }
   .stats-card .card-header > div { display: flex; flex-direction: column; gap: 2px; }
   .header-subtitle { color: var(--clr-text-sec); font-size: var(--type-section-subtitle); line-height: 1.4; }
   .total-badge { padding: 4px 8px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-full); font: 10px var(--font-mono); }
@@ -749,16 +1033,27 @@
   .dialog-primary:disabled { opacity: .4; cursor: not-allowed; }
   @media (max-width: 1180px) {
     .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mode-outcome { grid-template-columns: 1fr 1fr; }
+    .outcome-title { grid-column: 1 / -1; }
+    .reminder-layout { grid-template-columns: 1fr; }
     .add-row { grid-template-columns: 1fr auto; }
     .duration-field { grid-column: 1 / -1; grid-row: 2; }
   }
   @media (max-width: 720px) {
     .workflow-header { align-items: flex-start; flex-direction: column; }
     .workflow-actions { width: 100%; justify-content: space-between; }
-    .mode-grid, .add-row { grid-template-columns: 1fr; }
+    .mode-grid, .mode-outcome, .add-row { grid-template-columns: 1fr; }
+    .outcome-title { grid-column: auto; }
+    .reminder-fields { grid-template-columns: 1fr; }
+    .placeholder-hint { grid-column: auto; }
+    .reminder-actions { align-items: stretch; flex-wrap: wrap; }
+    .image-note { flex-basis: 100%; order: 3; }
     .duration-field { grid-column: auto; grid-row: auto; }
     .duration-picker { grid-template-columns: repeat(3, 1fr); }
     .add-btn { width: 100%; justify-content: center; }
     .mode-copy small { white-space: normal; }
+    .target-header-actions { align-items: flex-end; flex-direction: column; }
+    .extension-status { display: none; }
+    .bl-tag { display: none; }
   }
 </style>

@@ -45,6 +45,7 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint ID_EXIT = WM_APP + 3;
 
     private const uint WM_STARTUP = WM_APP + 100;
+    private const uint WM_SHOW_TOAST = WM_APP + 101;
 
     private IntPtr _hWnd;
     private IntPtr _hMenu;
@@ -55,6 +56,10 @@ public sealed class NativeTrayIcon : IDisposable
     private bool _disposed;
     private ExceptionDispatchInfo? _callbackError;
     private readonly string _iconPath;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
+    private ToastWindow? _activeToast;
+
+    private sealed record ToastRequest(string Title, string Text, string? ImagePath);
 
     public NativeTrayIcon(string? iconPath = null)
     {
@@ -67,6 +72,7 @@ public sealed class NativeTrayIcon : IDisposable
     public event Action? InstallExtensionRequested;
     public event Action? ExitRequested;
     public event Action? StartupRequested;
+    public event Action<Exception>? ToastFailed;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATAW
@@ -256,13 +262,12 @@ public sealed class NativeTrayIcon : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "The tray message loop failed.");
     }
 
-    public void ShowBalloon(string title, string text, bool warning = false)
+    public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null)
     {
-        try
-        {
-            _ = new ToastWindow(title, text);
-        }
-        catch { }
+        if (_disposed) return;
+        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath));
+        var window = _hWnd;
+        if (window != IntPtr.Zero) PostMessageW(window, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
     }
 
     public void Close()
@@ -390,6 +395,21 @@ public sealed class NativeTrayIcon : IDisposable
 
             case WM_STARTUP:
                 StartupRequested?.Invoke();
+                if (!_toastQueue.IsEmpty) PostMessageW(hWnd, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
+                return IntPtr.Zero;
+
+            case WM_SHOW_TOAST:
+                ToastRequest? latestToast = null;
+                while (_toastQueue.TryDequeue(out var toast)) latestToast = toast;
+                if (latestToast is not null)
+                {
+                    try
+                    {
+                        _activeToast?.Dispose();
+                        _activeToast = new ToastWindow(latestToast.Title, latestToast.Text, latestToast.ImagePath);
+                    }
+                    catch (Exception ex) { ToastFailed?.Invoke(ex); }
+                }
                 return IntPtr.Zero;
         }
 
@@ -426,6 +446,9 @@ public sealed class NativeTrayIcon : IDisposable
 
         if (_hMenu != IntPtr.Zero)
             DestroyMenu(_hMenu);
+
+        _activeToast?.Dispose();
+        _activeToast = null;
 
         if (_hIcon != IntPtr.Zero)
         {

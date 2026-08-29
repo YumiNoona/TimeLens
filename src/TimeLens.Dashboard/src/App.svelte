@@ -286,7 +286,7 @@
         </div>
       </div>
       <div class="content">
-        <div class="stat-row" use:reorderable={{ key: 'browser:stats' }}>
+        <div class="stat-row">
           <StatCard label="Unique sites" value={browserSites.length} />
           <StatCard label="Total visits" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
           <StatCard label="Browse time" value={`${browserTime.filter(bt => bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com').reduce((a, b) => a + b.totalMinutes, 0)}m`} />
@@ -298,11 +298,11 @@
             <span class="empty-hint">Install the browser extension to start tracking</span>
           </div>
         {:else}
-          <div class="two-col" use:reorderable={{ key: 'browser:insights' }}>
+          <div class="two-col">
            <TopSites sites={browserSites} />
              <SiteTimeCard {browserTime} />
            </div>
-            <div class="browser-detail-grid" use:reorderable={{ key: 'browser:details' }}>
+            <div class="browser-detail-grid">
               <BrowserHourlyCard {browserHourly} />
               <MediaCard {audioSessions} />
             </div>

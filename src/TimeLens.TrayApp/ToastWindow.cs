@@ -1,4 +1,7 @@
 using System.Runtime.InteropServices;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.ComponentModel;
 
 namespace TimeLens.TrayApp;
 
@@ -17,10 +20,14 @@ public sealed class ToastWindow : IDisposable
     private static readonly IntPtr HWND_TOPMOST = new(-1);
 
     private IntPtr _hWnd;
-    private readonly string _text;
-    private readonly int _width = 320;
-    private readonly int _height = 68;
-    private readonly int _dismissMs = 3000;
+    private readonly string _title;
+    private readonly string _body;
+    private readonly Image? _image;
+    private readonly int _width = 380;
+    private readonly int _height = 92;
+    private readonly int _dismissMs = 5000;
+    private int _x;
+    private int _y;
     private const int DISMISS_TIMER_ID = 1;
 
     private static readonly uint BgColor = 0xFF1A1A1A;
@@ -32,12 +39,35 @@ public sealed class ToastWindow : IDisposable
 
     private static bool _classRegistered;
     private static readonly object _classLock = new();
+    private static readonly WndProc StaticWndProcDelegate = StaticWndProc;
 
-    public ToastWindow(string title, string text)
+    public ToastWindow(string title, string text, string? imagePath = null)
     {
-        _text = $"{title}|{text}";
-        lock (_classLock) RegisterClass();
-        CreateToast();
+        _title = title;
+        _body = text;
+        if (!string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath))
+        {
+            try
+            {
+                // Clone from memory so replacing/removing the selected image never leaves
+                // the file locked while an older toast is still visible.
+                var bytes = File.ReadAllBytes(imagePath);
+                using var stream = new MemoryStream(bytes, writable: false);
+                using var source = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+                _image = new Bitmap(source);
+            }
+            catch { _image = null; }
+        }
+        try
+        {
+            lock (_classLock) RegisterClass();
+            CreateToast();
+        }
+        catch
+        {
+            _image?.Dispose();
+            throw;
+        }
     }
 
     private static void RegisterClass()
@@ -48,37 +78,39 @@ public sealed class ToastWindow : IDisposable
         {
             cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
             style = 3,
-            lpfnWndProc = Marshal.GetFunctionPointerForDelegate<WndProc>(StaticWndProc),
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(StaticWndProcDelegate),
             hInstance = GetModuleHandleW(null),
             hCursor = IntPtr.Zero,
             hbrBackground = IntPtr.Zero,
             lpszClassName = "TLToast",
         };
-        RegisterClassExW(ref wc);
+        var atom = RegisterClassExW(ref wc);
+        if (atom == 0)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not register the TimeLens toast window class.");
         _classRegistered = true;
     }
 
     private void CreateToast()
     {
-        var screenW = GetSystemMetrics(0); // SM_CXSCREEN
-        var screenH = GetSystemMetrics(1); // SM_CYSCREEN
         var margin = 16;
-        var taskbarH = TaskbarBottomHeight();
-        var x = screenW - _width - margin;
-        var y = screenH - _height - margin - taskbarH;
+        var workArea = new RECT();
+        if (!SystemParametersInfoW(0x0030, 0, ref workArea, 0)) // SPI_GETWORKAREA
+            workArea = new RECT { right = GetSystemMetrics(0), bottom = GetSystemMetrics(1) };
+        _x = workArea.right - _width - margin;
+        _y = workArea.bottom - _height - margin;
 
         _hWnd = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE,
             "TLToast", "", WS_POPUP,
-            x, y, _width, _height,
+            _x, _y, _width, _height,
             IntPtr.Zero, IntPtr.Zero, GetModuleHandleW(null), IntPtr.Zero);
 
-        if (_hWnd == IntPtr.Zero) return;
+        if (_hWnd == IntPtr.Zero)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not create the TimeLens toast window.");
 
         // Rounded corners
         var rgn = CreateRoundRectRgn(0, 0, _width + 1, _height + 1, 10, 10);
-        SetWindowRgn(_hWnd, rgn, 1);
-        DeleteObject(rgn);
+        if (SetWindowRgn(_hWnd, rgn, 1) == 0) DeleteObject(rgn);
 
         SetWindowLongPtrW(_hWnd, GWLP_USERDATA, GCHandle.ToIntPtr(GCHandle.Alloc(this)));
 
@@ -109,13 +141,22 @@ public sealed class ToastWindow : IDisposable
 
         SetBkMode(hdcMem, TRANSPARENT);
 
-        var parts = _text.Split('|');
+        var textLeft = _image is null ? 18 : 92;
+        if (_image is not null)
+        {
+            using var graphics = Graphics.FromHdc(hdcMem);
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.DrawImage(_image, 16, 14, 64, 64);
+        }
+
         // Title
         var titleFont = CreateFontW(17, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
         var oldFont = SelectObject(hdcMem, titleFont);
         SetTextColor(hdcMem, TextColor);
-        var tr = new RECT { left = 16, top = 8, right = _width - 16, bottom = 36 };
-        DrawTextW(hdcMem, parts[0], -1, ref tr, 0x0000 | 0x0020 | 0x40000);
+        var tr = new RECT { left = textLeft, top = 11, right = _width - 16, bottom = 36 };
+        DrawTextW(hdcMem, _title, -1, ref tr, 0x0020 | 0x0800 | 0x8000);
         SelectObject(hdcMem, oldFont);
         DeleteObject(titleFont);
 
@@ -123,30 +164,23 @@ public sealed class ToastWindow : IDisposable
         var bodyFont = CreateFontW(14, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
         var oldFont2 = SelectObject(hdcMem, bodyFont);
         SetTextColor(hdcMem, SubTextColor);
-        var br = new RECT { left = 16, top = 32, right = _width - 16, bottom = _height - 6 };
-        DrawTextW(hdcMem, parts.Length > 1 ? parts[1] : "", -1, ref br, 0x0000 | 0x0020 | 0x40000);
+        var br = new RECT { left = textLeft, top = 37, right = _width - 16, bottom = _height - 10 };
+        DrawTextW(hdcMem, _body, -1, ref br, 0x0010 | 0x0800 | 0x8000);
         SelectObject(hdcMem, oldFont2);
         DeleteObject(bodyFont);
 
         // Update layered
-        var dst = new POINT();
+        var dst = new POINT { x = _x, y = _y };
         var sz = new SIZE { cx = _width, cy = _height };
         var src = new POINT();
-        var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = alpha, AlphaFormat = 1 };
+        var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = alpha, AlphaFormat = 0 };
         UpdateLayeredWindow(_hWnd, hdcScreen, ref dst, ref sz, hdcMem, ref src, 0, ref blend, ULW_ALPHA);
         SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, 0x0010 | 0x0002 | 0x0001);
 
-        DeleteObject(hBitmap);
         SelectObject(hdcMem, oldBitmap);
+        DeleteObject(hBitmap);
         DeleteDC(hdcMem);
         ReleaseDC(IntPtr.Zero, hdcScreen);
-    }
-
-    private static int TaskbarBottomHeight()
-    {
-        var abd = new APPBARDATA { cbSize = (uint)Marshal.SizeOf<APPBARDATA>() };
-        SHAppBarMessage(5, ref abd); // ABM_GETTASKBARPOS
-        return abd.rc.bottom - abd.rc.top;
     }
 
     private static IntPtr StaticWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -165,7 +199,12 @@ public sealed class ToastWindow : IDisposable
         if (msg == 0x0002) // WM_DESTROY
         {
             var p = GetWindowLongPtrW(hWnd, GWLP_USERDATA);
-            if (p != IntPtr.Zero) GCHandle.FromIntPtr(p).Free();
+            if (p != IntPtr.Zero)
+            {
+                var handle = GCHandle.FromIntPtr(p);
+                if (handle.Target is ToastWindow toast) toast.OnDestroyed();
+                handle.Free();
+            }
             SetWindowLongPtrW(hWnd, GWLP_USERDATA, IntPtr.Zero);
             return IntPtr.Zero;
         }
@@ -174,6 +213,12 @@ public sealed class ToastWindow : IDisposable
 
     public void Dispose() { if (_hWnd != IntPtr.Zero) { DestroyWindow(_hWnd); _hWnd = IntPtr.Zero; } }
 
+    private void OnDestroyed()
+    {
+        _hWnd = IntPtr.Zero;
+        _image?.Dispose();
+    }
+
     // P/Invoke declarations
     [DllImport("gdi32.dll")] private static extern IntPtr CreateSolidBrush(uint c);
     [DllImport("gdi32.dll")] private static extern int SetBkMode(IntPtr hdc, int m);
@@ -181,13 +226,13 @@ public sealed class ToastWindow : IDisposable
     [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
     [DllImport("gdi32.dll")] private static extern int DeleteObject(IntPtr obj);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateFontW(int h, int w, int e, int o, int wt, int i, int u, int s, int cs, int op, int cp, int q, int pi, string f);
-    [DllImport("gdi32.dll")] private static extern int DrawTextW(IntPtr hdc, string t, int l, ref RECT r, uint f);
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateFontW(int h, int w, int e, int o, int wt, int i, int u, int s, int cs, int op, int cp, int q, int pi, string f);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int DrawTextW(IntPtr hdc, string t, int l, ref RECT r, uint f);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
-    [DllImport("gdi32.dll")] private static extern int FillRect(IntPtr hdc, ref RECT r, IntPtr brush);
+    [DllImport("user32.dll")] private static extern int FillRect(IntPtr hdc, ref RECT r, IntPtr brush);
     [DllImport("gdi32.dll")] private static extern int DeleteDC(IntPtr hdc);
-    [DllImport("user32.dll")] private static extern IntPtr CreateWindowExW(int ex, string cn, string wn, int st, int x, int y, int w, int h, IntPtr hp, IntPtr hm, IntPtr hi, IntPtr pv);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowExW(int ex, string cn, string wn, int st, int x, int y, int w, int h, IntPtr hp, IntPtr hm, IntPtr hi, IntPtr pv);
     [DllImport("user32.dll")] private static extern int DestroyWindow(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern int SetWindowPos(IntPtr hWnd, IntPtr hAfter, int x, int y, int cx, int cy, uint f);
     [DllImport("user32.dll")] private static extern int UpdateLayeredWindow(IntPtr hWnd, IntPtr hdcDst, ref POINT pd, ref SIZE ps, IntPtr hdcSrc, ref POINT pSrc, int crKey, ref BLENDFUNCTION blend, int f);
@@ -198,18 +243,18 @@ public sealed class ToastWindow : IDisposable
     [DllImport("user32.dll")] private static extern int KillTimer(IntPtr hWnd, int id);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProcW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int n);
-    [DllImport("user32.dll", SetLastError = true)] private static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SystemParametersInfoW(uint action, uint param, ref RECT value, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
     [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int i, IntPtr v);
     [DllImport("user32.dll")] private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int i);
-    [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandleW(string? n);
-    [DllImport("shell32.dll")] private static extern uint SHAppBarMessage(uint dw, ref APPBARDATA d);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? n);
 
     private struct RECT { public int left, top, right, bottom; }
     private struct POINT { public int x, y; }
     private struct SIZE { public int cx, cy; }
     private struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
-    private struct WNDCLASSEXW { public uint cbSize, style; public IntPtr lpfnWndProc; public int cbClsExtra, cbWndExtra; public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string lpszMenuName, lpszClassName; public IntPtr hIconSm; }
-    private struct APPBARDATA { public uint cbSize; public IntPtr hWnd; public uint uCallbackMessage, uEdge; public RECT rc; public IntPtr lParam; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WNDCLASSEXW { public uint cbSize, style; public IntPtr lpfnWndProc; public int cbClsExtra, cbWndExtra; public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string? lpszMenuName, lpszClassName; public IntPtr hIconSm; }
     private delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private const int GWLP_USERDATA = -21;
 }

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
+using TimeLens.Api;
 using TimeLens.TrayApp;
 using TimeLens.TrayApp.Services;
 
@@ -17,7 +18,41 @@ internal static class Program
                 var path = Path.Combine(directory, "new.db");
                 var settings = DatabaseInitializer.Initialize(path);
                 Check(settings.RetentionDays == 90 && settings.TrackInput, "Fresh defaults were not loaded.");
+                Check(settings.BlockTitle == BlockNotification.DefaultTitle &&
+                      settings.BlockMessage == BlockNotification.DefaultMessage &&
+                      settings.BlockImageVersion == "", "Fresh block reminder defaults were not loaded.");
                 Check(Query(path, "SELECT count(*) FROM custom_rules") == 0, "Fresh rules table missing.");
+            });
+            Run("Block modes have distinct enforcement plans", () =>
+            {
+                var notify = BlockActionPlan.From("notify");
+                var hide = BlockActionPlan.From("hide");
+                var kill = BlockActionPlan.From("kill");
+                var strict = BlockActionPlan.From("strict");
+                Check(notify.ShowNotification && !notify.MinimizeWindows && !notify.TerminateProcesses && !notify.RepeatEveryFiveSeconds, "Notify plan enforces the target.");
+                Check(hide.MinimizeWindows && !hide.TerminateProcesses && !hide.RepeatEveryFiveSeconds, "Hide plan is incorrect.");
+                Check(!kill.MinimizeWindows && kill.TerminateProcesses && !kill.RepeatEveryFiveSeconds, "Kill plan is incorrect.");
+                Check(strict.MinimizeWindows && strict.TerminateProcesses && strict.RepeatEveryFiveSeconds, "Strict plan is incomplete.");
+                Check(BlockActionPlan.From("invalid").Id == "hide", "Invalid actions do not fall back safely.");
+
+                var calls = new List<string>();
+                bool Minimize() { calls.Add("minimize"); return true; }
+                bool Terminate() { calls.Add("terminate"); return true; }
+                Check(BlockEnforcement.Apply(notify, true, Minimize, Terminate) && calls.Count == 0, "Notify invoked enforcement.");
+                calls.Clear();
+                Check(BlockEnforcement.Apply(hide, true, Minimize, Terminate) && calls.SequenceEqual(["minimize"]), "Hide did not only minimize.");
+                calls.Clear();
+                Check(BlockEnforcement.Apply(kill, true, Minimize, Terminate) && calls.SequenceEqual(["terminate"]), "Kill did not only terminate.");
+                calls.Clear();
+                Check(BlockEnforcement.Apply(strict, true, Minimize, Terminate) && calls.SequenceEqual(["minimize", "terminate"]), "Strict enforcement order is incorrect.");
+            });
+            Run("Custom block reminder placeholders are formatted safely", () =>
+            {
+                var message = BlockNotification.Format("Close {TARGET}; mode={mode}", "games.exe", "strict");
+                Check(message == "Close games.exe; mode=strict", "Block reminder placeholders were not replaced.");
+                Check(BlockNotification.FormatTitle("Stop {target}", "games.exe", "hide") == "Stop games.exe", "Block title placeholder was not replaced.");
+                Check(BlockNotification.NormalizeTitle("  Deep   work\r\nnow  ") == "Deep work now", "Block title whitespace was not normalized.");
+                Check(BlockNotification.NormalizeMessage("") == BlockNotification.DefaultMessage, "Empty block message did not restore the default.");
             });
             Run("Empty database from a failed first launch recovers", () =>
             {
@@ -106,6 +141,12 @@ internal static class Program
             });
             if (args.Contains("--tray"))
                 Run("Native tray registration, activation, and Explorer recovery", TestTray);
+            if (args.Contains("--toast"))
+                Run("Native toast window creation and rendering", () =>
+                {
+                    using var toast = new ToastWindow("Focus Mode", "example.exe is blocked");
+                    Check(FindWindowW("TLToast", "") != IntPtr.Zero, "Native toast window was not created.");
+                });
             Console.WriteLine("All startup regression checks passed.");
             return 0;
         }

@@ -46,6 +46,15 @@ public record AppSettings
     [JsonPropertyName("blockAction")]
     public string BlockAction { get; init; } = "hide";
 
+    [JsonPropertyName("blockTitle")]
+    public string BlockTitle { get; init; } = BlockNotification.DefaultTitle;
+
+    [JsonPropertyName("blockMessage")]
+    public string BlockMessage { get; init; } = BlockNotification.DefaultMessage;
+
+    [JsonPropertyName("blockImageVersion")]
+    public string BlockImageVersion { get; init; } = "";
+
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; init; } = "12h";
 

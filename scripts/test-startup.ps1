@@ -71,6 +71,64 @@ try {
     $asset = $Matches[1]
     $null = Invoke-WebRequest "http://127.0.0.1:47821$asset" -UseBasicParsing -TimeoutSec 5
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/summary' -TimeoutSec 10
+
+    # Exercise the production custom-reminder API, image pipeline, and the native
+    # toast dispatch that marshals API calls onto the tray message-loop thread.
+    $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.' } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $notificationBody -TimeoutSec 5
+    $savedSettings = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
+    if ($savedSettings.blockTitle -ne 'Deep Work' -or $savedSettings.blockMessage -notmatch '\{target\}') {
+        throw 'Custom block notification settings did not persist.'
+    }
+
+    # The browser extension receives the selected action as well as a block flag.
+    # Notify must allow navigation; the other modes must request enforcement.
+    $blocklistJson = '[{"i":"example.com","m":"u"}]'
+    $tabId = 6000
+    foreach ($mode in @('notify', 'hide', 'kill', 'strict')) {
+        $modeSettings = @{ focusMode = $true; blockAction = $mode; focusBlocklist = $blocklistJson } | ConvertTo-Json -Compress
+        $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $modeSettings -TimeoutSec 5
+        $browserEvent = @{ domain = 'www.example.com'; url = 'https://www.example.com/path'; title = 'Block contract'; browser = 'test'; tabId = $tabId } | ConvertTo-Json -Compress
+        $browserResult = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-event' -Method Post -ContentType 'application/json' -Body $browserEvent -TimeoutSec 5
+        $expectedBlocked = $mode -ne 'notify'
+        if ($browserResult.action -ne $mode -or [bool]$browserResult.blocked -ne $expectedBlocked) {
+            throw "Browser block response was incorrect for $mode mode."
+        }
+        $tabId++
+    }
+    $resetBlockSettings = @{ focusMode = $false; blockAction = 'hide'; focusBlocklist = '[]' } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $resetBlockSettings -TimeoutSec 5
+
+    # Valid one-pixel PNG; the API decodes and normalizes it to its local toast asset.
+    $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+    $imageBody = @{ dataUrl = "data:image/png;base64,$png" } | ConvertTo-Json -Compress
+    $imageResult = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/image' -Method Post -ContentType 'application/json' -Body $imageBody -TimeoutSec 5
+    if (-not $imageResult.version) { throw 'Custom block image upload did not return a version.' }
+    $imageResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/block/image' -UseBasicParsing -TimeoutSec 5
+    if ($imageResponse.Headers.'Content-Type' -notmatch 'image/png' -or $imageResponse.RawContentLength -le 0) {
+        throw 'Custom block image could not be read back.'
+    }
+
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/preview' -Method Post -TimeoutSec 5
+    $toastDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    $toastWindow = [IntPtr]::Zero
+    while ([DateTime]::UtcNow -lt $toastDeadline -and $toastWindow -eq [IntPtr]::Zero) {
+        $toastWindow = [TimeLensStartupProbe]::FindWindowW('TLToast', $null)
+        if ($toastWindow -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 }
+    }
+    [uint32]$toastOwner = 0
+    if ($toastWindow -ne [IntPtr]::Zero) {
+        [void][TimeLensStartupProbe]::GetWindowThreadProcessId($toastWindow, [ref]$toastOwner)
+    }
+    if ($toastWindow -eq [IntPtr]::Zero -or $toastOwner -ne $process.Id) {
+        throw 'Custom block notification preview did not create a native toast owned by TimeLens.'
+    }
+    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0201, [IntPtr]::Zero, [IntPtr]::Zero)
+
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/image' -Method Delete -TimeoutSec 5
+    if (Test-Path -LiteralPath (Join-Path $dataDir 'block-notification.png')) {
+        throw 'Custom block image was not removed.'
+    }
     foreach ($file in @('activity.db', 'runtime\e_sqlite3.dll', 'runtime\categories.csv', 'runtime\TimeLens.ico')) {
         if (-not (Test-Path -LiteralPath (Join-Path $dataDir $file))) { throw "Missing fresh-install file: $file" }
     }
@@ -78,7 +136,7 @@ try {
     [void][TimeLensStartupProbe]::PostMessageW($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)
     if (-not $process.WaitForExit(5000)) { throw 'The tray app did not exit cleanly.' }
     if ($process.ExitCode -ne 0) { throw "The tray app exited with code $($process.ExitCode)." }
-    Write-Host 'PASS: packaged EXE, fresh database, embedded runtime, native tray, dashboard assets, settings and summary APIs.'
+    Write-Host 'PASS: packaged EXE, fresh database, embedded runtime, native tray/toast, dashboard assets, browser block contract, settings, custom block image, and summary APIs.'
     Write-Host "Isolated test files: $testRoot"
 } catch {
     foreach ($log in @((Join-Path $dataDir 'crash.log'), (Join-Path $testRoot 'stderr.log'), (Join-Path $testRoot 'stdout.log'))) {

@@ -34,23 +34,23 @@ function stateFor(domain) {
     .then(function(response) { return response.json(); });
 }
 
-function hydrateNotifyImage(response) {
+function hydrateNotifyMedia(response) {
   const presentation = response && response.presentation;
-  const imageUrl = presentation && presentation.imageUrl;
-  if (!presentation || response.action !== 'notify' || !imageUrl) return Promise.resolve(response);
-  if (imageDataCache[imageUrl]) {
-    presentation.imageDataUrl = imageDataCache[imageUrl];
+  const mediaUrl = presentation && presentation.mediaUrl;
+  if (!presentation || response.action !== 'notify' || !mediaUrl) return Promise.resolve(response);
+  if (imageDataCache[mediaUrl]) {
+    presentation.mediaDataUrl = imageDataCache[mediaUrl];
     return Promise.resolve(response);
   }
-  return checkedFetch(imageUrl).then(function(imageResponse) { return imageResponse.blob(); }).then(function(blob) {
+  return checkedFetch(mediaUrl).then(function(mediaResponse) { return mediaResponse.blob(); }).then(function(blob) {
     return blob.arrayBuffer().then(function(buffer) {
       const bytes = new Uint8Array(buffer);
       let binary = '';
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
         binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
       }
-      imageDataCache[imageUrl] = 'data:' + (blob.type || 'image/png') + ';base64,' + btoa(binary);
-      presentation.imageDataUrl = imageDataCache[imageUrl];
+      imageDataCache[mediaUrl] = 'data:' + (blob.type || presentation.mediaType || 'image/png') + ';base64,' + btoa(binary);
+      presentation.mediaDataUrl = imageDataCache[mediaUrl];
       return response;
     });
   }).catch(function() { return response; });
@@ -71,54 +71,78 @@ function fetchSettings() {
 }
 
 function mountNotifyToast(presentation, domain) {
-  const ROOT_ID = '__timelens_focus_toast';
-  const existing = document.getElementById(ROOT_ID);
-  if (existing) existing.remove();
-  if (window.__timelensFocusTimer) clearInterval(window.__timelensFocusTimer);
-  if (window.__timelensFocusPulse) clearInterval(window.__timelensFocusPulse);
-
-  const root = document.createElement('aside');
-  root.id = ROOT_ID;
-  root.setAttribute('role', 'status');
-  root.style.cssText = 'all:initial;position:fixed;left:22px;bottom:22px;z-index:2147483647;width:min(390px,calc(100vw - 44px));box-sizing:border-box;padding:16px 18px 16px 16px;border:1px solid rgba(126,215,218,.46);border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 20px 60px rgba(0,0,0,.48);font:14px/1.45 Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:flex-start;transition:opacity .18s ease,transform .18s ease';
-  const image = presentation && (presentation.imageDataUrl || presentation.imageUrl);
-  if (image) {
-    const img = document.createElement('img');
-    img.src = image;
-    img.alt = '';
-    img.style.cssText = 'width:62px;height:62px;flex:0 0 62px;border-radius:11px;object-fit:cover;background:#0b1113';
-    img.onerror = function() { img.remove(); };
-    root.appendChild(img);
+  const ROOT_ID = '__timelens_focus_toasts';
+  const oldState = window.__timelensFocusState;
+  if (oldState && oldState.domain === domain && document.getElementById(ROOT_ID)) {
+    oldState.presentation = presentation;
+    const oldStack = document.getElementById(ROOT_ID);
+    const nextSide = presentation && presentation.position === 'right' ? 'right' : 'left';
+    oldStack.style.left = nextSide === 'left' ? '22px' : 'auto';
+    oldStack.style.right = nextSide === 'right' ? '22px' : 'auto';
+    const nextInterval = Math.max(5, Math.min(86400, Number(presentation && presentation.repeatIntervalSeconds) || 300));
+    if (oldState.intervalSeconds !== nextInterval && oldState.addToast) {
+      if (window.__timelensFocusPulse) clearInterval(window.__timelensFocusPulse);
+      oldState.intervalSeconds = nextInterval;
+      window.__timelensFocusPulse = setInterval(oldState.addToast, nextInterval * 1000);
+    }
+    return;
   }
-  const copy = document.createElement('div');
-  copy.style.cssText = 'min-width:0;flex:1';
-  const eyebrow = document.createElement('div');
-  eyebrow.textContent = 'TIMELENS · NOTIFY';
-  eyebrow.style.cssText = 'margin:0 0 3px;color:#83d7d8;font:600 10px/1.2 Inter,Segoe UI,sans-serif;letter-spacing:.11em';
-  const title = document.createElement('strong');
-  title.textContent = (presentation && presentation.title) || 'Focus Mode';
-  title.style.cssText = 'display:block;margin:0 22px 2px 0;color:#f4fbfa;font:600 14px/1.35 Inter,Segoe UI,sans-serif';
-  const message = document.createElement('div');
-  message.textContent = (presentation && presentation.message) || 'This website is on your focus list.';
-  message.style.cssText = 'color:#a9b9b6;font:12px/1.45 Inter,Segoe UI,sans-serif;overflow-wrap:anywhere';
-  copy.append(eyebrow, title, message);
-  root.appendChild(copy);
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.textContent = '×';
-  close.setAttribute('aria-label', 'Dismiss TimeLens reminder');
-  close.style.cssText = 'all:initial;position:absolute;right:10px;top:8px;color:#93a5a2;cursor:pointer;font:20px/1 Segoe UI,sans-serif';
-  close.onclick = function() { root.style.opacity = '0'; root.style.pointerEvents = 'none'; };
-  root.appendChild(close);
-  (document.documentElement || document.body).appendChild(root);
+  clearNotifyToast();
 
-  function showAgain() {
+  const stack = document.createElement('aside');
+  stack.id = ROOT_ID;
+  stack.setAttribute('aria-label', 'TimeLens reminders');
+  const side = presentation && presentation.position === 'right' ? 'right' : 'left';
+  stack.style.cssText = 'all:initial;position:fixed;' + side + ':22px;bottom:22px;z-index:2147483647;width:min(410px,calc(100vw - 44px));max-height:calc(100vh - 44px);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;overflow:auto;overscroll-behavior:contain;pointer-events:none;scrollbar-width:thin';
+  (document.documentElement || document.body).appendChild(stack);
+  const state = {
+    domain: domain,
+    presentation: presentation,
+    intervalSeconds: Math.max(5, Math.min(86400, Number(presentation && presentation.repeatIntervalSeconds) || 300)),
+    addToast: null
+  };
+  window.__timelensFocusState = state;
+
+  function addToast() {
     if (!document.getElementById(ROOT_ID)) return;
-    root.style.opacity = '1';
-    root.style.pointerEvents = 'auto';
-    root.style.transform = 'scale(1.015)';
-    setTimeout(function() { root.style.transform = 'scale(1)'; }, 180);
+    const current = state.presentation || {};
+    const card = document.createElement('section');
+    card.setAttribute('role', 'status');
+    card.style.cssText = 'all:initial;position:relative;width:100%;min-height:104px;box-sizing:border-box;padding:17px 44px 17px 17px;border:1px solid rgba(126,215,218,.46);border-left:4px solid #83d7d8;border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 18px 46px rgba(0,0,0,.42);font-family:Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:center;pointer-events:auto;animation:timelens-in .2s ease-out';
+    const mediaSource = current.mediaDataUrl || current.mediaUrl;
+    if (mediaSource) {
+      const media = current.mediaType && current.mediaType.indexOf('video/') === 0 ? document.createElement('video') : document.createElement('img');
+      media.src = mediaSource;
+      media.setAttribute('aria-hidden', 'true');
+      media.style.cssText = 'width:72px;height:72px;flex:0 0 72px;border:1px solid rgba(255,255,255,.08);border-radius:12px;object-fit:cover;background:#0b1113';
+      if (media.tagName === 'VIDEO') { media.autoplay = true; media.muted = true; media.loop = true; media.playsInline = true; }
+      media.onerror = function() { media.remove(); };
+      card.appendChild(media);
+    }
+    const copy = document.createElement('div');
+    copy.style.cssText = 'min-width:0;flex:1;display:block';
+    const eyebrow = document.createElement('div');
+    eyebrow.textContent = 'TIMELENS · NOTIFY';
+    eyebrow.style.cssText = 'margin:0 0 5px;color:#83d7d8;font:700 10px/1.2 Inter,Segoe UI,sans-serif;letter-spacing:.12em';
+    const title = document.createElement('strong');
+    title.textContent = current.title || 'Focus Mode';
+    title.style.cssText = 'display:block;margin:0 0 4px;color:#f4fbfa;font:650 15px/1.3 Inter,Segoe UI,sans-serif;white-space:normal;overflow-wrap:anywhere';
+    const message = document.createElement('div');
+    message.textContent = current.message || 'This website is on your focus list.';
+    message.style.cssText = 'display:block;color:#b9c8c5;font:12.5px/1.5 Inter,Segoe UI,sans-serif;white-space:normal;overflow-wrap:anywhere';
+    copy.append(eyebrow, title, message);
+    card.appendChild(copy);
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '×';
+    close.setAttribute('aria-label', 'Dismiss this TimeLens reminder');
+    close.style.cssText = 'all:initial;position:absolute;right:11px;top:10px;width:26px;height:26px;border-radius:8px;color:#b8c8c5;background:rgba(255,255,255,.06);cursor:pointer;font:20px/24px Segoe UI,sans-serif;text-align:center;transition:background .15s,color .15s';
+    close.onmouseenter = function() { close.style.background = 'rgba(255,255,255,.13)'; close.style.color = '#fff'; };
+    close.onmouseleave = function() { close.style.background = 'rgba(255,255,255,.06)'; close.style.color = '#b8c8c5'; };
+    close.onclick = function() { card.remove(); };
+    card.appendChild(close);
+    stack.insertBefore(card, stack.firstChild);
   }
+  state.addToast = addToast;
 
   async function checkState() {
     try {
@@ -126,7 +150,7 @@ function mountNotifyToast(presentation, domain) {
       const response = await runtime.sendMessage({ type: 'timelens-check-block', domain: domain });
       if (!response || response.action === 'none') {
         clearInterval(window.__timelensFocusTimer);
-        root.remove();
+        stack.remove();
       } else if (response.action === 'strict') {
         clearInterval(window.__timelensFocusTimer);
         location.href = runtime.getURL('blocked.html') + '?target=' + encodeURIComponent(domain) + '&url=' + encodeURIComponent(location.href);
@@ -134,15 +158,17 @@ function mountNotifyToast(presentation, domain) {
     } catch (_) {}
   }
 
+  addToast();
   window.__timelensFocusTimer = setInterval(checkState, 2000);
-  window.__timelensFocusPulse = setInterval(showAgain, 12000);
+  window.__timelensFocusPulse = setInterval(addToast, state.intervalSeconds * 1000);
 }
 
 function clearNotifyToast() {
-  const root = document.getElementById('__timelens_focus_toast');
+  const root = document.getElementById('__timelens_focus_toasts');
   if (root) root.remove();
   if (window.__timelensFocusTimer) clearInterval(window.__timelensFocusTimer);
   if (window.__timelensFocusPulse) clearInterval(window.__timelensFocusPulse);
+  window.__timelensFocusState = null;
 }
 
 function executeInTab(tabId, fn, args) {
@@ -206,7 +232,7 @@ function doSendTab(tabId, url, title, audible) {
     checkedFetch(EVENT_API, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     }).then(function(response) { return response.json(); })
-      .then(hydrateNotifyImage)
+      .then(hydrateNotifyMedia)
       .then(function(response) { applyBlockResponse(tabId, url, response); flushQueue(); })
       .catch(function() { enqueue(body); });
   } catch (_) {}

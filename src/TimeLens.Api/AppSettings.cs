@@ -55,6 +55,15 @@ public record AppSettings
     [JsonPropertyName("blockImageVersion")]
     public string BlockImageVersion { get; init; } = "";
 
+    [JsonPropertyName("blockMediaType")]
+    public string BlockMediaType { get; init; } = "";
+
+    [JsonPropertyName("blockNotifyIntervalSeconds")]
+    public int BlockNotifyIntervalSeconds { get; init; } = 300;
+
+    [JsonPropertyName("blockNotifyPosition")]
+    public string BlockNotifyPosition { get; init; } = "left";
+
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; init; } = "12h";
 

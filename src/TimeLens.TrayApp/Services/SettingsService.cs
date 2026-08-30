@@ -6,12 +6,12 @@ namespace TimeLens.TrayApp.Services;
 public sealed class SettingsService
 {
     private readonly string _connectionString;
-    private readonly string _blockImagePath;
+    private readonly string _dataDirectory;
 
     public SettingsService(string dbPath)
     {
         _connectionString = $"Data Source={dbPath}";
-        _blockImagePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "block-notification.png");
+        _dataDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath))!;
     }
 
     public AppSettings Load()
@@ -45,7 +45,10 @@ public sealed class SettingsService
             BlockAction = dict.GetValueOrDefault("block_action", "hide"),
             BlockTitle = BlockNotification.NormalizeTitle(dict.GetValueOrDefault("block_title")),
             BlockMessage = BlockNotification.NormalizeMessage(dict.GetValueOrDefault("block_message")),
-            BlockImageVersion = File.Exists(_blockImagePath) ? dict.GetValueOrDefault("block_image_version", "") : "",
+            BlockImageVersion = HasBlockMedia(dict.GetValueOrDefault("block_media_type", "")) ? dict.GetValueOrDefault("block_image_version", "") : "",
+            BlockMediaType = NormalizeMediaType(dict.GetValueOrDefault("block_media_type", "")),
+            BlockNotifyIntervalSeconds = int.TryParse(dict.GetValueOrDefault("block_notify_interval_seconds", "300"), out var notifyInterval) ? Math.Clamp(notifyInterval, 5, 86400) : 300,
+            BlockNotifyPosition = dict.GetValueOrDefault("block_notify_position", "left") == "right" ? "right" : "left",
             DefaultView = dict.GetValueOrDefault("default_view", "today"),
             Density = dict.GetValueOrDefault("density", "comfortable"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
@@ -53,6 +56,26 @@ public sealed class SettingsService
             HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "273"), out var hd) ? hd : 273,
             BlockProtectionEnabled = dict.GetValueOrDefault("block_protection_enabled", "false") == "true",
         };
+    }
+
+    private string NormalizeMediaType(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) return value;
+        return File.Exists(Path.Combine(_dataDirectory, "block-notification.png")) ? "image/png" : "";
+    }
+
+    private bool HasBlockMedia(string? mediaType)
+    {
+        var extension = mediaType switch
+        {
+            "image/jpeg" => "jpg",
+            "image/gif" => "gif",
+            "video/mp4" => "mp4",
+            "video/webm" => "webm",
+            _ => "png"
+        };
+        return File.Exists(Path.Combine(_dataDirectory, $"block-notification-media.{extension}")) ||
+               File.Exists(Path.Combine(_dataDirectory, "block-notification.png"));
     }
 
     public void Save(string key, string value)

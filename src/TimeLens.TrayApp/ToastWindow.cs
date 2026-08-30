@@ -1,7 +1,8 @@
-using System.Runtime.InteropServices;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.ComponentModel;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 
 namespace TimeLens.TrayApp;
 
@@ -9,281 +10,332 @@ public sealed class ToastWindow : IDisposable
 {
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
-    private const int WS_EX_LAYERED = 0x00080000;
     private const int WS_EX_NOACTIVATE = 0x08000000;
     private const int WS_POPUP = unchecked((int)0x80000000);
-    private const int ULW_ALPHA = 2;
-    private const int AC_SRC_OVER = 0;
-    private const int WM_LBUTTONDOWN = 0x0201;
-    private const int WM_TIMER = 0x0113;
+    private const uint WM_PAINT = 0x000F;
+    private const uint WM_ERASEBKGND = 0x0014;
+    private const uint WM_CLOSE = 0x0010;
+    private const uint WM_DESTROY = 0x0002;
+    private const uint WM_LBUTTONUP = 0x0202;
+    private const int GWLP_USERDATA = -21;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const int SW_SHOWNOACTIVATE = 4;
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private static readonly object ClassLock = new();
+    private static readonly WndProc StaticWndProcDelegate = StaticWndProc;
+    private static bool _classRegistered;
 
-    private IntPtr _hWnd;
     private readonly string _title;
     private readonly string _body;
-    private readonly Image? _image;
-    private readonly int _width = 420;
-    private readonly int _height = 108;
-    private readonly int _dismissMs = 6500;
-    private int _x;
-    private int _y;
-    private const int DISMISS_TIMER_ID = 1;
+    private readonly Image? _media;
+    private readonly bool _animated;
+    private readonly EventHandler _animationHandler;
+    private readonly Action<ToastWindow>? _closed;
+    private readonly int _width = 454;
+    private readonly int _height = 118;
+    private string _position;
+    private IntPtr _hWnd;
+    private bool _resourcesDisposed;
 
-    private static readonly uint BgColor = 0xFF1A1A1A;
-    private static readonly uint AccentColor = 0xFFC8E86A;
-    private static readonly uint TextColor = 0xFFFFFFFF;
-    private static readonly uint SubTextColor = 0xFFAAAAAA;
-    private const int FW_SEMIBOLD = 600;
-    private const int TRANSPARENT = 1;
-
-    private static bool _classRegistered;
-    private static readonly object _classLock = new();
-    private static readonly WndProc StaticWndProcDelegate = StaticWndProc;
-
-    public ToastWindow(string title, string text, string? imagePath = null)
+    public ToastWindow(
+        string title,
+        string text,
+        string? imagePath = null,
+        int stackIndex = 0,
+        string position = "left",
+        Action<ToastWindow>? closed = null)
     {
-        _title = title;
-        _body = text;
+        _title = string.IsNullOrWhiteSpace(title) ? "Focus Mode" : title;
+        _body = string.IsNullOrWhiteSpace(text) ? "This target is on your focus list." : text;
+        _position = position == "right" ? "right" : "left";
+        _closed = closed;
+        _animationHandler = (_, _) => { if (_hWnd != IntPtr.Zero) InvalidateRect(_hWnd, IntPtr.Zero, false); };
         if (!string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath))
         {
             try
             {
-                // Clone from memory so replacing/removing the selected image never leaves
-                // the file locked while an older toast is still visible.
                 var bytes = File.ReadAllBytes(imagePath);
                 using var stream = new MemoryStream(bytes, writable: false);
-                using var source = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
-                _image = new Bitmap(source);
+                using var source = Image.FromStream(stream, false, true);
+                _media = (Image)source.Clone();
+                _animated = ImageAnimator.CanAnimate(_media);
             }
-            catch { _image = null; }
+            catch { _media = null; _animated = false; }
         }
+
         try
         {
-            lock (_classLock) RegisterClass();
-            CreateToast();
+            lock (ClassLock) RegisterClass();
+            CreateToast(stackIndex);
+            if (_animated && _media is not null) ImageAnimator.Animate(_media, _animationHandler);
         }
         catch
         {
-            _image?.Dispose();
+            DisposeMedia();
             throw;
         }
+    }
+
+    public bool IsClosed => _hWnd == IntPtr.Zero;
+
+    public void Reposition(int stackIndex, string position)
+    {
+        if (_hWnd == IntPtr.Zero) return;
+        _position = position == "right" ? "right" : "left";
+        var (x, y) = PositionFor(stackIndex, _position);
+        SetWindowPos(_hWnd, HWND_TOPMOST, x, y, _width, _height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 
     private static void RegisterClass()
     {
         if (_classRegistered) return;
-
         var wc = new WNDCLASSEXW
         {
             cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
             style = 3,
             lpfnWndProc = Marshal.GetFunctionPointerForDelegate(StaticWndProcDelegate),
             hInstance = GetModuleHandleW(null),
-            hCursor = IntPtr.Zero,
+            hCursor = LoadCursorW(IntPtr.Zero, new IntPtr(32512)),
             hbrBackground = IntPtr.Zero,
             lpszClassName = "TLToast",
         };
-        var atom = RegisterClassExW(ref wc);
-        if (atom == 0)
+        if (RegisterClassExW(ref wc) == 0)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not register the TimeLens toast window class.");
         _classRegistered = true;
     }
 
-    private void CreateToast()
+    private void CreateToast(int stackIndex)
     {
-        const int margin = 22;
-        var workArea = new RECT();
-        if (!SystemParametersInfoW(0x0030, 0, ref workArea, 0)) // SPI_GETWORKAREA
-            workArea = new RECT { right = GetSystemMetrics(0), bottom = GetSystemMetrics(1) };
-        _x = workArea.left + margin;
-        _y = workArea.bottom - _height - margin;
-
+        var (x, y) = PositionFor(stackIndex, _position);
         _hWnd = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
             "TLToast", "", WS_POPUP,
-            _x, _y, _width, _height,
+            x, y, _width, _height,
             IntPtr.Zero, IntPtr.Zero, GetModuleHandleW(null), IntPtr.Zero);
-
         if (_hWnd == IntPtr.Zero)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not create the TimeLens toast window.");
 
-        // Rounded corners
-        var rgn = CreateRoundRectRgn(0, 0, _width + 1, _height + 1, 16, 16);
-        if (SetWindowRgn(_hWnd, rgn, 1) == 0) DeleteObject(rgn);
-
-        SetWindowLongPtrW(_hWnd, GWLP_USERDATA, GCHandle.ToIntPtr(GCHandle.Alloc(this)));
-
-        Paint(220);
-        ShowWindow(_hWnd, 4); // SW_SHOWNOACTIVATE
-        SetTimer(_hWnd, DISMISS_TIMER_ID, (uint)_dismissMs, IntPtr.Zero);
+        var handle = GCHandle.Alloc(this);
+        SetWindowLongPtrW(_hWnd, GWLP_USERDATA, GCHandle.ToIntPtr(handle));
+        var region = CreateRoundRectRgn(0, 0, _width + 1, _height + 1, 18, 18);
+        if (SetWindowRgn(_hWnd, region, true) == 0) DeleteObject(region);
+        ShowWindow(_hWnd, SW_SHOWNOACTIVATE);
+        SetWindowPos(_hWnd, HWND_TOPMOST, x, y, _width, _height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        InvalidateRect(_hWnd, IntPtr.Zero, true);
     }
 
-    private void Paint(byte alpha)
+    private (int X, int Y) PositionFor(int stackIndex, string position)
+    {
+        const int margin = 22;
+        const int gap = 12;
+        var work = new RECT();
+        if (!SystemParametersInfoW(0x0030, 0, ref work, 0))
+            work = new RECT { right = GetSystemMetrics(0), bottom = GetSystemMetrics(1) };
+        var perColumn = Math.Max(1, (work.bottom - work.top - (2 * margin) + gap) / (_height + gap));
+        var column = Math.Max(0, stackIndex) / perColumn;
+        var row = Math.Max(0, stackIndex) % perColumn;
+        var x = position == "right"
+            ? work.right - margin - _width - column * (_width + gap)
+            : work.left + margin + column * (_width + gap);
+        var y = work.bottom - margin - _height - row * (_height + gap);
+        return (x, y);
+    }
+
+    private void Paint()
     {
         if (_hWnd == IntPtr.Zero) return;
-
-        var hdcScreen = GetDC(IntPtr.Zero);
-        var hdcMem = CreateCompatibleDC(hdcScreen);
-        var hBitmap = CreateCompatibleBitmap(hdcScreen, _width, _height);
-        var oldBitmap = SelectObject(hdcMem, hBitmap);
-
-        // Background
-        var bgBrush = CreateSolidBrush(BgColor);
-        var bgRect = new RECT { right = _width, bottom = _height };
-        FillRect(hdcMem, ref bgRect, bgBrush);
-        DeleteObject(bgBrush);
-
-        // Accent bar
-        var accentBrush = CreateSolidBrush(AccentColor);
-        var accentRect = new RECT { right = 4, bottom = _height };
-        FillRect(hdcMem, ref accentRect, accentBrush);
-        DeleteObject(accentBrush);
-
-        SetBkMode(hdcMem, TRANSPARENT);
-
-        var textLeft = _image is null ? 22 : 104;
-        if (_image is not null)
+        var hdc = BeginPaint(_hWnd, out var paint);
+        if (hdc == IntPtr.Zero) return;
+        try
         {
-            using var graphics = Graphics.FromHdc(hdcMem);
-            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            using var graphics = Graphics.FromHdc(hdc);
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            graphics.SmoothingMode = SmoothingMode.HighQuality;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            var destination = new Rectangle(20, 20, 68, 68);
-            using var clip = new GraphicsPath();
-            const int imageRadius = 10;
-            var arc = imageRadius * 2;
-            clip.AddArc(destination.Left, destination.Top, arc, arc, 180, 90);
-            clip.AddArc(destination.Right - arc, destination.Top, arc, arc, 270, 90);
-            clip.AddArc(destination.Right - arc, destination.Bottom - arc, arc, arc, 0, 90);
-            clip.AddArc(destination.Left, destination.Bottom - arc, arc, arc, 90, 90);
-            clip.CloseFigure();
-            graphics.SetClip(clip);
+            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            graphics.Clear(Color.FromArgb(18, 27, 30));
+            using var accent = new SolidBrush(Color.FromArgb(131, 215, 216));
+            graphics.FillRectangle(accent, 0, 0, 4, _height);
+            using var border = new Pen(Color.FromArgb(70, 126, 215, 218), 1);
+            graphics.DrawRoundedRectangle(border, new Rectangle(0, 0, _width - 1, _height - 1), 16);
 
-            var sourceRatio = (float)_image.Width / _image.Height;
-            var destinationRatio = (float)destination.Width / destination.Height;
-            RectangleF source;
-            if (sourceRatio > destinationRatio)
+            var textLeft = 20;
+            if (_media is not null)
             {
-                var sourceWidth = _image.Height * destinationRatio;
-                source = new RectangleF((_image.Width - sourceWidth) / 2f, 0, sourceWidth, _image.Height);
+                if (_animated) ImageAnimator.UpdateFrames(_media);
+                var destination = new Rectangle(18, 20, 78, 78);
+                using var clip = RoundedPath(destination, 11);
+                var graphicsState = graphics.Save();
+                graphics.SetClip(clip);
+                DrawCover(graphics, _media, destination);
+                graphics.Restore(graphicsState);
+                textLeft = 112;
             }
-            else
+
+            using var eyebrowFont = new Font("Segoe UI", 7.5f, FontStyle.Bold, GraphicsUnit.Point);
+            using var titleFont = new Font("Segoe UI", 11f, FontStyle.Bold, GraphicsUnit.Point);
+            using var bodyFont = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
+            using var eyebrowBrush = new SolidBrush(Color.FromArgb(131, 215, 216));
+            using var titleBrush = new SolidBrush(Color.FromArgb(246, 251, 250));
+            using var bodyBrush = new SolidBrush(Color.FromArgb(194, 209, 206));
+            using var textFormat = new StringFormat(StringFormat.GenericTypographic)
             {
-                var sourceHeight = _image.Width / destinationRatio;
-                source = new RectangleF(0, (_image.Height - sourceHeight) / 2f, _image.Width, sourceHeight);
-            }
-            graphics.DrawImage(_image, destination, source, GraphicsUnit.Pixel);
-            graphics.ResetClip();
+                Trimming = StringTrimming.EllipsisCharacter,
+                FormatFlags = StringFormatFlags.NoClip
+            };
+            graphics.DrawString("TIMELENS  ·  NOTIFY", eyebrowFont, eyebrowBrush, new RectangleF(textLeft, 17, _width - textLeft - 48, 16), textFormat);
+            graphics.DrawString(_title, titleFont, titleBrush, new RectangleF(textLeft, 36, _width - textLeft - 48, 24), textFormat);
+            graphics.DrawString(_body, bodyFont, bodyBrush, new RectangleF(textLeft, 64, _width - textLeft - 24, 42), textFormat);
+
+            using var closeBackground = new SolidBrush(Color.FromArgb(42, 255, 255, 255));
+            using var closePen = new Pen(Color.FromArgb(205, 225, 222), 1.7f);
+            graphics.FillRoundedRectangle(closeBackground, new Rectangle(_width - 40, 11, 28, 28), 8);
+            graphics.DrawLine(closePen, _width - 32, 19, _width - 20, 31);
+            graphics.DrawLine(closePen, _width - 20, 19, _width - 32, 31);
         }
-
-        // Title
-        var titleFont = CreateFontW(17, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
-        var oldFont = SelectObject(hdcMem, titleFont);
-        SetTextColor(hdcMem, TextColor);
-        var tr = new RECT { left = textLeft, top = 17, right = _width - 20, bottom = 42 };
-        DrawTextW(hdcMem, _title, -1, ref tr, 0x0020 | 0x0800 | 0x8000);
-        SelectObject(hdcMem, oldFont);
-        DeleteObject(titleFont);
-
-        // Body
-        var bodyFont = CreateFontW(14, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
-        var oldFont2 = SelectObject(hdcMem, bodyFont);
-        SetTextColor(hdcMem, SubTextColor);
-        var br = new RECT { left = textLeft, top = 47, right = _width - 20, bottom = _height - 16 };
-        DrawTextW(hdcMem, _body, -1, ref br, 0x0010 | 0x0800 | 0x8000);
-        SelectObject(hdcMem, oldFont2);
-        DeleteObject(bodyFont);
-
-        // Update layered
-        var dst = new POINT { x = _x, y = _y };
-        var sz = new SIZE { cx = _width, cy = _height };
-        var src = new POINT();
-        var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = alpha, AlphaFormat = 0 };
-        UpdateLayeredWindow(_hWnd, hdcScreen, ref dst, ref sz, hdcMem, ref src, 0, ref blend, ULW_ALPHA);
-        // SWP_SHOWWINDOW is required because CreateWindowEx creates the popup hidden.
-        SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, 0x0040 | 0x0010 | 0x0002 | 0x0001);
-
-        SelectObject(hdcMem, oldBitmap);
-        DeleteObject(hBitmap);
-        DeleteDC(hdcMem);
-        ReleaseDC(IntPtr.Zero, hdcScreen);
+        finally { EndPaint(_hWnd, ref paint); }
     }
 
-    private static IntPtr StaticWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    private static void DrawCover(Graphics graphics, Image image, Rectangle destination)
     {
-        if (msg == WM_LBUTTONDOWN)
-        {
-            DestroyWindow(hWnd);
-            return IntPtr.Zero;
-        }
-        if (msg == WM_TIMER && (int)wParam == DISMISS_TIMER_ID)
-        {
-            KillTimer(hWnd, DISMISS_TIMER_ID);
-            DestroyWindow(hWnd);
-            return IntPtr.Zero;
-        }
-        if (msg == 0x0002) // WM_DESTROY
-        {
-            var p = GetWindowLongPtrW(hWnd, GWLP_USERDATA);
-            if (p != IntPtr.Zero)
-            {
-                var handle = GCHandle.FromIntPtr(p);
-                if (handle.Target is ToastWindow toast) toast.OnDestroyed();
-                handle.Free();
-            }
-            SetWindowLongPtrW(hWnd, GWLP_USERDATA, IntPtr.Zero);
-            return IntPtr.Zero;
-        }
-        return DefWindowProcW(hWnd, msg, wParam, lParam);
+        var scale = Math.Max((float)destination.Width / image.Width, (float)destination.Height / image.Height);
+        var width = image.Width * scale;
+        var height = image.Height * scale;
+        graphics.DrawImage(image, destination.Left + (destination.Width - width) / 2f,
+            destination.Top + (destination.Height - height) / 2f, width, height);
     }
 
-    public void Dispose() { if (_hWnd != IntPtr.Zero) { DestroyWindow(_hWnd); _hWnd = IntPtr.Zero; } }
+    private static GraphicsPath RoundedPath(Rectangle rectangle, int radius)
+    {
+        var path = new GraphicsPath();
+        var diameter = radius * 2;
+        path.AddArc(rectangle.Left, rectangle.Top, diameter, diameter, 180, 90);
+        path.AddArc(rectangle.Right - diameter, rectangle.Top, diameter, diameter, 270, 90);
+        path.AddArc(rectangle.Right - diameter, rectangle.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rectangle.Left, rectangle.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static IntPtr StaticWndProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        var pointer = GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+        var toast = pointer == IntPtr.Zero ? null : GCHandle.FromIntPtr(pointer).Target as ToastWindow;
+        switch (message)
+        {
+            case WM_PAINT:
+                toast?.Paint();
+                return IntPtr.Zero;
+            case WM_ERASEBKGND:
+                return new IntPtr(1);
+            case WM_LBUTTONUP:
+                var packed = unchecked((long)lParam);
+                var x = unchecked((short)packed);
+                var y = unchecked((short)(packed >> 16));
+                if (toast is not null && x >= toast._width - 44 && x <= toast._width - 8 && y >= 7 && y <= 43)
+                    DestroyWindow(hWnd);
+                return IntPtr.Zero;
+            case WM_CLOSE:
+                DestroyWindow(hWnd);
+                return IntPtr.Zero;
+            case WM_DESTROY:
+                if (pointer != IntPtr.Zero)
+                {
+                    SetWindowLongPtrW(hWnd, GWLP_USERDATA, IntPtr.Zero);
+                    var handle = GCHandle.FromIntPtr(pointer);
+                    var target = handle.Target as ToastWindow;
+                    handle.Free();
+                    target?.OnDestroyed();
+                }
+                return IntPtr.Zero;
+            default:
+                return DefWindowProcW(hWnd, message, wParam, lParam);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_hWnd != IntPtr.Zero) DestroyWindow(_hWnd);
+        else DisposeMedia();
+    }
 
     private void OnDestroyed()
     {
         _hWnd = IntPtr.Zero;
-        _image?.Dispose();
+        DisposeMedia();
+        _closed?.Invoke(this);
     }
 
-    // P/Invoke declarations
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateSolidBrush(uint c);
-    [DllImport("gdi32.dll")] private static extern int SetBkMode(IntPtr hdc, int m);
-    [DllImport("gdi32.dll")] private static extern uint SetTextColor(IntPtr hdc, uint c);
-    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
-    [DllImport("gdi32.dll")] private static extern int DeleteObject(IntPtr obj);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h);
-    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateFontW(int h, int w, int e, int o, int wt, int i, int u, int s, int cs, int op, int cp, int q, int pi, string f);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int DrawTextW(IntPtr hdc, string t, int l, ref RECT r, uint f);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
-    [DllImport("user32.dll")] private static extern int FillRect(IntPtr hdc, ref RECT r, IntPtr brush);
-    [DllImport("gdi32.dll")] private static extern int DeleteDC(IntPtr hdc);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowExW(int ex, string cn, string wn, int st, int x, int y, int w, int h, IntPtr hp, IntPtr hm, IntPtr hi, IntPtr pv);
-    [DllImport("user32.dll")] private static extern int DestroyWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int command);
-    [DllImport("user32.dll")] private static extern int SetWindowPos(IntPtr hWnd, IntPtr hAfter, int x, int y, int cx, int cy, uint f);
-    [DllImport("user32.dll")] private static extern int UpdateLayeredWindow(IntPtr hWnd, IntPtr hdcDst, ref POINT pd, ref SIZE ps, IntPtr hdcSrc, ref POINT pSrc, int crKey, ref BLENDFUNCTION blend, int f);
-    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
-    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
-    [DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, int bRedraw);
-    [DllImport("user32.dll")] private static extern int SetTimer(IntPtr hWnd, int id, uint ms, IntPtr tp);
-    [DllImport("user32.dll")] private static extern int KillTimer(IntPtr hWnd, int id);
-    [DllImport("user32.dll")] private static extern IntPtr DefWindowProcW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int n);
-    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SystemParametersInfoW(uint action, uint param, ref RECT value, uint flags);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
-    [DllImport("user32.dll")] private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int i, IntPtr v);
-    [DllImport("user32.dll")] private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int i);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? n);
+    private void DisposeMedia()
+    {
+        if (_resourcesDisposed) return;
+        _resourcesDisposed = true;
+        if (_animated && _media is not null) ImageAnimator.StopAnimate(_media, _animationHandler);
+        _media?.Dispose();
+    }
 
-    private struct RECT { public int left, top, right, bottom; }
-    private struct POINT { public int x, y; }
-    private struct SIZE { public int cx, cy; }
-    private struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+    private delegate IntPtr WndProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct WNDCLASSEXW { public uint cbSize, style; public IntPtr lpfnWndProc; public int cbClsExtra, cbWndExtra; public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string? lpszMenuName, lpszClassName; public IntPtr hIconSm; }
-    private delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-    private const int GWLP_USERDATA = -21;
+    private struct WNDCLASSEXW
+    {
+        public uint cbSize, style;
+        public IntPtr lpfnWndProc;
+        public int cbClsExtra, cbWndExtra;
+        public IntPtr hInstance, hIcon, hCursor, hbrBackground;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpszMenuName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string lpszClassName;
+        public IntPtr hIconSm;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int left, top, right, bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct PAINTSTRUCT { public IntPtr hdc; public int fErase; public RECT rcPaint; public int fRestore, fIncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgbReserved; }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern ushort RegisterClassExW(ref WNDCLASSEXW value);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? value);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr LoadCursorW(IntPtr instance, IntPtr cursorName);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowExW(int exStyle, string className, string windowName, int style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern IntPtr DefWindowProcW(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int command);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern bool InvalidateRect(IntPtr hWnd, IntPtr rect, bool erase);
+    [DllImport("user32.dll")] private static extern IntPtr BeginPaint(IntPtr hWnd, out PAINTSTRUCT paint);
+    [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT paint);
+    [DllImport("user32.dll")] private static extern bool SystemParametersInfoW(uint action, uint param, ref RECT value, uint flags);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hWnd, IntPtr region, bool redraw);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtrW(IntPtr hWnd, int index, IntPtr value);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr value);
+}
+
+internal static class ToastGraphicsExtensions
+{
+    public static void DrawRoundedRectangle(this Graphics graphics, Pen pen, Rectangle rectangle, int radius)
+    {
+        using var path = Path(rectangle, radius);
+        graphics.DrawPath(pen, path);
+    }
+
+    public static void FillRoundedRectangle(this Graphics graphics, Brush brush, Rectangle rectangle, int radius)
+    {
+        using var path = Path(rectangle, radius);
+        graphics.FillPath(brush, path);
+    }
+
+    private static GraphicsPath Path(Rectangle rectangle, int radius)
+    {
+        var path = new GraphicsPath();
+        var diameter = radius * 2;
+        path.AddArc(rectangle.Left, rectangle.Top, diameter, diameter, 180, 90);
+        path.AddArc(rectangle.Right - diameter, rectangle.Top, diameter, diameter, 270, 90);
+        path.AddArc(rectangle.Right - diameter, rectangle.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rectangle.Left, rectangle.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
 }

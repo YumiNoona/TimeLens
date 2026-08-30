@@ -30,6 +30,8 @@ public static class TimeLensStartupProbe {
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")]
     public static extern bool SystemParametersInfoW(uint action, uint param, out Rect value, uint flags);
@@ -80,10 +82,11 @@ try {
 
     # Exercise the production custom-reminder API, image pipeline, and the native
     # toast dispatch that marshals API calls onto the tray message-loop thread.
-    $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.' } | ConvertTo-Json -Compress
+    $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.'; blockNotifyIntervalSeconds = 5; blockNotifyPosition = 'left' } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $notificationBody -TimeoutSec 5
     $savedSettings = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
-    if ($savedSettings.blockTitle -ne 'Deep Work' -or $savedSettings.blockMessage -notmatch '\{target\}') {
+    if ($savedSettings.blockTitle -ne 'Deep Work' -or $savedSettings.blockMessage -notmatch '\{target\}' -or
+        $savedSettings.blockNotifyIntervalSeconds -ne 5 -or $savedSettings.blockNotifyPosition -ne 'left') {
         throw 'Custom block notification settings did not persist.'
     }
 
@@ -131,9 +134,9 @@ try {
     # Valid one-pixel PNG; the API decodes and normalizes it to its local toast asset.
     $png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
     $imageBody = @{ dataUrl = "data:image/png;base64,$png" } | ConvertTo-Json -Compress
-    $imageResult = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/image' -Method Post -ContentType 'application/json' -Body $imageBody -TimeoutSec 5
+    $imageResult = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/media' -Method Post -ContentType 'application/json' -Body $imageBody -TimeoutSec 5
     if (-not $imageResult.version) { throw 'Custom block image upload did not return a version.' }
-    $imageResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/block/image' -UseBasicParsing -TimeoutSec 5
+    $imageResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/block/media' -UseBasicParsing -TimeoutSec 5
     if ($imageResponse.Headers.'Content-Type' -notmatch 'image/png' -or $imageResponse.RawContentLength -le 0) {
         throw 'Custom block image could not be read back.'
     }
@@ -168,11 +171,21 @@ try {
     if (($workRect.Bottom - $toastRect.Bottom) -lt 12 -or ($workRect.Bottom - $toastRect.Bottom) -gt 48) {
         throw 'Custom block notification bottom padding is outside the expected range.'
     }
-    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0201, [IntPtr]::Zero, [IntPtr]::Zero)
+    $bodyClick = [IntPtr]((70 -shl 16) -bor 220)
+    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $bodyClick)
+    Start-Sleep -Milliseconds 100
+    if (-not [TimeLensStartupProbe]::IsWindow($toastWindow)) {
+        throw 'Clicking the body dismissed a notification that should persist until its close button is used.'
+    }
+    $closeX = ($toastRect.Right - $toastRect.Left) - 24
+    $closeClick = [IntPtr]((25 -shl 16) -bor $closeX)
+    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $closeClick)
+    Start-Sleep -Milliseconds 100
+    if ([TimeLensStartupProbe]::IsWindow($toastWindow)) { throw 'The native toast close button did not dismiss the notification.' }
 
-    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/image' -Method Delete -TimeoutSec 5
-    if (Test-Path -LiteralPath (Join-Path $dataDir 'block-notification.png')) {
-        throw 'Custom block image was not removed.'
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/media' -Method Delete -TimeoutSec 5
+    if (Get-ChildItem -LiteralPath $dataDir -Filter 'block-notification*' -ErrorAction SilentlyContinue) {
+        throw 'Custom block media was not removed.'
     }
     foreach ($file in @('activity.db', 'runtime\e_sqlite3.dll', 'runtime\categories.csv', 'runtime\TimeLens.ico')) {
         if (-not (Test-Path -LiteralPath (Join-Path $dataDir $file))) { throw "Missing fresh-install file: $file" }
@@ -181,7 +194,7 @@ try {
     [void][TimeLensStartupProbe]::PostMessageW($window, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)
     if (-not $process.WaitForExit(5000)) { throw 'The tray app did not exit cleanly.' }
     if ($process.ExitCode -ne 0) { throw "The tray app exited with code $($process.ExitCode)." }
-    Write-Host 'PASS: packaged EXE, fresh database, embedded runtime, native tray/toast, dashboard assets, browser block contract, settings, custom block image, and summary APIs.'
+    Write-Host 'PASS: packaged EXE, fresh database, embedded runtime, native tray/persistent toast, dashboard assets, browser block contract, settings, custom block media, and summary APIs.'
     Write-Host "Isolated test files: $testRoot"
 } catch {
     foreach ($log in @((Join-Path $dataDir 'crash.log'), (Join-Path $testRoot 'stderr.log'), (Join-Path $testRoot 'stdout.log'))) {

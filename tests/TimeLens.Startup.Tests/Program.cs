@@ -20,7 +20,9 @@ internal static class Program
                 Check(settings.RetentionDays == 90 && settings.TrackInput && settings.HeatmapDays == 273, "Fresh defaults were not loaded.");
                 Check(settings.BlockTitle == BlockNotification.DefaultTitle &&
                       settings.BlockMessage == BlockNotification.DefaultMessage &&
-                      settings.BlockImageVersion == "", "Fresh block reminder defaults were not loaded.");
+                      settings.BlockImageVersion == "" && settings.BlockMediaType == "" &&
+                      settings.BlockNotifyIntervalSeconds == 300 && settings.BlockNotifyPosition == "left",
+                      "Fresh block reminder defaults were not loaded.");
                 Check(Query(path, "SELECT count(*) FROM custom_rules") == 0, "Fresh rules table missing.");
             });
             Run("Block modes have distinct enforcement plans", () =>
@@ -160,6 +162,10 @@ internal static class Program
                     var toastWindow = FindWindowW("TLToast", "");
                     Check(toastWindow != IntPtr.Zero, "Native toast window was not created.");
                     Check(IsWindowVisible(toastWindow), "Native toast window was created hidden.");
+                    SendMessageW(toastWindow, 0x0202, IntPtr.Zero, new IntPtr((70 << 16) | 220));
+                    Check(IsWindowVisible(toastWindow), "Clicking the toast body dismissed a persistent reminder.");
+                    SendMessageW(toastWindow, 0x0202, IntPtr.Zero, new IntPtr((25 << 16) | 430));
+                    Check(!IsWindow(toastWindow), "The toast close button did not dismiss the reminder.");
                 });
             Console.WriteLine("All startup regression checks passed.");
             return 0;
@@ -235,6 +241,8 @@ internal static class Program
     private static extern IntPtr GetParent(IntPtr hwnd);
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessageW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

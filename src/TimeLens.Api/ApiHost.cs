@@ -19,7 +19,8 @@ public static class ApiHost
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
     public const int DefaultPort = 47821;
-    private const int MaxBlockImageBytes = 2 * 1024 * 1024;
+    private const int MaxBlockImageBytes = 4 * 1024 * 1024;
+    private const int MaxBlockVideoBytes = 8 * 1024 * 1024;
     private static readonly ConcurrentDictionary<string, long> OpenBrowserEvents = new(StringComparer.OrdinalIgnoreCase);
 
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
@@ -55,7 +56,10 @@ public static class ApiHost
             BlockNotification.Format(settings.BlockMessage, target, action),
             string.IsNullOrEmpty(settings.BlockImageVersion)
                 ? null
-                : $"http://127.0.0.1:{DefaultPort}/api/block/image?v={Uri.EscapeDataString(settings.BlockImageVersion)}",
+                : $"http://127.0.0.1:{DefaultPort}/api/block/media?v={Uri.EscapeDataString(settings.BlockImageVersion)}",
+            settings.BlockMediaType,
+            Math.Clamp(settings.BlockNotifyIntervalSeconds, 5, 86400),
+            settings.BlockNotifyPosition == "right" ? "right" : "left",
             action == "notify",
             "browser");
         return new(true, action == "strict", action, presentation);
@@ -411,6 +415,19 @@ public static class ApiHost
                         ? BlockNotification.NormalizeTitle(value)
                         : BlockNotification.NormalizeMessage(value);
                 }
+                if (prop.Name == "blockNotifyIntervalSeconds" &&
+                    (!int.TryParse(value, out var notifyInterval) || notifyInterval < 5 || notifyInterval > 86400))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Reminder interval must be between 5 seconds and 24 hours\"}");
+                    return;
+                }
+                if (prop.Name == "blockNotifyPosition" && value is not ("left" or "right"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid reminder position\"}");
+                    return;
+                }
                 if (prop.Name == "autoStart" && prop.Value.ValueKind is not
                     (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
                 {
@@ -498,6 +515,8 @@ public static class ApiHost
                     "blockAction" => "block_action",
                     "blockTitle" => "block_title",
                     "blockMessage" => "block_message",
+                    "blockNotifyIntervalSeconds" => "block_notify_interval_seconds",
+                    "blockNotifyPosition" => "block_notify_position",
                     "pollIntervalSeconds" => "poll_interval_seconds",
                     "timeFormat" => "time_format",
                     "defaultView" => "default_view",
@@ -570,6 +589,13 @@ public static class ApiHost
                         break;
                     case "blockAction":
                         // Handled by Program.cs saveSetting callback
+                        break;
+                    case "blockNotifyIntervalSeconds":
+                        if (int.TryParse(value, out var blockNotifyIntervalSeconds))
+                            LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockNotifyIntervalSeconds = blockNotifyIntervalSeconds };
+                        break;
+                    case "blockNotifyPosition":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockNotifyPosition = value };
                         break;
                     case "timeFormat":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { TimeFormat = value };
@@ -1588,25 +1614,44 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
-        var blockImagePath = Path.Combine(Path.GetDirectoryName(dbPath)!, "block-notification.png");
-        app.MapGet("/api/block/image", async (HttpContext ctx) =>
+        var blockMediaDirectory = Path.GetDirectoryName(dbPath)!;
+        string? CurrentBlockMediaPath()
         {
-            if (!File.Exists(blockImagePath))
+            var configured = BlockMediaPath(blockMediaDirectory, LiveStatusStore.Settings.BlockMediaType);
+            if (File.Exists(configured)) return configured;
+            var legacy = Path.Combine(blockMediaDirectory, "block-notification.png");
+            return File.Exists(legacy) ? legacy : null;
+        }
+
+        async Task SendBlockMedia(HttpContext ctx)
+        {
+            var path = CurrentBlockMediaPath();
+            if (path is null)
             {
                 ctx.Response.StatusCode = 404;
                 return;
             }
-            ctx.Response.ContentType = "image/png";
+            ctx.Response.ContentType = LiveStatusStore.Settings.BlockMediaType switch
+            {
+                "image/jpeg" => "image/jpeg",
+                "image/gif" => "image/gif",
+                "video/mp4" => "video/mp4",
+                "video/webm" => "video/webm",
+                _ => "image/png"
+            };
             ctx.Response.Headers.CacheControl = "no-store";
-            await ctx.Response.SendFileAsync(blockImagePath, ctx.RequestAborted);
-        });
+            ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            await ctx.Response.SendFileAsync(path, ctx.RequestAborted);
+        }
+        app.MapGet("/api/block/media", SendBlockMedia);
+        app.MapGet("/api/block/image", SendBlockMedia); // v4.2.1 extension compatibility
 
-        app.MapPost("/api/block/image", async (HttpContext ctx) =>
+        async Task UploadBlockMedia(HttpContext ctx)
         {
-            if (ctx.Request.ContentLength is > MaxBlockImageBytes * 2L)
+            if (ctx.Request.ContentLength is > (MaxBlockVideoBytes * 2L + MaxBlockImageBytes * 2L))
             {
                 ctx.Response.StatusCode = 413;
-                await ctx.Response.WriteAsync("{\"error\":\"Image must be 2 MB or smaller\"}");
+                await ctx.Response.WriteAsync("{\"error\":\"Media file is too large\"}");
                 return;
             }
 
@@ -1614,21 +1659,31 @@ public static class ApiHost
             {
                 using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
                 var dataUrl = doc.RootElement.TryGetProperty("dataUrl", out var dataProp) ? dataProp.GetString() : null;
-                if (string.IsNullOrWhiteSpace(dataUrl) ||
-                    !(dataUrl.StartsWith("data:image/png;base64,", StringComparison.OrdinalIgnoreCase) ||
-                      dataUrl.StartsWith("data:image/jpeg;base64,", StringComparison.OrdinalIgnoreCase)))
-                    throw new ArgumentException("Choose a PNG or JPEG image");
+                var mediaType = MediaTypeFromDataUrl(dataUrl);
+                if (mediaType is null)
+                    throw new ArgumentException("Choose a PNG, JPEG, GIF, MP4, or WebM file");
 
-                var comma = dataUrl.IndexOf(',');
-                var bytes = Convert.FromBase64String(dataUrl[(comma + 1)..]);
-                if (bytes.Length == 0 || bytes.Length > MaxBlockImageBytes)
-                    throw new ArgumentException("Image must be 2 MB or smaller");
+                var bytes = DecodeDataUrl(dataUrl!);
+                var isVideo = mediaType.StartsWith("video/", StringComparison.Ordinal);
+                var limit = isVideo ? MaxBlockVideoBytes : MaxBlockImageBytes;
+                if (bytes.Length == 0 || bytes.Length > limit)
+                    throw new ArgumentException(isVideo ? "Video must be 8 MB or smaller" : "Image or GIF must be 4 MB or smaller");
 
-                SaveBlockImage(bytes, blockImagePath);
+                byte[]? posterBytes = null;
+                if (isVideo)
+                {
+                    var posterDataUrl = doc.RootElement.TryGetProperty("posterDataUrl", out var posterProp) ? posterProp.GetString() : null;
+                    if (MediaTypeFromDataUrl(posterDataUrl) is not ("image/png" or "image/jpeg"))
+                        throw new ArgumentException("Could not create a preview frame for this video");
+                    posterBytes = DecodeDataUrl(posterDataUrl!);
+                }
+
+                SaveBlockMedia(bytes, mediaType, blockMediaDirectory, posterBytes);
                 var version = DateTime.UtcNow.Ticks.ToString("x", CultureInfo.InvariantCulture);
+                saveSetting?.Invoke("block_media_type", mediaType);
                 saveSetting?.Invoke("block_image_version", version);
                 ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync($"{{\"ok\":true,\"version\":\"{version}\"}}");
+                await ctx.Response.WriteAsync($"{{\"ok\":true,\"version\":\"{version}\",\"mediaType\":\"{mediaType}\"}}");
             }
             catch (Exception ex) when (ex is ArgumentException or FormatException or OutOfMemoryException)
             {
@@ -1637,20 +1692,25 @@ public static class ApiHost
                 await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
                 json.WriteStartObject();
                 json.WriteString("error", ex is FormatException or OutOfMemoryException
-                    ? "The selected file is not a valid PNG or JPEG image"
+                    ? "The selected media file is invalid"
                     : ex.Message);
                 json.WriteEndObject();
                 await json.FlushAsync(ctx.RequestAborted);
             }
-        });
+        }
+        app.MapPost("/api/block/media", UploadBlockMedia);
+        app.MapPost("/api/block/image", UploadBlockMedia); // v4.2.1 dashboard compatibility
 
-        app.MapDelete("/api/block/image", async (HttpContext ctx) =>
+        async Task DeleteBlockMedia(HttpContext ctx)
         {
-            if (File.Exists(blockImagePath)) File.Delete(blockImagePath);
+            DeleteBlockMediaFiles(blockMediaDirectory);
+            saveSetting?.Invoke("block_media_type", "");
             saveSetting?.Invoke("block_image_version", "");
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
-        });
+        }
+        app.MapDelete("/api/block/media", DeleteBlockMedia);
+        app.MapDelete("/api/block/image", DeleteBlockMedia);
 
         app.MapGet("/api/block/stats", async (HttpContext ctx) =>
         {
@@ -1725,6 +1785,87 @@ public static class ApiHost
             if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
     }
+
+    private static string? MediaTypeFromDataUrl(string? dataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl)) return null;
+        foreach (var mediaType in new[] { "image/png", "image/jpeg", "image/gif", "video/mp4", "video/webm" })
+            if (dataUrl.StartsWith($"data:{mediaType};base64,", StringComparison.OrdinalIgnoreCase)) return mediaType;
+        return null;
+    }
+
+    private static byte[] DecodeDataUrl(string dataUrl)
+    {
+        var comma = dataUrl.IndexOf(',');
+        if (comma < 0) throw new FormatException();
+        return Convert.FromBase64String(dataUrl[(comma + 1)..]);
+    }
+
+    private static string BlockMediaPath(string directory, string? mediaType) => Path.Combine(directory, mediaType switch
+    {
+        "image/jpeg" => "block-notification-media.jpg",
+        "image/gif" => "block-notification-media.gif",
+        "video/mp4" => "block-notification-media.mp4",
+        "video/webm" => "block-notification-media.webm",
+        _ => "block-notification-media.png"
+    });
+
+    [SupportedOSPlatform("windows6.1")]
+    private static void SaveBlockMedia(byte[] bytes, string mediaType, string directory, byte[]? posterBytes)
+    {
+        if (mediaType.StartsWith("image/", StringComparison.Ordinal))
+        {
+            using var stream = new MemoryStream(bytes, writable: false);
+            using var source = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+            if (source.Width < 1 || source.Height < 1 || source.Width > 4096 || source.Height > 4096 ||
+                (long)source.Width * source.Height > 16_000_000)
+                throw new ArgumentException("Image dimensions must be between 1 and 4096 pixels");
+        }
+        else if (mediaType == "video/mp4")
+        {
+            if (bytes.Length < 12 || !System.Text.Encoding.ASCII.GetString(bytes, 4, 4).Equals("ftyp", StringComparison.Ordinal))
+                throw new ArgumentException("The selected MP4 file is invalid");
+        }
+        else if (mediaType == "video/webm")
+        {
+            if (bytes.Length < 4 || bytes[0] != 0x1A || bytes[1] != 0x45 || bytes[2] != 0xDF || bytes[3] != 0xA3)
+                throw new ArgumentException("The selected WebM file is invalid");
+        }
+
+        Directory.CreateDirectory(directory);
+        var destination = BlockMediaPath(directory, mediaType);
+        var temporary = destination + ".new";
+        var posterDestination = Path.Combine(directory, "block-notification-poster.png");
+        var posterTemporary = Path.Combine(directory, "block-notification-poster.pending.png");
+        try
+        {
+            File.WriteAllBytes(temporary, bytes);
+            if (posterBytes is not null) SaveBlockImage(posterBytes, posterTemporary);
+            DeleteBlockMediaFiles(directory);
+            File.Move(temporary, destination, true);
+            if (posterBytes is not null)
+                File.Move(posterTemporary, posterDestination, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+            if (File.Exists(posterTemporary)) File.Delete(posterTemporary);
+        }
+    }
+
+    private static void DeleteBlockMediaFiles(string directory)
+    {
+        foreach (var name in new[]
+        {
+            "block-notification.png", "block-notification-media.png", "block-notification-media.jpg",
+            "block-notification-media.gif", "block-notification-media.mp4", "block-notification-media.webm",
+            "block-notification-poster.png"
+        })
+        {
+            var path = Path.Combine(directory, name);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
@@ -1747,7 +1888,8 @@ public static class ApiHost
 internal partial class AppJsonContext : JsonSerializerContext { }
 
 public sealed record BrowserBlockPresentationDto(
-    string Target, string Title, string Message, string? ImageUrl, bool Continuous, string Surface);
+    string Target, string Title, string Message, string? MediaUrl, string MediaType,
+    int RepeatIntervalSeconds, string Position, bool Continuous, string Surface);
 
 public sealed record BrowserBlockResponseDto(
     bool Ok, bool Blocked, string Action, BrowserBlockPresentationDto? Presentation);

@@ -128,6 +128,9 @@ public static class DatabaseInitializer
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_title', 'Focus Mode');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_message', '''{target}'' is blocked — get back to work!');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_image_version', '');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_media_type', '');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_notify_interval_seconds', '300');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_notify_position', 'left');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);

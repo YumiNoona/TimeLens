@@ -57,9 +57,9 @@ public sealed class NativeTrayIcon : IDisposable
     private ExceptionDispatchInfo? _callbackError;
     private readonly string _iconPath;
     private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
-    private ToastWindow? _activeToast;
+    private readonly List<(ToastWindow Window, string Position)> _activeToasts = [];
 
-    private sealed record ToastRequest(string Title, string Text, string? ImagePath);
+    private sealed record ToastRequest(string Title, string Text, string? ImagePath, string Position);
 
     public NativeTrayIcon(string? iconPath = null)
     {
@@ -262,12 +262,23 @@ public sealed class NativeTrayIcon : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "The tray message loop failed.");
     }
 
-    public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null)
+    public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null, string position = "left")
     {
         if (_disposed) return;
-        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath));
+        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, position == "right" ? "right" : "left"));
         var window = _hWnd;
         if (window != IntPtr.Zero) PostMessageW(window, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    private void OnToastClosed(ToastWindow closed)
+    {
+        _activeToasts.RemoveAll(item => ReferenceEquals(item.Window, closed) || item.Window.IsClosed);
+        foreach (var position in new[] { "left", "right" })
+        {
+            var index = 0;
+            foreach (var item in _activeToasts.Where(item => item.Position == position))
+                item.Window.Reposition(index++, position);
+        }
     }
 
     public void Close()
@@ -399,14 +410,14 @@ public sealed class NativeTrayIcon : IDisposable
                 return IntPtr.Zero;
 
             case WM_SHOW_TOAST:
-                ToastRequest? latestToast = null;
-                while (_toastQueue.TryDequeue(out var toast)) latestToast = toast;
-                if (latestToast is not null)
+                while (_toastQueue.TryDequeue(out var toast))
                 {
                     try
                     {
-                        _activeToast?.Dispose();
-                        _activeToast = new ToastWindow(latestToast.Title, latestToast.Text, latestToast.ImagePath);
+                        _activeToasts.RemoveAll(item => item.Window.IsClosed);
+                        var stackIndex = _activeToasts.Count(item => item.Position == toast.Position);
+                        var window = new ToastWindow(toast.Title, toast.Text, toast.ImagePath, stackIndex, toast.Position, OnToastClosed);
+                        _activeToasts.Add((window, toast.Position));
                     }
                     catch (Exception ex) { ToastFailed?.Invoke(ex); }
                 }
@@ -447,8 +458,8 @@ public sealed class NativeTrayIcon : IDisposable
         if (_hMenu != IntPtr.Zero)
             DestroyMenu(_hMenu);
 
-        _activeToast?.Dispose();
-        _activeToast = null;
+        foreach (var toast in _activeToasts.ToArray()) toast.Window.Dispose();
+        _activeToasts.Clear();
 
         if (_hIcon != IntPtr.Zero)
         {

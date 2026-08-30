@@ -170,7 +170,20 @@ internal static class Program
         var focusBlockLock = new object();
         BlockEntry[] focusBlocked = [];
         var focusToastTimes = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-        var blockImagePath = Path.Combine(dataDir, "block-notification.png");
+        string? BlockMediaPathForToast(AppSettings currentSettings)
+        {
+            var fileName = currentSettings.BlockMediaType switch
+            {
+                "image/jpeg" => "block-notification-media.jpg",
+                "image/gif" => "block-notification-media.gif",
+                "video/mp4" or "video/webm" => "block-notification-poster.png",
+                _ => "block-notification-media.png"
+            };
+            var path = Path.Combine(dataDir, fileName);
+            if (File.Exists(path)) return path;
+            var legacyPath = Path.Combine(dataDir, "block-notification.png");
+            return File.Exists(legacyPath) ? legacyPath : null;
+        }
         NativeTrayIcon? tray = null;
 
         void ReloadBlocklist()
@@ -209,22 +222,23 @@ internal static class Program
             if (!force)
             {
                 var previous = focusToastTimes.GetOrAdd(target, DateTime.MinValue);
-                if ((now - previous).TotalMinutes < 1) return;
+                if ((now - previous).TotalSeconds < Math.Clamp(LiveStatusStore.Settings.BlockNotifyIntervalSeconds, 5, 86400)) return;
                 focusToastTimes[target] = now;
             }
 
             var currentSettings = LiveStatusStore.Settings;
             var effectiveAction = BlockActionPlan.From(action ?? currentSettings.BlockAction).Id;
-            var imagePath = !string.IsNullOrEmpty(currentSettings.BlockImageVersion) && File.Exists(blockImagePath)
-                ? blockImagePath
-                : null;
+            var imagePath = string.IsNullOrEmpty(currentSettings.BlockImageVersion)
+                ? null
+                : BlockMediaPathForToast(currentSettings);
             try
             {
                 tray?.ShowBalloon(
                     BlockNotification.FormatTitle(currentSettings.BlockTitle, target, effectiveAction),
                     BlockNotification.Format(currentSettings.BlockMessage, target, effectiveAction),
                     warning: true,
-                    imagePath: imagePath);
+                    imagePath: imagePath,
+                    position: currentSettings.BlockNotifyPosition);
             }
             catch { }
         }
@@ -640,6 +654,8 @@ internal static class Program
                     LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockMessage = BlockNotification.NormalizeMessage(v) };
                 if (k == "block_image_version")
                     LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockImageVersion = v };
+                if (k == "block_media_type")
+                    LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockMediaType = v };
             },
             setTrackAudio: ApplyTrackAudio,
             setTrackInput: ApplyTrackInput,

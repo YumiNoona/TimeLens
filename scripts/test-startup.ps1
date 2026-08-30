@@ -27,6 +27,12 @@ public static class TimeLensStartupProbe {
     public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("user32.dll")]
     public static extern bool PostMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")]
+    public static extern bool SystemParametersInfoW(uint action, uint param, out Rect value, uint flags);
     [DllImport("shell32.dll")]
     public static extern int Shell_NotifyIconGetRect(ref IconId id, out Rect rect);
     public static bool HasTrayIcon(IntPtr window) {
@@ -110,6 +116,15 @@ try {
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body (@{ focusBlocklist = '[]' } | ConvertTo-Json -Compress) -TimeoutSec 5
     $unblockedState = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=www.example.com' -TimeoutSec 5
     if ($unblockedState.action -ne 'none' -or [bool]$unblockedState.blocked) { throw 'Removing a website did not unblock it immediately.' }
+
+    # File Explorer is discoverable and can use non-destructive modes, but the API
+    # must reject Kill/Strict so focus controls cannot tear down the Windows shell.
+    $safeExplorer = @{ focusBlocklist = '[{"i":"explorer.exe","m":"u","a":"notify"}]' } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $safeExplorer -TimeoutSec 5
+    $unsafeExplorer = @{ focusBlocklist = '[{"i":"explorer.exe","m":"u","a":"kill"}]' } | ConvertTo-Json -Compress
+    $unsafeResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $unsafeExplorer -SkipHttpErrorCheck -TimeoutSec 5
+    if ($unsafeResponse.StatusCode -ne 400) { throw 'Destructive File Explorer blocking was not rejected.' }
+
     $resetBlockSettings = @{ focusMode = $false; blockAction = 'hide'; focusBlocklist = '[]' } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $resetBlockSettings -TimeoutSec 5
 
@@ -126,9 +141,10 @@ try {
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/preview' -Method Post -TimeoutSec 5
     $toastDeadline = [DateTime]::UtcNow.AddSeconds(3)
     $toastWindow = [IntPtr]::Zero
-    while ([DateTime]::UtcNow -lt $toastDeadline -and $toastWindow -eq [IntPtr]::Zero) {
+    while ([DateTime]::UtcNow -lt $toastDeadline) {
         $toastWindow = [TimeLensStartupProbe]::FindWindowW('TLToast', $null)
-        if ($toastWindow -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 }
+        if ($toastWindow -ne [IntPtr]::Zero -and [TimeLensStartupProbe]::IsWindowVisible($toastWindow)) { break }
+        Start-Sleep -Milliseconds 100
     }
     [uint32]$toastOwner = 0
     if ($toastWindow -ne [IntPtr]::Zero) {
@@ -136,6 +152,21 @@ try {
     }
     if ($toastWindow -eq [IntPtr]::Zero -or $toastOwner -ne $process.Id) {
         throw 'Custom block notification preview did not create a native toast owned by TimeLens.'
+    }
+    if (-not [TimeLensStartupProbe]::IsWindowVisible($toastWindow)) {
+        throw 'Custom block notification preview created a hidden toast.'
+    }
+    $toastRect = New-Object TimeLensStartupProbe+Rect
+    $workRect = New-Object TimeLensStartupProbe+Rect
+    if (-not [TimeLensStartupProbe]::GetWindowRect($toastWindow, [ref]$toastRect) -or
+        -not [TimeLensStartupProbe]::SystemParametersInfoW(0x0030, 0, [ref]$workRect, 0)) {
+        throw 'Could not inspect the native toast placement.'
+    }
+    if ($toastRect.Left -gt ($workRect.Left + (($workRect.Right - $workRect.Left) / 2))) {
+        throw 'Custom block notification is not positioned on the left side of the work area.'
+    }
+    if (($workRect.Bottom - $toastRect.Bottom) -lt 12 -or ($workRect.Bottom - $toastRect.Bottom) -gt 48) {
+        throw 'Custom block notification bottom padding is outside the expected range.'
     }
     [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0201, [IntPtr]::Zero, [IntPtr]::Zero)
 

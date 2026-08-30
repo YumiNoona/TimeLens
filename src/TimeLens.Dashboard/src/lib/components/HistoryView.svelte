@@ -372,12 +372,12 @@
   .history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
   .history-overview {
     display: grid;
-    grid-template-columns: max-content minmax(320px, 1fr);
+    grid-template-columns: minmax(620px, 0.95fr) minmax(460px, 1.05fr);
     gap: var(--space-4);
-    align-items: start;
+    align-items: stretch;
   }
 
-  .day-details { display: flex; flex-direction: column; }
+  .day-details { min-height: 292px; display: flex; flex-direction: column; }
   .detail-list { display: flex; flex-direction: column; }
   .detail-row {
     display: flex;

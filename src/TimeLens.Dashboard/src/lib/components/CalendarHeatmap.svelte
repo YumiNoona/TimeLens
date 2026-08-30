@@ -24,7 +24,11 @@
 
   const visibleEntries = $derived(entries.slice(-$heatmapDays));
   const maxVal = $derived(Math.max(...visibleEntries.map(e => e.value), 1));
-  const rangeLabel = $derived($heatmapDays === 28 ? 'Last 4 weeks' : $heatmapDays === 91 ? 'Last 3 months' : 'Last 6 months');
+  const rangeLabel = $derived(
+    $heatmapDays === 28 ? 'Last 4 weeks' :
+    $heatmapDays === 91 ? 'Last 3 months' :
+    $heatmapDays === 273 ? 'Last 9 months' : 'Last 12 months'
+  );
 
   // Build week-based grid
   const weeks = $derived.by((): (HeatmapEntry | null)[][] => {
@@ -159,8 +163,12 @@
 
   .heatmap-card {
     --hm-cell: 13px;
-    width: max-content;
+    width: 100%;
+    min-height: 292px;
     max-width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
     background: var(--md-surface-1);
     border-radius: var(--shape-lg);
     border: 1px solid var(--md-outline);
@@ -180,12 +188,15 @@
   .hm-range { font-size: 11px; color: var(--md-on-surf-dim); background: var(--clr-bg-ter); border-radius: var(--shape-full); padding: 4px 8px; }
 
   .hm-overflow {
+    flex: 1;
+    display: flex;
+    align-items: center;
     overflow-x: auto;
     padding: 2px 8px 2px 2px;
     margin-inline: -2px;
     scrollbar-gutter: stable;
   }
-  .hm-content { width: max-content; margin: 0; padding-right: 4px; }
+  .hm-content { width: max-content; margin: 0 auto; padding-right: 4px; }
 
   .hm-body {
     display: flex;

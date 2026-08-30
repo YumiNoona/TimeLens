@@ -20,6 +20,7 @@ let trackingEnabled = true;
 let blockingEnabled = false;
 const lastUrl = {};
 const debounceTimers = {};
+const imageDataCache = {};
 
 function checkedFetch(url, options) {
   return fetch(url, options).then(function(response) {
@@ -31,6 +32,28 @@ function checkedFetch(url, options) {
 function stateFor(domain) {
   return checkedFetch(STATE_API + '?domain=' + encodeURIComponent(domain || ''))
     .then(function(response) { return response.json(); });
+}
+
+function hydrateNotifyImage(response) {
+  const presentation = response && response.presentation;
+  const imageUrl = presentation && presentation.imageUrl;
+  if (!presentation || response.action !== 'notify' || !imageUrl) return Promise.resolve(response);
+  if (imageDataCache[imageUrl]) {
+    presentation.imageDataUrl = imageDataCache[imageUrl];
+    return Promise.resolve(response);
+  }
+  return checkedFetch(imageUrl).then(function(imageResponse) { return imageResponse.blob(); }).then(function(blob) {
+    return blob.arrayBuffer().then(function(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
+      }
+      imageDataCache[imageUrl] = 'data:' + (blob.type || 'image/png') + ';base64,' + btoa(binary);
+      presentation.imageDataUrl = imageDataCache[imageUrl];
+      return response;
+    });
+  }).catch(function() { return response; });
 }
 
 function sendHeartbeat() {
@@ -57,13 +80,14 @@ function mountNotifyToast(presentation, domain) {
   const root = document.createElement('aside');
   root.id = ROOT_ID;
   root.setAttribute('role', 'status');
-  root.style.cssText = 'all:initial;position:fixed;left:18px;top:50%;transform:translateY(-50%);z-index:2147483647;width:min(360px,calc(100vw - 36px));box-sizing:border-box;padding:14px;border:1px solid rgba(126,215,218,.45);border-radius:14px;background:#11191c;color:#edf6f4;box-shadow:0 18px 55px rgba(0,0,0,.46);font:14px/1.45 Inter,Segoe UI,sans-serif;display:flex;gap:12px;align-items:center;transition:opacity .18s ease,transform .18s ease';
-  const image = presentation && presentation.imageUrl;
+  root.style.cssText = 'all:initial;position:fixed;left:22px;bottom:22px;z-index:2147483647;width:min(390px,calc(100vw - 44px));box-sizing:border-box;padding:16px 18px 16px 16px;border:1px solid rgba(126,215,218,.46);border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 20px 60px rgba(0,0,0,.48);font:14px/1.45 Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:flex-start;transition:opacity .18s ease,transform .18s ease';
+  const image = presentation && (presentation.imageDataUrl || presentation.imageUrl);
   if (image) {
     const img = document.createElement('img');
     img.src = image;
     img.alt = '';
-    img.style.cssText = 'width:54px;height:54px;flex:0 0 54px;border-radius:10px;object-fit:cover';
+    img.style.cssText = 'width:62px;height:62px;flex:0 0 62px;border-radius:11px;object-fit:cover;background:#0b1113';
+    img.onerror = function() { img.remove(); };
     root.appendChild(img);
   }
   const copy = document.createElement('div');
@@ -92,8 +116,8 @@ function mountNotifyToast(presentation, domain) {
     if (!document.getElementById(ROOT_ID)) return;
     root.style.opacity = '1';
     root.style.pointerEvents = 'auto';
-    root.style.transform = 'translateY(-50%) scale(1.015)';
-    setTimeout(function() { root.style.transform = 'translateY(-50%) scale(1)'; }, 180);
+    root.style.transform = 'scale(1.015)';
+    setTimeout(function() { root.style.transform = 'scale(1)'; }, 180);
   }
 
   async function checkState() {
@@ -182,6 +206,7 @@ function doSendTab(tabId, url, title, audible) {
     checkedFetch(EVENT_API, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     }).then(function(response) { return response.json(); })
+      .then(hydrateNotifyImage)
       .then(function(response) { applyBlockResponse(tabId, url, response); flushQueue(); })
       .catch(function() { enqueue(body); });
   } catch (_) {}

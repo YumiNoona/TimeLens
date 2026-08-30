@@ -50,7 +50,7 @@ public sealed class SettingsService
             Density = dict.GetValueOrDefault("density", "comfortable"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
             TimelineMinSegmentSeconds = int.TryParse(dict.GetValueOrDefault("timeline_min_segment_seconds", "60"), out var tmss) ? tmss : 60,
-            HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "182"), out var hd) ? hd : 182,
+            HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "273"), out var hd) ? hd : 273,
             BlockProtectionEnabled = dict.GetValueOrDefault("block_protection_enabled", "false") == "true",
         };
     }

@@ -122,7 +122,8 @@ public static class DatabaseInitializer
               INSERT OR IGNORE INTO settings (key, value) VALUES ('density', 'comfortable');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('motion_enabled', 'true');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('timeline_min_segment_seconds', '60');
-              INSERT OR IGNORE INTO settings (key, value) VALUES ('heatmap_days', '182');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('heatmap_days', '273');
+              UPDATE settings SET value = '273' WHERE key = 'heatmap_days' AND value = '182';
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_protection_enabled', 'false');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_title', 'Focus Mode');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_message', '''{target}'' is blocked — get back to work!');

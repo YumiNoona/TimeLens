@@ -98,7 +98,6 @@ public static class ApiHost
         "svchost", "dwm", "csrss", "smss", "wininit", "winlogon", "services",
         "lsass", "spoolsv", "taskhostw", "sihost",
         "TimeLens.TrayApp", "TimeLens", "NVDisplay.Container", "NVIDIA Share", "nvsphelper64",
-        "explorer", "CalculatorApp",
         "steamwebhelper", "SteamWebHelper", "SteamService", "SteamClientBootstrapper",
     };
     public static DateTime LastActivityUtc { get; private set; } = DateTime.MinValue;
@@ -444,7 +443,7 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid timeline threshold\"}");
                     return;
                 }
-                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "182"))
+                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "273" or "365"))
                 {
                     ctx.Response.StatusCode = 400;
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid heatmap range\"}");
@@ -459,10 +458,11 @@ public static class ApiHost
                         await ctx.Response.WriteAsync("{\"error\":\"Invalid blocklist\"}");
                         return;
                     }
-                    if (entries.Any(entry => BlockEntryHelper.IsProtected(entry.I)))
+                    if (entries.Any(entry => BlockEntryHelper.IsProtected(entry.I) ||
+                        BlockEntryHelper.IsUnsafeShellAction(entry, LiveStatusStore.Settings.BlockAction)))
                     {
                         ctx.Response.StatusCode = 400;
-                        await ctx.Response.WriteAsync("{\"error\":\"TimeLens and critical Windows targets cannot be blocked\"}");
+                        await ctx.Response.WriteAsync("{\"error\":\"Critical Windows targets cannot be blocked; File Explorer supports Notify or Hide only\"}");
                         return;
                     }
                     value = BlockEntryHelper.Serialize(entries);
@@ -1371,16 +1371,27 @@ public static class ApiHost
 
         app.MapGet("/api/running-processes", (HttpContext ctx) =>
         {
-            var procs = System.Diagnostics.Process.GetProcesses()
-                .Where(p =>
-                    p.MainWindowHandle != IntPtr.Zero &&
-                    !string.IsNullOrEmpty(p.ProcessName) &&
-                    IsWindowVisible(p.MainWindowHandle) &&
-                    !InfrastructureExes.Contains(p.ProcessName))
-                .Select(p => p.ProcessName + ".exe")
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var visibleApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var process in System.Diagnostics.Process.GetProcesses())
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (process.MainWindowHandle == IntPtr.Zero ||
+                            string.IsNullOrWhiteSpace(process.ProcessName) ||
+                            !IsWindowVisible(process.MainWindowHandle) ||
+                            InfrastructureExes.Contains(process.ProcessName))
+                            continue;
+                        visibleApps.Add(process.ProcessName + ".exe");
+                    }
+                    catch
+                    {
+                        // Processes can exit or become inaccessible while enumerating.
+                    }
+                }
+            }
+            var procs = visibleApps.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToArray();
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             return ctx.Response.WriteAsJsonAsync(procs, AppJsonContext.Default.StringArray);
@@ -1752,7 +1763,7 @@ public static class BlockEntryHelper
 {
     private static readonly HashSet<string> ProtectedTargets = new(StringComparer.OrdinalIgnoreCase)
     {
-        "timelens.exe", "explorer.exe", "dwm.exe", "csrss.exe", "winlogon.exe",
+        "timelens.exe", "dwm.exe", "csrss.exe", "winlogon.exe",
         "services.exe", "lsass.exe", "svchost.exe", "system", "idle",
         "localhost", "127.0.0.1", "::1"
     };
@@ -1835,6 +1846,9 @@ public static class BlockEntryHelper
     }
 
     public static bool IsProtected(string identifier) => ProtectedTargets.Contains(identifier);
+
+    public static bool IsUnsafeShellAction(BlockEntry entry, string? fallback)
+        => BlockTargetAction.IsUnsafeShellAction(entry.I, entry.A, fallback);
 
     public static bool MatchesExecutable(BlockEntry entry, string executable) =>
         IsExecutable(entry) && string.Equals(

@@ -23,9 +23,9 @@ public sealed class ToastWindow : IDisposable
     private readonly string _title;
     private readonly string _body;
     private readonly Image? _image;
-    private readonly int _width = 380;
-    private readonly int _height = 92;
-    private readonly int _dismissMs = 5000;
+    private readonly int _width = 420;
+    private readonly int _height = 108;
+    private readonly int _dismissMs = 6500;
     private int _x;
     private int _y;
     private const int DISMISS_TIMER_ID = 1;
@@ -92,11 +92,11 @@ public sealed class ToastWindow : IDisposable
 
     private void CreateToast()
     {
-        var margin = 16;
+        const int margin = 22;
         var workArea = new RECT();
         if (!SystemParametersInfoW(0x0030, 0, ref workArea, 0)) // SPI_GETWORKAREA
             workArea = new RECT { right = GetSystemMetrics(0), bottom = GetSystemMetrics(1) };
-        _x = workArea.right - _width - margin;
+        _x = workArea.left + margin;
         _y = workArea.bottom - _height - margin;
 
         _hWnd = CreateWindowExW(
@@ -109,12 +109,13 @@ public sealed class ToastWindow : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not create the TimeLens toast window.");
 
         // Rounded corners
-        var rgn = CreateRoundRectRgn(0, 0, _width + 1, _height + 1, 10, 10);
+        var rgn = CreateRoundRectRgn(0, 0, _width + 1, _height + 1, 16, 16);
         if (SetWindowRgn(_hWnd, rgn, 1) == 0) DeleteObject(rgn);
 
         SetWindowLongPtrW(_hWnd, GWLP_USERDATA, GCHandle.ToIntPtr(GCHandle.Alloc(this)));
 
         Paint(220);
+        ShowWindow(_hWnd, 4); // SW_SHOWNOACTIVATE
         SetTimer(_hWnd, DISMISS_TIMER_ID, (uint)_dismissMs, IntPtr.Zero);
     }
 
@@ -141,21 +142,47 @@ public sealed class ToastWindow : IDisposable
 
         SetBkMode(hdcMem, TRANSPARENT);
 
-        var textLeft = _image is null ? 18 : 92;
+        var textLeft = _image is null ? 22 : 104;
         if (_image is not null)
         {
             using var graphics = Graphics.FromHdc(hdcMem);
             graphics.CompositingQuality = CompositingQuality.HighQuality;
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.SmoothingMode = SmoothingMode.HighQuality;
-            graphics.DrawImage(_image, 16, 14, 64, 64);
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            var destination = new Rectangle(20, 20, 68, 68);
+            using var clip = new GraphicsPath();
+            const int imageRadius = 10;
+            var arc = imageRadius * 2;
+            clip.AddArc(destination.Left, destination.Top, arc, arc, 180, 90);
+            clip.AddArc(destination.Right - arc, destination.Top, arc, arc, 270, 90);
+            clip.AddArc(destination.Right - arc, destination.Bottom - arc, arc, arc, 0, 90);
+            clip.AddArc(destination.Left, destination.Bottom - arc, arc, arc, 90, 90);
+            clip.CloseFigure();
+            graphics.SetClip(clip);
+
+            var sourceRatio = (float)_image.Width / _image.Height;
+            var destinationRatio = (float)destination.Width / destination.Height;
+            RectangleF source;
+            if (sourceRatio > destinationRatio)
+            {
+                var sourceWidth = _image.Height * destinationRatio;
+                source = new RectangleF((_image.Width - sourceWidth) / 2f, 0, sourceWidth, _image.Height);
+            }
+            else
+            {
+                var sourceHeight = _image.Width / destinationRatio;
+                source = new RectangleF(0, (_image.Height - sourceHeight) / 2f, _image.Width, sourceHeight);
+            }
+            graphics.DrawImage(_image, destination, source, GraphicsUnit.Pixel);
+            graphics.ResetClip();
         }
 
         // Title
         var titleFont = CreateFontW(17, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
         var oldFont = SelectObject(hdcMem, titleFont);
         SetTextColor(hdcMem, TextColor);
-        var tr = new RECT { left = textLeft, top = 11, right = _width - 16, bottom = 36 };
+        var tr = new RECT { left = textLeft, top = 17, right = _width - 20, bottom = 42 };
         DrawTextW(hdcMem, _title, -1, ref tr, 0x0020 | 0x0800 | 0x8000);
         SelectObject(hdcMem, oldFont);
         DeleteObject(titleFont);
@@ -164,7 +191,7 @@ public sealed class ToastWindow : IDisposable
         var bodyFont = CreateFontW(14, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, "Segoe UI");
         var oldFont2 = SelectObject(hdcMem, bodyFont);
         SetTextColor(hdcMem, SubTextColor);
-        var br = new RECT { left = textLeft, top = 37, right = _width - 16, bottom = _height - 10 };
+        var br = new RECT { left = textLeft, top = 47, right = _width - 20, bottom = _height - 16 };
         DrawTextW(hdcMem, _body, -1, ref br, 0x0010 | 0x0800 | 0x8000);
         SelectObject(hdcMem, oldFont2);
         DeleteObject(bodyFont);
@@ -175,7 +202,8 @@ public sealed class ToastWindow : IDisposable
         var src = new POINT();
         var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = alpha, AlphaFormat = 0 };
         UpdateLayeredWindow(_hWnd, hdcScreen, ref dst, ref sz, hdcMem, ref src, 0, ref blend, ULW_ALPHA);
-        SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, 0x0010 | 0x0002 | 0x0001);
+        // SWP_SHOWWINDOW is required because CreateWindowEx creates the popup hidden.
+        SetWindowPos(_hWnd, HWND_TOPMOST, 0, 0, 0, 0, 0x0040 | 0x0010 | 0x0002 | 0x0001);
 
         SelectObject(hdcMem, oldBitmap);
         DeleteObject(hBitmap);
@@ -234,6 +262,7 @@ public sealed class ToastWindow : IDisposable
     [DllImport("gdi32.dll")] private static extern int DeleteDC(IntPtr hdc);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowExW(int ex, string cn, string wn, int st, int x, int y, int w, int h, IntPtr hp, IntPtr hm, IntPtr hi, IntPtr pv);
     [DllImport("user32.dll")] private static extern int DestroyWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int command);
     [DllImport("user32.dll")] private static extern int SetWindowPos(IntPtr hWnd, IntPtr hAfter, int x, int y, int cx, int cy, uint f);
     [DllImport("user32.dll")] private static extern int UpdateLayeredWindow(IntPtr hWnd, IntPtr hdcDst, ref POINT pd, ref SIZE ps, IntPtr hdcSrc, ref POINT pSrc, int crKey, ref BLENDFUNCTION blend, int f);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);

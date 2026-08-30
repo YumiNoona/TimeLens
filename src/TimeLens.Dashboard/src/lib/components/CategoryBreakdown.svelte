@@ -33,6 +33,7 @@
 
   let hovered = $state<string | null>(null);
   const activeSlice = $derived(slices.find(slice => slice.name === hovered) ?? slices[0] ?? null);
+  const visibleSlices = $derived(slices.slice(0, 5));
 </script>
 
 <div class="card category-card">
@@ -59,7 +60,7 @@
               stroke-dasharray="{slice.dashArray} {CIRCUMFERENCE - slice.dashArray}"
               stroke-dashoffset={slice.dashOffset}
               transform="rotate(-90 95 95)"
-              stroke-linecap="round"
+              stroke-linecap="butt"
               opacity={hovered ? (hovered === slice.name ? 1 : 0.2) : 1}
               style="filter:{hovered === slice.name ? `drop-shadow(0 0 5px ${slice.color})` : 'none'}"
             />
@@ -81,18 +82,19 @@
     </div>
 
     <div class="category-list" role="list" aria-label="Category details">
-      {#each slices as slice, index}
+      {#each visibleSlices as slice, index}
         <button
           type="button"
           class="category-row"
           class:active={hovered === slice.name || (!hovered && index === 0)}
+          style="--rank-color:{slice.color}"
           onmouseenter={() => hovered = slice.name}
           onmouseleave={() => hovered = null}
           onfocus={() => hovered = slice.name}
           onblur={() => hovered = null}
         >
-          <span class="rank">{String(index + 1).padStart(2, '0')}</span>
-          <span class="category-copy"><strong><span class="cat-dot" style="background:{slice.color}"></span>{slice.name}</strong><span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span></span>
+          <span class="rank">{index + 1}</span>
+          <span class="category-copy"><strong>{slice.name}</strong><span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span></span>
           <span class="category-metric"><strong>{slice.percentage}%</strong><small>{fmtTime(slice.minutes)}</small></span>
         </button>
       {/each}
@@ -109,7 +111,7 @@
   .card-title-wrap span { color: var(--clr-text-ter); font-size: 10px; }
   .tracked-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-full); font: 10px var(--font-mono); white-space: nowrap; }
   .tracked-pill i { color: var(--md-primary); }
-  .category-layout { display: grid; grid-template-columns: minmax(210px, .78fr) minmax(260px, 1.22fr); gap: 20px; padding: 10px 18px 18px; align-items: center; }
+  .category-layout { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(280px, 1.2fr); gap: 24px; padding: 14px 20px 20px; align-items: center; }
   .donut-panel { min-height: 222px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: visible; }
   .donut-halo { position: absolute; width: 168px; height: 168px; top: 24px; border-radius: 50%; background: color-mix(in srgb, var(--md-primary) 5%, transparent); filter: blur(18px); }
   .cat-donut { position: relative; width: 182px; height: 182px; z-index: 1; }
@@ -124,17 +126,16 @@
   .donut-caption span { color: var(--clr-text-ter); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
   .donut-caption strong { color: var(--clr-text-pri); font-size: 10px; text-transform: capitalize; }
   .donut-caption small { grid-column: 1 / -1; color: var(--clr-text-ter); font-size: 9px; text-align: center; }
-  .category-list { display: flex; flex-direction: column; gap: 7px; }
-  .category-row { min-height: 47px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 9px; color: var(--clr-text-sec); background: transparent; border: 1px solid transparent; border-radius: 10px; font-family: inherit; text-align: left; cursor: pointer; transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out), transform 150ms var(--ease-out); }
-  .category-row:hover, .category-row.active { background: var(--clr-bg-ter); border-color: var(--clr-border); transform: translateX(2px); }
-  .rank { color: var(--clr-text-ter); font: 9px var(--font-mono); }
-  .category-copy { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
-  .category-copy strong { display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--clr-text-pri); font-size: 11px; font-weight: 600; text-transform: capitalize; text-overflow: ellipsis; white-space: nowrap; }
-  .cat-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; }
-  .mini-track { height: 3px; overflow: hidden; border-radius: 99px; background: var(--clr-bg-sec); }
+  .category-list { display: flex; flex-direction: column; gap: 6px; }
+  .category-row { min-height: 52px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 7px 10px; color: var(--clr-text-sec); background: color-mix(in srgb, var(--clr-bg-ter) 54%, transparent); border: 1px solid transparent; border-radius: 11px; font-family: inherit; text-align: left; cursor: pointer; transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out); }
+  .category-row:hover, .category-row.active { background: var(--clr-bg-ter); border-color: color-mix(in srgb, var(--rank-color, var(--md-primary)) 34%, var(--clr-border)); }
+  .rank { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--rank-color); background: color-mix(in srgb, var(--rank-color) 14%, var(--clr-bg-sec)); border: 1px solid color-mix(in srgb, var(--rank-color) 28%, transparent); font: 600 10px var(--font-mono); }
+  .category-copy { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .category-copy strong { overflow: hidden; color: var(--clr-text-pri); font-size: 11px; font-weight: 600; text-transform: capitalize; text-overflow: ellipsis; white-space: nowrap; }
+  .mini-track { height: 4px; overflow: hidden; border-radius: 99px; background: var(--clr-bg-sec); }
   .mini-track span { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 300ms var(--ease-out); }
   .category-metric { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .category-metric strong { color: var(--clr-text-pri); font: 600 11px var(--font-mono); }
+  .category-metric strong { min-width: 42px; padding: 3px 6px; border-radius: 7px; color: var(--clr-text-pri); background: var(--clr-bg-sec); text-align: center; font: 600 11px var(--font-mono); }
   .category-metric small { color: var(--clr-text-ter); font: 9px var(--font-mono); }
   @media (max-width: 900px) {
     .category-layout { grid-template-columns: 1fr; }

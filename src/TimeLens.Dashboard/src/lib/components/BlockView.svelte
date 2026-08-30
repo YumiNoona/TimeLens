@@ -9,11 +9,11 @@
 
   const DEFAULT_TITLE = 'Focus Mode';
   const DEFAULT_MESSAGE = "'{target}' is blocked — get back to work!";
-  const APP_ACTIONS: { id: Action; label: string; icon: string }[] = [
-    { id: 'notify', label: 'Notify', icon: 'ti-bell' },
-    { id: 'hide', label: 'Hide', icon: 'ti-eye-off' },
-    { id: 'kill', label: 'Kill', icon: 'ti-x' },
-    { id: 'strict', label: 'Strict', icon: 'ti-shield-lock' },
+  const APP_ACTIONS: { id: Action; label: string; icon: string; description: string }[] = [
+    { id: 'notify', label: 'Notify', icon: 'ti-bell', description: 'Show a bottom-left reminder and leave the app usable.' },
+    { id: 'hide', label: 'Hide', icon: 'ti-eye-off', description: 'Minimize the app whenever its window comes forward.' },
+    { id: 'kill', label: 'Kill', icon: 'ti-x', description: 'Close the app process when it is detected.' },
+    { id: 'strict', label: 'Strict', icon: 'ti-shield-lock', description: 'Close the app and keep checking for relaunches.' },
   ];
   const WEB_ACTIONS = APP_ACTIONS.filter((item) => item.id === 'notify' || item.id === 'strict');
   const DURATIONS = [
@@ -52,12 +52,16 @@
   let pendingAction: RetryAction | null = null;
 
   function isApp(entry: BlockEntry): boolean { return entry.i.endsWith('.exe'); }
+  function isWindowsShell(identifier: string): boolean { return identifier.trim().toLowerCase() === 'explorer.exe'; }
   function effectiveAction(entry: BlockEntry): Action {
     if (entry.a) return entry.a;
     if (!isApp(entry)) return legacyAction === 'notify' ? 'notify' : 'strict';
     return legacyAction;
   }
-  function actionsFor(kind: TargetKind) { return kind === 'app' ? APP_ACTIONS : WEB_ACTIONS; }
+  function actionsFor(kind: TargetKind, identifier = '') {
+    if (kind === 'website') return WEB_ACTIONS;
+    return isWindowsShell(identifier) ? APP_ACTIONS.filter(action => action.id === 'notify' || action.id === 'hide') : APP_ACTIONS;
+  }
   function setTargetKind(kind: TargetKind) {
     targetKind = kind;
     newItem = '';
@@ -167,6 +171,9 @@
     try { return new URL(raw.includes('://') ? raw : `https://${raw}`).hostname.replace(/^www\./, '').toLowerCase(); }
     catch { return raw.trim().replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '').toLowerCase(); }
   }
+  function keepShellModeSafe(raw: string) {
+    if (targetKind === 'app' && isWindowsShell(sanitizeApp(raw)) && (newAction === 'kill' || newAction === 'strict')) newAction = 'hide';
+  }
 
   async function addTarget(raw = newItem) {
     const value = targetKind === 'app' ? sanitizeApp(raw) : sanitizeWebsite(raw);
@@ -175,9 +182,10 @@
       : /^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+$/.test(value);
     if (!valid) { errorMessage = targetKind === 'app' ? 'Enter an app such as discord.exe' : 'Enter a website such as youtube.com'; return; }
     if (items.some((entry) => entry.i.toLowerCase() === value)) { newItem = ''; return; }
+    const targetAction = isWindowsShell(value) && (newAction === 'kill' || newAction === 'strict') ? 'hide' : newAction;
     const entry: BlockEntry = addingDuration > 0
-      ? { i: value, m: 't', e: new Date(Date.now() + addingDuration * 60_000).toISOString(), a: newAction }
-      : { i: value, m: 'u', a: newAction };
+      ? { i: value, m: 't', e: new Date(Date.now() + addingDuration * 60_000).toISOString(), a: targetAction }
+      : { i: value, m: 'u', a: targetAction };
     const previous = items;
     const next = [...items, entry];
     items = next; newItem = ''; showSuggestions = false;
@@ -260,13 +268,13 @@
   }
   function iconFor(entry: BlockEntry) { return appIcon(entry.i) || (isApp(entry) ? 'ti-apps' : 'ti-world'); }
 
-  let availableActions = $derived(actionsFor(targetKind));
+  let availableActions = $derived(actionsFor(targetKind, targetKind === 'app' ? sanitizeApp(newItem) : newItem));
   let previewTarget = $derived(targetKind === 'website' ? 'youtube.com' : 'example.exe');
   let suggestions = $derived.by(() => {
     if (targetKind !== 'app') return [];
     const query = newItem.toLowerCase().trim();
     const used = new Set(items.map((entry) => entry.i.toLowerCase()));
-    return runningProcs.filter((name) => !used.has(name.toLowerCase()) && (!query || name.toLowerCase().includes(query))).slice(0, 8);
+    return runningProcs.filter((name) => !used.has(name.toLowerCase()) && (!query || name.toLowerCase().includes(query)));
   });
 
   onMount(() => {
@@ -308,11 +316,18 @@
       <header><div><span class="kicker">NEW TARGET</span><h2>Add an app or website</h2></div></header>
       <div class="kind-tabs" role="tablist"><button class:active={targetKind === 'app'} onclick={() => setTargetKind('app')}><i class="ti ti-device-desktop"></i>App</button><button class:active={targetKind === 'website'} onclick={() => setTargetKind('website')}><i class="ti ti-world"></i>Website</button></div>
       <div class="field-label">Mode</div>
-      <div class="mode-row">{#each availableActions as action}<button class:active={newAction === action.id} onclick={() => newAction = action.id}><i class="ti {action.icon}"></i>{action.label}</button>{/each}</div>
-      <label class="target-input"><span>{targetKind === 'app' ? 'App name' : 'Domain'}</span><div><i class="ti ti-search"></i><input bind:value={newItem} placeholder={targetKind === 'app' ? 'Search running apps' : 'youtube.com'} onfocus={() => showSuggestions = true} onkeydown={(event) => { if (event.key === 'Enter') addTarget(); if (event.key === 'Escape') showSuggestions = false; }} /><button onclick={() => addTarget()} disabled={!newItem.trim() || saving}><i class="ti ti-plus"></i>Add</button></div></label>
-      {#if targetKind === 'app' && showSuggestions && suggestions.length}
-        <div class="suggestions">{#each suggestions as process}<button onclick={() => addTarget(process)}><i class="ti {appIcon(process) || 'ti-apps'}"></i><span>{process}</span></button>{/each}</div>
-      {/if}
+      <div class="mode-row" style={`grid-template-columns:repeat(${availableActions.length},minmax(0,1fr))`}>{#each availableActions as action}<button class="tooltip-button" class:active={newAction === action.id} data-tooltip={action.description} aria-label={`${action.label}: ${action.description}`} onclick={() => newAction = action.id}><i class="ti {action.icon}"></i>{action.label}</button>{/each}</div>
+      <div class="target-picker">
+        <label class="target-input"><span>{targetKind === 'app' ? 'App name' : 'Domain'}</span><div><i class="ti ti-search"></i><input bind:value={newItem} placeholder={targetKind === 'app' ? 'Search running apps' : 'youtube.com'} oninput={(event) => keepShellModeSafe(event.currentTarget.value)} onfocus={() => showSuggestions = true} onkeydown={(event) => { if (event.key === 'Enter') addTarget(); if (event.key === 'Escape') showSuggestions = false; }} /><button onclick={() => addTarget()} disabled={!newItem.trim() || saving}><i class="ti ti-plus"></i>Add</button></div></label>
+        {#if targetKind === 'app' && showSuggestions}
+          <div class="suggestions">
+            <div class="suggestions-head"><span>Open apps</span><button type="button" onclick={loadRunning} aria-label="Refresh open apps"><i class="ti ti-refresh"></i>Refresh</button></div>
+            {#if suggestions.length}
+              {#each suggestions as process}<button type="button" onclick={() => addTarget(process)}><i class="ti {appIcon(process) || 'ti-apps'}"></i><span>{process}</span>{#if isWindowsShell(process)}<small>Notify or Hide</small>{/if}</button>{/each}
+            {:else}<div class="suggestions-empty">No matching open apps</div>{/if}
+          </div>
+        {/if}
+      </div>
       <label class="duration"><span>Duration</span><select bind:value={addingDuration}>{#each DURATIONS as duration}<option value={duration.value}>{duration.label}</option>{/each}</select></label>
       <div class="mode-note"><i class="ti {targetKind === 'website' ? (newAction === 'notify' ? 'ti-bell' : 'ti-shield-lock') : 'ti-device-desktop'}"></i><span>{targetKind === 'website' ? (newAction === 'notify' ? 'Shows a repeating toast on the left and leaves the site usable.' : 'Shows your custom full-page screen until the target is removed.') : 'Desktop apps support Notify, Hide, Kill, and Strict.'}</span></div>
     </section>
@@ -326,7 +341,7 @@
           <div class="target-row">
             <span class="target-icon"><i class="ti {iconFor(entry)}"></i></span>
             <div class="target-name"><strong>{entry.i}</strong><span>{isApp(entry) ? 'Desktop app' : 'Website'} · {timeLabel(entry)}</span></div>
-            <div class="action-pills">{#each actionsFor(isApp(entry) ? 'app' : 'website') as action}<button class:active={effectiveAction(entry) === action.id} onclick={() => changeAction(index, action.id)} title={action.label} aria-label={`${action.label} ${entry.i}`}><i class="ti {action.icon}"></i><span>{action.label}</span></button>{/each}</div>
+            <div class="action-pills">{#each actionsFor(isApp(entry) ? 'app' : 'website', entry.i) as action}<button class="tooltip-button" class:active={effectiveAction(entry) === action.id} data-tooltip={action.description} onclick={() => changeAction(index, action.id)} aria-label={`${action.label} ${entry.i}: ${action.description}`}><i class="ti {action.icon}"></i><span>{action.label}</span></button>{/each}</div>
             {#if isApp(entry)}<button class="icon-button" onclick={() => testApp(entry)} disabled={!focusMode} title="Test now" aria-label={`Test ${entry.i}`}><i class="ti {lastTested === entry.i ? 'ti-check' : 'ti-player-play'}"></i></button>{/if}
             <button class="icon-button remove" onclick={() => removeTarget(index)} title="Remove and unblock" aria-label={`Remove ${entry.i}`} disabled={saving}><i class="ti ti-trash"></i></button>
           </div>
@@ -348,10 +363,11 @@
   .workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);gap:14px}.panel{overflow:hidden}.panel header{min-height:62px;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--clr-border)}.panel header>div{display:grid;gap:2px}.kicker{color:var(--md-primary);font-size:9px;font-weight:700;letter-spacing:.12em}.panel h2{margin:0;color:var(--clr-text-pri);font-size:14px}.save{height:31px;padding:0 12px;border:1px solid var(--md-primary);border-radius:8px;background:var(--md-primary);color:var(--md-on-primary);font:600 11px inherit;cursor:pointer}.save:disabled{opacity:.4;cursor:not-allowed}
   .preview-shell{padding:16px 16px 8px}.preview-shell.browser{display:flex;justify-content:flex-start}.preview{min-height:78px;display:flex;align-items:center;gap:12px;padding:12px;border-left:3px solid var(--md-primary);border-radius:12px;background:#151b1d;border-top:1px solid #2a3639;border-right:1px solid #2a3639;border-bottom:1px solid #2a3639;box-shadow:0 10px 26px rgba(0,0,0,.2)}.browser .preview{width:min(390px,100%)}.preview img,.preview-icon{width:52px;height:52px;flex:0 0 52px;border-radius:9px}.preview img{object-fit:cover}.preview-icon{display:grid;place-items:center;color:var(--md-primary);background:var(--md-primary-cont);font-size:20px}.preview>div{min-width:0;display:grid;gap:2px}.preview span{color:var(--md-primary);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.preview strong{color:#f3f7f6;font-size:13px}.preview p{margin:0;color:#9caaa8;font-size:11px;line-height:1.35;white-space:normal;overflow-wrap:anywhere}
   .message-fields{display:grid;grid-template-columns:minmax(150px,.5fr) minmax(260px,1fr);gap:10px;padding:8px 16px}.message-fields label,.target-input,.duration{display:grid;gap:5px}.message-fields label>span,.target-input>span,.duration>span,.field-label{color:var(--clr-text-sec);font-size:10px;font-weight:600}.message-fields input,.target-input input,.duration select,.unlock-modal input{height:36px;min-width:0;padding:0 10px;color:var(--clr-text-pri);background:var(--clr-bg-ter);border:1px solid var(--clr-border);border-radius:8px;font:12px inherit;outline:none}.message-fields input:focus,.target-input input:focus,.duration select:focus,.unlock-modal input:focus{border-color:var(--md-primary)}.image-actions{gap:8px;padding:8px 16px 16px}.file-button,.plain{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-bg-ter);color:var(--clr-text-sec);font:11px inherit;cursor:pointer}.file-button input{display:none}.plain.danger:hover{color:var(--md-error);border-color:var(--md-error)}.image-actions small{margin-left:auto;color:var(--clr-text-ter);font-size:9px}
-  .add-panel{position:relative;padding-bottom:14px}.add-panel header{margin-bottom:12px}.kind-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 16px 12px;padding:4px;background:var(--clr-bg-ter);border-radius:10px}.kind-tabs button,.mode-row button,.action-pills button{border:1px solid transparent;background:transparent;color:var(--clr-text-sec);font:11px inherit;cursor:pointer}.kind-tabs button{height:32px;border-radius:7px}.kind-tabs button.active{color:var(--clr-text-pri);background:var(--clr-bg-sec);border-color:var(--clr-border)}.kind-tabs i,.mode-row i{margin-right:5px}.field-label{margin:0 16px 6px}.mode-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 16px 12px}.mode-row button{height:34px;border-color:var(--clr-border);border-radius:8px;background:var(--clr-bg-ter)}.mode-row button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.target-input{margin:0 16px 10px}.target-input>div{height:38px;display:flex;align-items:center;padding-left:10px;border:1px solid var(--clr-border);border-radius:9px;background:var(--clr-bg-ter)}.target-input>div:focus-within{border-color:var(--md-primary)}.target-input>div>i{color:var(--clr-text-ter)}.target-input input{height:36px;flex:1;border:0;background:transparent}.target-input button{height:30px;margin-right:3px;padding:0 10px;border:0;border-radius:7px;background:var(--md-primary);color:var(--md-on-primary);font:600 11px inherit;cursor:pointer}.target-input button i{margin-right:4px}.suggestions{position:absolute;z-index:5;left:16px;right:16px;top:245px;max-height:190px;overflow:auto;padding:5px;border:1px solid var(--clr-border);border-radius:10px;background:var(--clr-bg-sec);box-shadow:var(--shadow-md)}.suggestions button{width:100%;height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--clr-text-pri);font:11px inherit;cursor:pointer}.suggestions button:hover{background:var(--clr-bg-ter)}.duration{margin:0 16px 10px}.duration select{width:100%}.mode-note{display:flex;align-items:flex-start;gap:8px;margin:0 16px;padding:9px 10px;border-radius:9px;background:color-mix(in srgb,var(--md-primary) 6%,var(--clr-bg-ter));color:var(--clr-text-sec);font-size:10px;line-height:1.4}.mode-note i{color:var(--md-primary);font-size:14px}
-  .targets-panel header{min-height:58px}.extension.ready{color:var(--md-primary);background:var(--md-primary-cont)}.target-list{display:grid}.target-row{min-height:64px;gap:10px;padding:9px 12px;border-top:1px solid var(--clr-border)}.target-row:first-child{border-top:0}.target-icon{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border-radius:10px;color:var(--md-primary);background:var(--md-primary-cont)}.target-name{min-width:150px;flex:1;display:grid;gap:2px}.target-name strong{color:var(--clr-text-pri);font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis}.target-name span{color:var(--clr-text-sec);font-size:10px}.action-pills{display:flex;gap:4px}.action-pills button{height:30px;display:flex;align-items:center;gap:4px;padding:0 8px;border-color:var(--clr-border);border-radius:7px;background:var(--clr-bg-ter)}.action-pills button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.icon-button{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-bg-ter);color:var(--clr-text-sec);cursor:pointer}.icon-button:hover{color:var(--md-primary);border-color:var(--md-primary)}.icon-button.remove:hover{color:var(--md-error);border-color:var(--md-error)}.icon-button:disabled{opacity:.35;cursor:not-allowed}.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:4px;color:var(--clr-text-sec)}.empty i{font-size:26px;color:var(--md-primary)}.empty strong{font-size:13px;color:var(--clr-text-pri)}.empty span{font-size:11px}
+  .add-panel{position:relative;padding-bottom:14px;overflow:visible}.add-panel header{margin-bottom:12px}.kind-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 16px 12px;padding:4px;background:var(--clr-bg-ter);border-radius:10px}.kind-tabs button,.mode-row button,.action-pills button{border:1px solid transparent;background:transparent;color:var(--clr-text-sec);font:11px inherit;cursor:pointer}.kind-tabs button{height:32px;border-radius:7px}.kind-tabs button.active{color:var(--clr-text-pri);background:var(--clr-bg-sec);border-color:var(--clr-border)}.kind-tabs i,.mode-row i{margin-right:5px}.field-label{margin:0 16px 6px}.mode-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 16px 12px;overflow:visible}.mode-row button{height:34px;border-color:var(--clr-border);border-radius:8px;background:var(--clr-bg-ter)}.mode-row button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.target-picker{margin:0 16px 10px}.target-input{margin:0}.target-input>div{height:38px;display:flex;align-items:center;padding-left:10px;border:1px solid var(--clr-border);border-radius:9px;background:var(--clr-bg-ter)}.target-input>div:focus-within{border-color:var(--md-primary)}.target-input>div>i{color:var(--clr-text-ter)}.target-input input{height:36px;flex:1;border:0;background:transparent}.target-input button{height:30px;margin-right:3px;padding:0 10px;border:0;border-radius:7px;background:var(--md-primary);color:var(--md-on-primary);font:600 11px inherit;cursor:pointer}.target-input button i{margin-right:4px}.suggestions{max-height:220px;overflow:auto;margin-top:6px;padding:5px;border:1px solid var(--clr-border);border-radius:10px;background:var(--clr-bg-sec);box-shadow:var(--shadow-md)}.suggestions>button{width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--clr-text-pri);font:11px inherit;cursor:pointer}.suggestions>button:hover{background:var(--clr-bg-ter)}.suggestions>button span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left}.suggestions>button small{color:var(--clr-text-ter);font-size:9px}.suggestions-head{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;color:var(--clr-text-ter);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.suggestions-head button{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--md-primary);font:9px inherit;cursor:pointer}.suggestions-empty{padding:14px 8px;color:var(--clr-text-ter);font-size:10px;text-align:center}.duration{margin:0 16px 10px}.duration select{width:100%}.mode-note{display:flex;align-items:flex-start;gap:8px;margin:0 16px;padding:9px 10px;border-radius:9px;background:color-mix(in srgb,var(--md-primary) 6%,var(--clr-bg-ter));color:var(--clr-text-sec);font-size:10px;line-height:1.4}.mode-note i{color:var(--md-primary);font-size:14px}
+  .targets-panel{overflow:visible}.targets-panel header{min-height:58px}.extension.ready{color:var(--md-primary);background:var(--md-primary-cont)}.target-list{display:grid}.target-row{min-height:64px;gap:10px;padding:9px 12px;border-top:1px solid var(--clr-border)}.target-row:first-child{border-top:0}.target-icon{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border-radius:10px;color:var(--md-primary);background:var(--md-primary-cont)}.target-name{min-width:150px;flex:1;display:grid;gap:2px}.target-name strong{color:var(--clr-text-pri);font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis}.target-name span{color:var(--clr-text-sec);font-size:10px}.action-pills{display:flex;gap:4px}.action-pills button{height:30px;display:flex;align-items:center;gap:4px;padding:0 8px;border-color:var(--clr-border);border-radius:7px;background:var(--clr-bg-ter)}.action-pills button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.icon-button{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-bg-ter);color:var(--clr-text-sec);cursor:pointer}.icon-button:hover{color:var(--md-primary);border-color:var(--md-primary)}.icon-button.remove:hover{color:var(--md-error);border-color:var(--md-error)}.icon-button:disabled{opacity:.35;cursor:not-allowed}.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:4px;color:var(--clr-text-sec)}.empty i{font-size:26px;color:var(--md-primary)}.empty strong{font-size:13px;color:var(--clr-text-pri)}.empty span{font-size:11px}
+  .tooltip-button{position:relative}.tooltip-button::after{content:attr(data-tooltip);position:absolute;z-index:40;left:50%;top:calc(100% + 8px);width:max-content;max-width:220px;padding:7px 9px;border:1px solid var(--clr-border-strong);border-radius:8px;background:var(--clr-bg-pri);color:var(--clr-text-pri);box-shadow:var(--shadow-md);font:10px/1.35 var(--font-display);text-align:left;white-space:normal;opacity:0;pointer-events:none;transform:translate(-50%,-3px);transition:opacity .14s,transform .14s}.tooltip-button:hover::after,.tooltip-button:focus-visible::after{opacity:1;transform:translate(-50%,0)}
   .modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.62);backdrop-filter:blur(5px)}.unlock-modal{width:min(380px,100%);position:relative;display:grid;gap:11px;padding:24px;border:1px solid var(--clr-border);border-radius:16px;background:var(--clr-bg-sec);box-shadow:var(--shadow-lg)}.unlock-modal h2,.unlock-modal p{margin:0}.unlock-modal h2{font-size:17px}.unlock-modal p{color:var(--clr-text-sec);font-size:12px}.modal-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:11px;color:var(--md-primary);background:var(--md-primary-cont)}.modal-close{position:absolute;right:12px;top:10px;border:0;background:transparent;color:var(--clr-text-sec);font-size:20px;cursor:pointer}.unlock-button{height:36px;border:0;border-radius:8px;background:var(--md-primary);color:var(--md-on-primary);font:600 12px inherit;cursor:pointer}.unlock-error{color:var(--md-error);font-size:11px}
-  @media(max-width:1000px){.workspace{grid-template-columns:1fr}.suggestions{top:245px}}
+  @media(max-width:1000px){.workspace{grid-template-columns:1fr}}
   @media(max-width:760px){.message-fields{grid-template-columns:1fr}.target-row{flex-wrap:wrap}.action-pills{order:3;width:100%;overflow:auto}.action-pills button{flex:1;justify-content:center}.action-pills span{display:none}.focus-bar{align-items:flex-start}.locked{display:none}}
   @media(max-width:500px){.mode-row{grid-template-columns:repeat(2,1fr)}.focus-state small{display:none}.preview-shell{padding:12px 12px 6px}.message-fields,.image-actions{padding-left:12px;padding-right:12px}}
 </style>

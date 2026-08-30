@@ -177,7 +177,9 @@ internal static class Program
         {
             var raw = LiveStatusStore.Settings.FocusBlocklist;
             var entries = (BlockEntryHelper.TryParseBlockEntries(raw) ?? [])
-                .Where(entry => !entry.IsExpired() && !BlockEntryHelper.IsProtected(entry.I))
+                .Where(entry => !entry.IsExpired() &&
+                    !BlockEntryHelper.IsProtected(entry.I) &&
+                    !BlockEntryHelper.IsUnsafeShellAction(entry, LiveStatusStore.Settings.BlockAction))
                 .ToArray();
             lock (focusBlockLock) focusBlocked = entries;
 
@@ -297,6 +299,7 @@ internal static class Program
 
             var entry = FindBlockedExecutable(normalized);
             if (entry is null) return false;
+            if (BlockEntryHelper.IsUnsafeShellAction(entry, LiveStatusStore.Settings.BlockAction)) return false;
             var plan = BlockActionPlan.From(BlockEntryHelper.ActionFor(entry, LiveStatusStore.Settings.BlockAction));
             ShowBlockToast(normalized, plan.Id);
 

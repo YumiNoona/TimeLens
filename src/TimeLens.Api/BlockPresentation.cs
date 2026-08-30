@@ -50,6 +50,10 @@ public static class BlockTargetAction
             ? legacy
             : legacy == "notify" ? "notify" : "strict";
     }
+
+    public static bool IsUnsafeShellAction(string identifier, string? action, string? fallback)
+        => string.Equals(identifier, "explorer.exe", StringComparison.OrdinalIgnoreCase) &&
+           Resolve(identifier, action, fallback) is "kill" or "strict";
 }
 
 public static class BlockNotification

@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 4.2.0 gives every target its own mode and simplifies the Block and Settings layouts. Desktop apps support Notify, Hide, Kill, and Strict. Websites expose only Notify and Strict: Notify renders a repeating browser-side toast while leaving the page usable, and Strict renders the saved custom title, message, and image. Removing a target releases its desktop enforcement immediately and strict browser pages re-check every second. Card rearranging remains limited to Today and History. Version 4.0.2 hardened Windows startup registration, verified registry writes, repaired stale executable paths, and kept the dashboard setting synchronized with Windows.
+Version 4.2.1 improves the History visualizations and repairs desktop reminders. Activity now shows nine months without shrinking its cells, Categories and hourly browser visits use balanced card layouts, and app Notify displays a visible bottom-left toast with correctly cropped custom images. The Block picker lists all visible apps, including safe Notify/Hide support for File Explorer, and mode buttons explain their behavior on hover. Version 4.2.0 introduced per-target modes, website Notify/Strict behavior, custom block screens, and immediate unblocking. Card rearranging remains limited to Today and History.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.1`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

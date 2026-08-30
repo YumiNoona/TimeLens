@@ -74,7 +74,7 @@ public record AppSettings
     public int TimelineMinSegmentSeconds { get; init; } = 60;
 
     [JsonPropertyName("heatmapDays")]
-    public int HeatmapDays { get; init; } = 182;
+    public int HeatmapDays { get; init; } = 273;
 
     [JsonPropertyName("blockProtectionEnabled")]
     public bool BlockProtectionEnabled { get; init; } = false;

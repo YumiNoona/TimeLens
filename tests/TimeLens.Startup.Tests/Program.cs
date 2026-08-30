@@ -17,7 +17,7 @@ internal static class Program
             {
                 var path = Path.Combine(directory, "new.db");
                 var settings = DatabaseInitializer.Initialize(path);
-                Check(settings.RetentionDays == 90 && settings.TrackInput, "Fresh defaults were not loaded.");
+                Check(settings.RetentionDays == 90 && settings.TrackInput && settings.HeatmapDays == 273, "Fresh defaults were not loaded.");
                 Check(settings.BlockTitle == BlockNotification.DefaultTitle &&
                       settings.BlockMessage == BlockNotification.DefaultMessage &&
                       settings.BlockImageVersion == "", "Fresh block reminder defaults were not loaded.");
@@ -61,6 +61,10 @@ internal static class Program
                 Check(BlockTargetAction.Normalize("youtube.com", "hide") is null, "A desktop-only mode was accepted for a website.");
                 Check(BlockTargetAction.Resolve("reddit.com", "hide", "hide") == "strict", "Legacy desktop actions were not safely mapped to website Strict.");
                 Check(BlockTargetAction.Resolve("editor.exe", null, "hide") == "hide", "Legacy app action was not retained.");
+                Check(!BlockTargetAction.IsUnsafeShellAction("explorer.exe", "notify", "hide"), "Explorer Notify was rejected.");
+                Check(!BlockTargetAction.IsUnsafeShellAction("explorer.exe", "hide", "notify"), "Explorer Hide was rejected.");
+                Check(BlockTargetAction.IsUnsafeShellAction("explorer.exe", "kill", "hide"), "Explorer Kill was accepted.");
+                Check(BlockTargetAction.IsUnsafeShellAction("explorer.exe", "strict", "hide"), "Explorer Strict was accepted.");
             });
             Run("Empty database from a failed first launch recovers", () =>
             {
@@ -153,7 +157,9 @@ internal static class Program
                 Run("Native toast window creation and rendering", () =>
                 {
                     using var toast = new ToastWindow("Focus Mode", "example.exe is blocked");
-                    Check(FindWindowW("TLToast", "") != IntPtr.Zero, "Native toast window was not created.");
+                    var toastWindow = FindWindowW("TLToast", "");
+                    Check(toastWindow != IntPtr.Zero, "Native toast window was not created.");
+                    Check(IsWindowVisible(toastWindow), "Native toast window was created hidden.");
                 });
             Console.WriteLine("All startup regression checks passed.");
             return 0;
@@ -227,6 +233,8 @@ internal static class Program
     private static extern IntPtr FindWindowW(string className, string title);
     [DllImport("user32.dll")]
     private static extern IntPtr GetParent(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessageW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

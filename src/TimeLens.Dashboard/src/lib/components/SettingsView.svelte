@@ -42,7 +42,7 @@
   let density = $state('comfortable');
   let motionEnabled = $state(true);
   let timelineMinSegmentSeconds = $state(60);
-  let heatmapDays = $state(182);
+  let heatmapDays = $state(273);
   let blockProtectionEnabled = $state(false);
   let protectionCurrentPassword = $state('');
   let protectionNewPassword = $state('');
@@ -132,7 +132,7 @@
       density = s.density ?? 'comfortable';
       motionEnabled = s.motionEnabled ?? true;
       timelineMinSegmentSeconds = s.timelineMinSegmentSeconds ?? 60;
-      heatmapDays = s.heatmapDays ?? 182;
+      heatmapDays = s.heatmapDays ?? 273;
       blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
       timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds);
@@ -426,7 +426,7 @@
       <div class="setting-row">
         <div class="setting-info"><span class="setting-label">Activity heatmap</span><span class="setting-desc">Range shown in History</span></div>
         <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
-          <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={182}>6 months</option>
+          <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
         </select>
       </div>
       <div class="setting-row">

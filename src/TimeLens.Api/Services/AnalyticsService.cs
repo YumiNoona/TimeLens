@@ -8,7 +8,9 @@ namespace TimeLens.Api.Services;
 
 public sealed class AnalyticsService
 {
-    private const int HeatmapDays = 182;
+    // Keep one year available so the dashboard can switch ranges without
+    // returning a visually incomplete heatmap.
+    private const int HeatmapDays = 365;
     private readonly string _connString;
     private readonly ConcurrentDictionary<string, (DashboardResponse data, DateTime cachedAt)> _cache = new();
     private readonly List<string> _cacheOrder = new();

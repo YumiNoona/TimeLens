@@ -87,7 +87,11 @@ function mountNotifyToast(presentation, domain) {
     }
     return;
   }
-  clearNotifyToast();
+  const previousRoot = document.getElementById(ROOT_ID);
+  if (previousRoot) previousRoot.remove();
+  if (window.__timelensFocusTimer) clearInterval(window.__timelensFocusTimer);
+  if (window.__timelensFocusPulse) clearInterval(window.__timelensFocusPulse);
+  window.__timelensFocusState = null;
 
   const stack = document.createElement('aside');
   stack.id = ROOT_ID;
@@ -108,7 +112,7 @@ function mountNotifyToast(presentation, domain) {
     const current = state.presentation || {};
     const card = document.createElement('section');
     card.setAttribute('role', 'status');
-    card.style.cssText = 'all:initial;position:relative;width:100%;min-height:104px;box-sizing:border-box;padding:17px 44px 17px 17px;border:1px solid rgba(126,215,218,.46);border-left:4px solid #83d7d8;border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 18px 46px rgba(0,0,0,.42);font-family:Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:center;pointer-events:auto;animation:timelens-in .2s ease-out';
+    card.style.cssText = 'all:initial;position:relative;width:100%;min-height:104px;box-sizing:border-box;padding:17px 44px 17px 17px;border:1px solid rgba(126,215,218,.46);border-left:4px solid #83d7d8;border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 18px 46px rgba(0,0,0,.42);font-family:Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:center;pointer-events:auto';
     const mediaSource = current.mediaDataUrl || current.mediaUrl;
     if (mediaSource) {
       const media = current.mediaType && current.mediaType.indexOf('video/') === 0 ? document.createElement('video') : document.createElement('img');
@@ -141,6 +145,10 @@ function mountNotifyToast(presentation, domain) {
     close.onclick = function() { card.remove(); };
     card.appendChild(close);
     stack.insertBefore(card, stack.firstChild);
+    if (card.animate) card.animate(
+      [{ opacity: 0, transform: 'translateY(10px) scale(.985)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }],
+      { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
+    );
   }
   state.addToast = addToast;
 

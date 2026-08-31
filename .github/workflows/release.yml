@@ -36,6 +36,23 @@ jobs:
           npm ci
           npm run build
 
+      - name: Verify browser extension scripts
+        shell: pwsh
+        run: |
+          $scripts = @(
+            "src\browser-extensions\shared\background.js",
+            "src\browser-extensions\chrome\background.js",
+            "src\browser-extensions\firefox\background.js"
+          )
+          foreach ($script in $scripts) {
+            node --check $script
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed for $script" }
+          }
+          $hashes = $scripts | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_).Hash }
+          if (($hashes | Select-Object -Unique).Count -ne 1) {
+            throw "Browser extension background scripts are out of sync"
+          }
+
       - name: Check fresh-install and database migration regressions
         run: dotnet run --project tests/TimeLens.Startup.Tests -c Release
 

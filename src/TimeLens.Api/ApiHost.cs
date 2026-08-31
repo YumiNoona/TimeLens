@@ -50,13 +50,15 @@ public static class ApiHost
         if (action != "notify") action = "strict";
         var target = entry.I;
         var settings = LiveStatusStore.Settings;
+        var mediaUrl = string.IsNullOrEmpty(settings.BlockImageVersion)
+            ? null
+            : $"http://127.0.0.1:{DefaultPort}/api/block/media?v={Uri.EscapeDataString(settings.BlockImageVersion)}";
         var presentation = new BrowserBlockPresentationDto(
             target,
             BlockNotification.FormatTitle(settings.BlockTitle, target, action),
             BlockNotification.Format(settings.BlockMessage, target, action),
-            string.IsNullOrEmpty(settings.BlockImageVersion)
-                ? null
-                : $"http://127.0.0.1:{DefaultPort}/api/block/media?v={Uri.EscapeDataString(settings.BlockImageVersion)}",
+            mediaUrl,
+            mediaUrl,
             settings.BlockMediaType,
             Math.Clamp(settings.BlockNotifyIntervalSeconds, 5, 86400),
             settings.BlockNotifyPosition == "right" ? "right" : "left",
@@ -1888,7 +1890,7 @@ public static class ApiHost
 internal partial class AppJsonContext : JsonSerializerContext { }
 
 public sealed record BrowserBlockPresentationDto(
-    string Target, string Title, string Message, string? MediaUrl, string MediaType,
+    string Target, string Title, string Message, string? ImageUrl, string? MediaUrl, string MediaType,
     int RepeatIntervalSeconds, string Position, bool Continuous, string Surface);
 
 public sealed record BrowserBlockResponseDto(

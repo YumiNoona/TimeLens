@@ -88,6 +88,8 @@ internal static class Program
                 var service = new SettingsService(path);
                 service.Save("retention_days", "365");
                 service.Save("theme", "dark");
+                service.Save("block_notify_interval_seconds", "1800");
+                service.Save("block_notify_position", "right");
                 service.Save("first_run_done", "true");
                 using (var conn = new SqliteConnection($"Data Source={path}"))
                 {
@@ -99,7 +101,9 @@ internal static class Program
                     insert.ExecuteNonQuery();
                 }
                 var settings = DatabaseInitializer.Initialize(path);
-                Check(settings.RetentionDays == 365 && settings.Theme == "dark", "Saved preferences changed.");
+                Check(settings.RetentionDays == 365 && settings.Theme == "dark" &&
+                      settings.BlockNotifyIntervalSeconds == 1800 && settings.BlockNotifyPosition == "right",
+                      "Saved preferences changed.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='wake'") == 1, "Saved retention was ignored; history was deleted.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='sleep'") == 0, "Expired history was not purged.");
                 Check(Query(path, "SELECT count(*) FROM settings WHERE key='first_run_done' AND value='true'") == 1, "Onboarding reset.");

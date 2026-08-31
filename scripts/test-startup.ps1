@@ -28,6 +28,8 @@ public static class TimeLensStartupProbe {
     [DllImport("user32.dll")]
     public static extern bool PostMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")]
+    public static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr window);
@@ -83,7 +85,8 @@ try {
     # Exercise the production custom-reminder API, image pipeline, and the native
     # toast dispatch that marshals API calls onto the tray message-loop thread.
     $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.'; blockNotifyIntervalSeconds = 5; blockNotifyPosition = 'left' } | ConvertTo-Json -Compress
-    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $notificationBody -TimeoutSec 5
+    $notificationBytes = [Text.Encoding]::UTF8.GetBytes($notificationBody)
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json; charset=utf-8' -Body $notificationBytes -TimeoutSec 5
     $savedSettings = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
     if ($savedSettings.blockTitle -ne 'Deep Work' -or $savedSettings.blockMessage -notmatch '\{target\}' -or
         $savedSettings.blockNotifyIntervalSeconds -ne 5 -or $savedSettings.blockNotifyPosition -ne 'left') {
@@ -140,6 +143,16 @@ try {
     if ($imageResponse.Headers.'Content-Type' -notmatch 'image/png' -or $imageResponse.RawContentLength -le 0) {
         throw 'Custom block image could not be read back.'
     }
+    $mediaContractSettings = @{ focusMode = $true; focusBlocklist = '[{"i":"example.com","m":"u","a":"notify"}]' } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $mediaContractSettings -TimeoutSec 5
+    $mediaContract = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=example.com' -TimeoutSec 5
+    if ($mediaContract.presentation.mediaType -ne 'image/png' -or
+        $mediaContract.presentation.repeatIntervalSeconds -ne 5 -or
+        $mediaContract.presentation.position -ne 'left' -or
+        -not $mediaContract.presentation.mediaUrl -or -not $mediaContract.presentation.imageUrl) {
+        throw 'Browser reminder media, interval, position, or compatibility URL was missing.'
+    }
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body (@{ focusMode = $false; focusBlocklist = '[]' } | ConvertTo-Json -Compress) -TimeoutSec 5
 
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/preview' -Method Post -TimeoutSec 5
     $toastDeadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -172,14 +185,14 @@ try {
         throw 'Custom block notification bottom padding is outside the expected range.'
     }
     $bodyClick = [IntPtr]((70 -shl 16) -bor 220)
-    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $bodyClick)
+    [void][TimeLensStartupProbe]::SendMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $bodyClick)
     Start-Sleep -Milliseconds 100
     if (-not [TimeLensStartupProbe]::IsWindow($toastWindow)) {
         throw 'Clicking the body dismissed a notification that should persist until its close button is used.'
     }
     $closeX = ($toastRect.Right - $toastRect.Left) - 24
     $closeClick = [IntPtr]((25 -shl 16) -bor $closeX)
-    [void][TimeLensStartupProbe]::PostMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $closeClick)
+    [void][TimeLensStartupProbe]::SendMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $closeClick)
     Start-Sleep -Milliseconds 100
     if ([TimeLensStartupProbe]::IsWindow($toastWindow)) { throw 'The native toast close button did not dismiss the notification.' }
 

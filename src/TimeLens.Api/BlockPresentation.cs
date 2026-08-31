@@ -37,7 +37,8 @@ public static class BlockTargetAction
     {
         var normalized = action?.Trim().ToLowerInvariant();
         if (identifier.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            return normalized is "notify" or "hide" or "kill" or "strict" ? normalized : null;
+            return normalized == "notify" ? "hide" :
+                normalized is "hide" or "kill" or "strict" ? normalized : null;
         return normalized is "notify" or "strict" ? normalized : null;
     }
 
@@ -47,7 +48,7 @@ public static class BlockTargetAction
         if (explicitAction is not null) return explicitAction;
         var legacy = BlockActionPlan.From(fallback).Id;
         return identifier.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? legacy
+            ? legacy == "notify" ? "hide" : legacy
             : legacy == "notify" ? "notify" : "strict";
     }
 

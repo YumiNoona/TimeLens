@@ -97,18 +97,6 @@ try {
     } until ($ready -or [DateTime]::UtcNow -ge $deadline)
     if (-not $ready) { throw 'The packaged app did not start its tray window and settings API.' }
 
-    Save-BlockSettings 'notify'
-    $activeProbe = Start-Probe
-    Invoke-Enforce
-    Start-Sleep -Milliseconds 250
-    $activeProbe.Process.Refresh()
-    if ($activeProbe.Process.HasExited -or [TimeLensBlockModeProbe]::IsIconic($activeProbe.Window)) {
-        throw 'Notify changed the target process or window.'
-    }
-    Close-Probe $activeProbe
-    $activeProbe = $null
-    Write-Host 'PASS: Notify displays the reminder without enforcing.'
-
     Save-BlockSettings 'hide'
     $activeProbe = Start-Probe
     Invoke-Enforce

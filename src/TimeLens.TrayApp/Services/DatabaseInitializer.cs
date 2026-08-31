@@ -130,7 +130,8 @@ public static class DatabaseInitializer
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_image_version', '');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_media_type', '');
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_notify_interval_seconds', '300');
-              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_notify_position', 'left');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_notify_position', 'bottom-left');
+              INSERT OR IGNORE INTO settings (key, value) VALUES ('block_media_layout', 'large');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);

@@ -72,13 +72,30 @@ function fetchSettings() {
 
 function mountNotifyToast(presentation, domain) {
   const ROOT_ID = '__timelens_focus_toasts';
+  function normalizePosition(value) {
+    if (value === 'top-left' || value === 'top-right' || value === 'bottom-left' || value === 'bottom-right') return value;
+    return value === 'right' ? 'bottom-right' : 'bottom-left';
+  }
+  function normalizeLayout(value) {
+    return value === 'thumbnail' || value === 'banner' ? value : 'large';
+  }
+  function applyDock(target, value) {
+    const dock = normalizePosition(value);
+    const top = dock.indexOf('top-') === 0;
+    const right = dock.indexOf('-right') > 0;
+    target.style.top = top ? '24px' : 'auto';
+    target.style.bottom = top ? 'auto' : '24px';
+    target.style.left = right ? 'auto' : '24px';
+    target.style.right = right ? '24px' : 'auto';
+    return dock;
+  }
   const oldState = window.__timelensFocusState;
   if (oldState && oldState.domain === domain && document.getElementById(ROOT_ID)) {
     oldState.presentation = presentation;
     const oldStack = document.getElementById(ROOT_ID);
-    const nextSide = presentation && presentation.position === 'right' ? 'right' : 'left';
-    oldStack.style.left = nextSide === 'left' ? '22px' : 'auto';
-    oldStack.style.right = nextSide === 'right' ? '22px' : 'auto';
+    oldState.position = applyDock(oldStack, presentation && presentation.position);
+    oldState.mediaLayout = normalizeLayout(presentation && presentation.mediaLayout);
+    oldStack.style.width = 'min(' + (oldState.mediaLayout === 'thumbnail' ? '410px' : '500px') + ',calc(100vw - 48px))';
     const nextInterval = Math.max(5, Math.min(86400, Number(presentation && presentation.repeatIntervalSeconds) || 300));
     if (oldState.intervalSeconds !== nextInterval && oldState.addToast) {
       if (window.__timelensFocusPulse) clearInterval(window.__timelensFocusPulse);
@@ -96,12 +113,15 @@ function mountNotifyToast(presentation, domain) {
   const stack = document.createElement('aside');
   stack.id = ROOT_ID;
   stack.setAttribute('aria-label', 'TimeLens reminders');
-  const side = presentation && presentation.position === 'right' ? 'right' : 'left';
-  stack.style.cssText = 'all:initial;position:fixed;' + side + ':22px;bottom:22px;z-index:2147483647;width:min(410px,calc(100vw - 44px));max-height:calc(100vh - 44px);box-sizing:border-box;display:flex;flex-direction:column;gap:10px;overflow:auto;overscroll-behavior:contain;pointer-events:none;scrollbar-width:thin';
+  const initialLayout = normalizeLayout(presentation && presentation.mediaLayout);
+  stack.style.cssText = 'all:initial;position:fixed;z-index:2147483647;width:min(' + (initialLayout === 'thumbnail' ? '410px' : '500px') + ',calc(100vw - 48px));max-height:calc(100vh - 48px);box-sizing:border-box;display:flex;flex-direction:column;gap:12px;overflow:auto;overscroll-behavior:contain;pointer-events:none;scrollbar-width:thin';
+  const initialPosition = applyDock(stack, presentation && presentation.position);
   (document.documentElement || document.body).appendChild(stack);
   const state = {
     domain: domain,
     presentation: presentation,
+    position: initialPosition,
+    mediaLayout: initialLayout,
     intervalSeconds: Math.max(5, Math.min(86400, Number(presentation && presentation.repeatIntervalSeconds) || 300)),
     addToast: null
   };
@@ -110,21 +130,31 @@ function mountNotifyToast(presentation, domain) {
   function addToast() {
     if (!document.getElementById(ROOT_ID)) return;
     const current = state.presentation || {};
+    const mediaSource = current.mediaDataUrl || current.mediaUrl;
+    const layout = mediaSource ? normalizeLayout(current.mediaLayout) : 'thumbnail';
     const card = document.createElement('section');
     card.setAttribute('role', 'status');
-    card.style.cssText = 'all:initial;position:relative;width:100%;min-height:104px;box-sizing:border-box;padding:17px 44px 17px 17px;border:1px solid rgba(126,215,218,.46);border-left:4px solid #83d7d8;border-radius:16px;background:#11191c;color:#edf6f4;box-shadow:0 18px 46px rgba(0,0,0,.42);font-family:Inter,Segoe UI,sans-serif;display:flex;gap:14px;align-items:center;pointer-events:auto';
-    const mediaSource = current.mediaDataUrl || current.mediaUrl;
+    const layoutCss = layout === 'banner'
+      ? 'min-height:286px;padding:16px 44px 17px 16px;display:flex;flex-direction:column;align-items:stretch;gap:13px'
+      : layout === 'large'
+        ? 'min-height:150px;padding:17px 44px 17px 17px;display:flex;align-items:center;gap:16px'
+        : 'min-height:104px;padding:17px 44px 17px 17px;display:flex;align-items:center;gap:14px';
+    card.style.cssText = 'all:initial;position:relative;width:100%;box-sizing:border-box;' + layoutCss + ';border:1px solid rgba(126,215,218,.46);border-left:4px solid #83d7d8;border-radius:18px;background:#11191c;color:#edf6f4;box-shadow:0 18px 46px rgba(0,0,0,.42);font-family:Inter,Segoe UI,sans-serif;pointer-events:auto;overflow:hidden';
     if (mediaSource) {
       const media = current.mediaType && current.mediaType.indexOf('video/') === 0 ? document.createElement('video') : document.createElement('img');
       media.src = mediaSource;
       media.setAttribute('aria-hidden', 'true');
-      media.style.cssText = 'width:72px;height:72px;flex:0 0 72px;border:1px solid rgba(255,255,255,.08);border-radius:12px;object-fit:cover;background:#0b1113';
+      media.style.cssText = layout === 'banner'
+        ? 'display:block;width:100%;height:210px;flex:none;border:1px solid rgba(255,255,255,.08);border-radius:13px;object-fit:cover;background:#0b1113'
+        : layout === 'large'
+          ? 'display:block;width:140px;height:116px;flex:0 0 140px;border:1px solid rgba(255,255,255,.08);border-radius:13px;object-fit:cover;background:#0b1113'
+          : 'display:block;width:72px;height:72px;flex:0 0 72px;border:1px solid rgba(255,255,255,.08);border-radius:12px;object-fit:cover;background:#0b1113';
       if (media.tagName === 'VIDEO') { media.autoplay = true; media.muted = true; media.loop = true; media.playsInline = true; }
       media.onerror = function() { media.remove(); };
       card.appendChild(media);
     }
     const copy = document.createElement('div');
-    copy.style.cssText = 'min-width:0;flex:1;display:block';
+    copy.style.cssText = 'min-width:0;flex:1;display:block' + (layout === 'banner' ? ';padding-right:2px' : '');
     const eyebrow = document.createElement('div');
     eyebrow.textContent = 'TIMELENS · NOTIFY';
     eyebrow.style.cssText = 'margin:0 0 5px;color:#83d7d8;font:700 10px/1.2 Inter,Segoe UI,sans-serif;letter-spacing:.12em';
@@ -146,7 +176,7 @@ function mountNotifyToast(presentation, domain) {
     card.appendChild(close);
     stack.insertBefore(card, stack.firstChild);
     if (card.animate) card.animate(
-      [{ opacity: 0, transform: 'translateY(10px) scale(.985)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }],
+      [{ opacity: 0, transform: 'translateY(' + (state.position.indexOf('top-') === 0 ? '-10px' : '10px') + ') scale(.985)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }],
       { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
     );
   }

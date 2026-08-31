@@ -62,7 +62,10 @@ public record AppSettings
     public int BlockNotifyIntervalSeconds { get; init; } = 300;
 
     [JsonPropertyName("blockNotifyPosition")]
-    public string BlockNotifyPosition { get; init; } = "left";
+    public string BlockNotifyPosition { get; init; } = "bottom-left";
+
+    [JsonPropertyName("blockMediaLayout")]
+    public string BlockMediaLayout { get; init; } = "large";
 
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; init; } = "12h";

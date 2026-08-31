@@ -238,7 +238,8 @@ internal static class Program
                     BlockNotification.Format(currentSettings.BlockMessage, target, effectiveAction),
                     warning: true,
                     imagePath: imagePath,
-                    position: currentSettings.BlockNotifyPosition);
+                    position: currentSettings.BlockNotifyPosition,
+                    mediaLayout: currentSettings.BlockMediaLayout);
             }
             catch { }
         }

@@ -19,7 +19,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
-- App and domain focus controls with timed targets, four enforcement modes, custom text/image reminders, and optional password protection
+- App and domain focus controls with timed targets, target-aware enforcement modes, custom media reminders, and optional password protection
 - User-arranged cards on Today and History, plus configurable density/motion/tracking, themes, reminders, retention, exports, and goals
 - Store-managed browser extension installation from Mozilla Add-ons
 - Per-user Windows installer with install-location, startup, desktop-shortcut, and launch options plus a clean uninstaller
@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 4.2.2 rebuilds Notify as a persistent, closeable reminder on Windows and the web. Reminders stack without overlap, can repeat every 5 seconds, 5 minutes, 30 minutes, one hour, or a custom interval, and can be placed at the bottom left or bottom right. Custom banners now support PNG, JPEG, animated GIF, MP4, and WebM; browser media plays in the toast while Windows animates GIFs and uses a generated poster frame for video. Version 4.2.1 improved the History visualizations, app discovery, and File Explorer safety. Card rearranging remains limited to Today and History.
+Version 4.2.3 adds reliable top-left, top-right, bottom-left, and bottom-right notification docking with consistent viewport padding. Media can use Thumbnail, Large, or Full banner layouts. Website Notify remains non-enforcing, while desktop apps now expose only Hide, Kill, and Strict; legacy desktop Notify targets migrate safely to Hide. Native GIF rendering is isolated from the window callback so a bad animation frame cannot terminate TimeLens. Version 4.2.2 introduced persistent stacked reminders and PNG, JPEG, GIF, MP4, and WebM media. Card rearranging remains limited to Today and History.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -64,7 +64,7 @@ dotnet run --project tests/TimeLens.Startup.Tests -c Release -- --tray
 .\scripts\test-block-modes.ps1 -ExePath .\TimeLens.exe
 ```
 
-The first command tests fresh and failed-first-launch databases, saved retention, legacy rules, corrupt data, and per-user Windows startup registration. It also runs in the publish script and release workflow. `--tray` additionally tests native shell registration, keyboard activation, and icon restoration on an interactive Windows desktop. The block-mode script launches an isolated copy plus an off-screen Win32 probe and verifies that Notify leaves it alone, Hide minimizes it, Kill terminates it, and Strict terminates both immediately and after relaunch.
+The first command tests fresh and failed-first-launch databases, saved retention, legacy rules, corrupt data, and per-user Windows startup registration. It also runs in the publish script and release workflow. `--tray` additionally tests native shell registration, keyboard activation, and icon restoration on an interactive Windows desktop. The block-mode script launches an isolated copy plus an off-screen Win32 probe and verifies that Hide minimizes it, Kill terminates it, and Strict terminates both immediately and after relaunch. Website contract tests cover Notify and Strict separately.
 
 Close any running TimeLens instance before the packaged startup test. This test launches the exact EXE from an unrelated working directory, checks the native tray and embedded dashboard/API, then closes it. Its `--smoke-test` launch mode uses a new data directory under `artifacts/`, skips onboarding and update checks, and does not change the normal activity database or startup registration. Logs remain in the isolated directory for diagnosis. This local test does not replace testing the installer on a clean Windows VM.
 
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.2`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.3`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

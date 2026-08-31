@@ -26,6 +26,21 @@ public static class ApiHost
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "top-left" => "top-left",
+        "top-right" => "top-right",
+        "bottom-right" or "right" => "bottom-right",
+        _ => "bottom-left"
+    };
+
+    private static string NormalizeMediaLayout(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "thumbnail" => "thumbnail",
+        "banner" => "banner",
+        _ => "large"
+    };
+
     private static bool HasBlockUnlock(HttpContext ctx) =>
         BlockProtectionService.IsAuthorized(ctx.Request.Headers["X-TimeLens-Unlock"].FirstOrDefault());
 
@@ -61,7 +76,8 @@ public static class ApiHost
             mediaUrl,
             settings.BlockMediaType,
             Math.Clamp(settings.BlockNotifyIntervalSeconds, 5, 86400),
-            settings.BlockNotifyPosition == "right" ? "right" : "left",
+            NormalizeNotifyPosition(settings.BlockNotifyPosition),
+            NormalizeMediaLayout(settings.BlockMediaLayout),
             action == "notify",
             "browser");
         return new(true, action == "strict", action, presentation);
@@ -424,10 +440,20 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Reminder interval must be between 5 seconds and 24 hours\"}");
                     return;
                 }
-                if (prop.Name == "blockNotifyPosition" && value is not ("left" or "right"))
+                if (prop.Name == "blockNotifyPosition")
+                {
+                    value = value switch { "left" => "bottom-left", "right" => "bottom-right", _ => value };
+                    if (value is not ("top-left" or "top-right" or "bottom-left" or "bottom-right"))
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsync("{\"error\":\"Invalid reminder position\"}");
+                        return;
+                    }
+                }
+                if (prop.Name == "blockMediaLayout" && value is not ("thumbnail" or "large" or "banner"))
                 {
                     ctx.Response.StatusCode = 400;
-                    await ctx.Response.WriteAsync("{\"error\":\"Invalid reminder position\"}");
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid reminder media size\"}");
                     return;
                 }
                 if (prop.Name == "autoStart" && prop.Value.ValueKind is not
@@ -481,7 +507,7 @@ public static class ApiHost
                         BlockEntryHelper.IsUnsafeShellAction(entry, LiveStatusStore.Settings.BlockAction)))
                     {
                         ctx.Response.StatusCode = 400;
-                        await ctx.Response.WriteAsync("{\"error\":\"Critical Windows targets cannot be blocked; File Explorer supports Notify or Hide only\"}");
+                        await ctx.Response.WriteAsync("{\"error\":\"Critical Windows targets cannot be blocked; File Explorer supports Hide only\"}");
                         return;
                     }
                     value = BlockEntryHelper.Serialize(entries);
@@ -519,6 +545,7 @@ public static class ApiHost
                     "blockMessage" => "block_message",
                     "blockNotifyIntervalSeconds" => "block_notify_interval_seconds",
                     "blockNotifyPosition" => "block_notify_position",
+                    "blockMediaLayout" => "block_media_layout",
                     "pollIntervalSeconds" => "poll_interval_seconds",
                     "timeFormat" => "time_format",
                     "defaultView" => "default_view",
@@ -598,6 +625,9 @@ public static class ApiHost
                         break;
                     case "blockNotifyPosition":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockNotifyPosition = value };
+                        break;
+                    case "blockMediaLayout":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockMediaLayout = value };
                         break;
                     case "timeFormat":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { TimeFormat = value };
@@ -1891,7 +1921,7 @@ internal partial class AppJsonContext : JsonSerializerContext { }
 
 public sealed record BrowserBlockPresentationDto(
     string Target, string Title, string Message, string? ImageUrl, string? MediaUrl, string MediaType,
-    int RepeatIntervalSeconds, string Position, bool Continuous, string Surface);
+    int RepeatIntervalSeconds, string Position, string MediaLayout, bool Continuous, string Surface);
 
 public sealed record BrowserBlockResponseDto(
     bool Ok, bool Blocked, string Action, BrowserBlockPresentationDto? Presentation);

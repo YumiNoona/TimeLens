@@ -30,11 +30,12 @@ public sealed class ToastWindow : IDisposable
     private readonly string _title;
     private readonly string _body;
     private readonly Image? _media;
-    private readonly bool _animated;
+    private bool _animated;
     private readonly EventHandler _animationHandler;
     private readonly Action<ToastWindow>? _closed;
-    private readonly int _width = 454;
-    private readonly int _height = 118;
+    private readonly int _width;
+    private readonly int _height;
+    private readonly string _mediaLayout;
     private string _position;
     private IntPtr _hWnd;
     private bool _resourcesDisposed;
@@ -44,12 +45,13 @@ public sealed class ToastWindow : IDisposable
         string text,
         string? imagePath = null,
         int stackIndex = 0,
-        string position = "left",
+        string position = "bottom-left",
+        string mediaLayout = "large",
         Action<ToastWindow>? closed = null)
     {
         _title = string.IsNullOrWhiteSpace(title) ? "Focus Mode" : title;
         _body = string.IsNullOrWhiteSpace(text) ? "This target is on your focus list." : text;
-        _position = position == "right" ? "right" : "left";
+        _position = NormalizePosition(position);
         _closed = closed;
         _animationHandler = (_, _) => { if (_hWnd != IntPtr.Zero) InvalidateRect(_hWnd, IntPtr.Zero, false); };
         if (!string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath))
@@ -64,6 +66,13 @@ public sealed class ToastWindow : IDisposable
             }
             catch { _media = null; _animated = false; }
         }
+        _mediaLayout = _media is null ? "thumbnail" : NormalizeMediaLayout(mediaLayout);
+        (_width, _height) = _mediaLayout switch
+        {
+            "banner" => (520, 326),
+            "large" => (520, 176),
+            _ => (454, 118)
+        };
 
         try
         {
@@ -83,7 +92,7 @@ public sealed class ToastWindow : IDisposable
     public void Reposition(int stackIndex, string position)
     {
         if (_hWnd == IntPtr.Zero) return;
-        _position = position == "right" ? "right" : "left";
+        _position = NormalizePosition(position);
         var (x, y) = PositionFor(stackIndex, _position);
         SetWindowPos(_hWnd, HWND_TOPMOST, x, y, _width, _height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
@@ -136,12 +145,31 @@ public sealed class ToastWindow : IDisposable
         var perColumn = Math.Max(1, (work.bottom - work.top - (2 * margin) + gap) / (_height + gap));
         var column = Math.Max(0, stackIndex) / perColumn;
         var row = Math.Max(0, stackIndex) % perColumn;
-        var x = position == "right"
+        var onRight = position.EndsWith("right", StringComparison.Ordinal);
+        var onTop = position.StartsWith("top", StringComparison.Ordinal);
+        var x = onRight
             ? work.right - margin - _width - column * (_width + gap)
             : work.left + margin + column * (_width + gap);
-        var y = work.bottom - margin - _height - row * (_height + gap);
+        var y = onTop
+            ? work.top + margin + row * (_height + gap)
+            : work.bottom - margin - _height - row * (_height + gap);
         return (x, y);
     }
+
+    private static string NormalizePosition(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "top-left" => "top-left",
+        "top-right" => "top-right",
+        "bottom-right" or "right" => "bottom-right",
+        _ => "bottom-left"
+    };
+
+    private static string NormalizeMediaLayout(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "thumbnail" => "thumbnail",
+        "banner" => "banner",
+        _ => "large"
+    };
 
     private void Paint()
     {
@@ -162,16 +190,38 @@ public sealed class ToastWindow : IDisposable
             graphics.DrawRoundedRectangle(border, new Rectangle(0, 0, _width - 1, _height - 1), 16);
 
             var textLeft = 20;
+            var eyebrowTop = 17;
+            var titleTop = 36;
+            var bodyTop = 64;
             if (_media is not null)
             {
-                if (_animated) ImageAnimator.UpdateFrames(_media);
-                var destination = new Rectangle(18, 20, 78, 78);
+                if (_animated)
+                {
+                    try { ImageAnimator.UpdateFrames(_media); }
+                    catch { StopAnimation(); }
+                }
+                var destination = _mediaLayout switch
+                {
+                    "banner" => new Rectangle(18, 18, _width - 36, 190),
+                    "large" => new Rectangle(18, 18, 140, _height - 36),
+                    _ => new Rectangle(18, 20, 78, 78)
+                };
                 using var clip = RoundedPath(destination, 11);
                 var graphicsState = graphics.Save();
-                graphics.SetClip(clip);
-                DrawCover(graphics, _media, destination);
-                graphics.Restore(graphicsState);
-                textLeft = 112;
+                try
+                {
+                    graphics.SetClip(clip);
+                    DrawCover(graphics, _media, destination);
+                }
+                catch { }
+                finally { graphics.Restore(graphicsState); }
+                if (_mediaLayout == "banner")
+                {
+                    eyebrowTop = 220;
+                    titleTop = 239;
+                    bodyTop = 267;
+                }
+                else textLeft = _mediaLayout == "large" ? 176 : 112;
             }
 
             using var eyebrowFont = new Font("Segoe UI", 7.5f, FontStyle.Bold, GraphicsUnit.Point);
@@ -185,9 +235,9 @@ public sealed class ToastWindow : IDisposable
                 Trimming = StringTrimming.EllipsisCharacter,
                 FormatFlags = StringFormatFlags.NoClip
             };
-            graphics.DrawString("TIMELENS  ·  NOTIFY", eyebrowFont, eyebrowBrush, new RectangleF(textLeft, 17, _width - textLeft - 48, 16), textFormat);
-            graphics.DrawString(_title, titleFont, titleBrush, new RectangleF(textLeft, 36, _width - textLeft - 48, 24), textFormat);
-            graphics.DrawString(_body, bodyFont, bodyBrush, new RectangleF(textLeft, 64, _width - textLeft - 24, 42), textFormat);
+            graphics.DrawString("TIMELENS  ·  NOTIFY", eyebrowFont, eyebrowBrush, new RectangleF(textLeft, eyebrowTop, _width - textLeft - 48, 16), textFormat);
+            graphics.DrawString(_title, titleFont, titleBrush, new RectangleF(textLeft, titleTop, _width - textLeft - 48, 24), textFormat);
+            graphics.DrawString(_body, bodyFont, bodyBrush, new RectangleF(textLeft, bodyTop, _width - textLeft - 24, _height - bodyTop - 10), textFormat);
 
             using var closeBackground = new SolidBrush(Color.FromArgb(42, 255, 255, 255));
             using var closePen = new Pen(Color.FromArgb(205, 225, 222), 1.7f);
@@ -221,38 +271,42 @@ public sealed class ToastWindow : IDisposable
 
     private static IntPtr StaticWndProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam)
     {
-        var pointer = GetWindowLongPtrW(hWnd, GWLP_USERDATA);
-        var toast = pointer == IntPtr.Zero ? null : GCHandle.FromIntPtr(pointer).Target as ToastWindow;
-        switch (message)
+        try
         {
-            case WM_PAINT:
-                toast?.Paint();
-                return IntPtr.Zero;
-            case WM_ERASEBKGND:
-                return new IntPtr(1);
-            case WM_LBUTTONUP:
-                var packed = unchecked((long)lParam);
-                var x = unchecked((short)packed);
-                var y = unchecked((short)(packed >> 16));
-                if (toast is not null && x >= toast._width - 44 && x <= toast._width - 8 && y >= 7 && y <= 43)
+            var pointer = GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+            var toast = pointer == IntPtr.Zero ? null : GCHandle.FromIntPtr(pointer).Target as ToastWindow;
+            switch (message)
+            {
+                case WM_PAINT:
+                    toast?.Paint();
+                    return IntPtr.Zero;
+                case WM_ERASEBKGND:
+                    return new IntPtr(1);
+                case WM_LBUTTONUP:
+                    var packed = unchecked((long)lParam);
+                    var x = unchecked((short)packed);
+                    var y = unchecked((short)(packed >> 16));
+                    if (toast is not null && x >= toast._width - 44 && x <= toast._width - 8 && y >= 7 && y <= 43)
+                        DestroyWindow(hWnd);
+                    return IntPtr.Zero;
+                case WM_CLOSE:
                     DestroyWindow(hWnd);
-                return IntPtr.Zero;
-            case WM_CLOSE:
-                DestroyWindow(hWnd);
-                return IntPtr.Zero;
-            case WM_DESTROY:
-                if (pointer != IntPtr.Zero)
-                {
-                    SetWindowLongPtrW(hWnd, GWLP_USERDATA, IntPtr.Zero);
-                    var handle = GCHandle.FromIntPtr(pointer);
-                    var target = handle.Target as ToastWindow;
-                    handle.Free();
-                    target?.OnDestroyed();
-                }
-                return IntPtr.Zero;
-            default:
-                return DefWindowProcW(hWnd, message, wParam, lParam);
+                    return IntPtr.Zero;
+                case WM_DESTROY:
+                    if (pointer != IntPtr.Zero)
+                    {
+                        SetWindowLongPtrW(hWnd, GWLP_USERDATA, IntPtr.Zero);
+                        var handle = GCHandle.FromIntPtr(pointer);
+                        var target = handle.Target as ToastWindow;
+                        handle.Free();
+                        target?.OnDestroyed();
+                    }
+                    return IntPtr.Zero;
+                default:
+                    return DefWindowProcW(hWnd, message, wParam, lParam);
+            }
         }
+        catch { return message == WM_PAINT ? IntPtr.Zero : DefWindowProcW(hWnd, message, wParam, lParam); }
     }
 
     public void Dispose()
@@ -272,8 +326,16 @@ public sealed class ToastWindow : IDisposable
     {
         if (_resourcesDisposed) return;
         _resourcesDisposed = true;
-        if (_animated && _media is not null) ImageAnimator.StopAnimate(_media, _animationHandler);
+        StopAnimation();
         _media?.Dispose();
+    }
+
+    private void StopAnimation()
+    {
+        if (!_animated || _media is null) return;
+        _animated = false;
+        try { ImageAnimator.StopAnimate(_media, _animationHandler); }
+        catch { }
     }
 
     private delegate IntPtr WndProc(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);

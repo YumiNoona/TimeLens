@@ -48,7 +48,8 @@ public sealed class SettingsService
             BlockImageVersion = HasBlockMedia(dict.GetValueOrDefault("block_media_type", "")) ? dict.GetValueOrDefault("block_image_version", "") : "",
             BlockMediaType = NormalizeMediaType(dict.GetValueOrDefault("block_media_type", "")),
             BlockNotifyIntervalSeconds = int.TryParse(dict.GetValueOrDefault("block_notify_interval_seconds", "300"), out var notifyInterval) ? Math.Clamp(notifyInterval, 5, 86400) : 300,
-            BlockNotifyPosition = dict.GetValueOrDefault("block_notify_position", "left") == "right" ? "right" : "left",
+            BlockNotifyPosition = NormalizeNotifyPosition(dict.GetValueOrDefault("block_notify_position", "bottom-left")),
+            BlockMediaLayout = NormalizeMediaLayout(dict.GetValueOrDefault("block_media_layout", "large")),
             DefaultView = dict.GetValueOrDefault("default_view", "today"),
             Density = dict.GetValueOrDefault("density", "comfortable"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
@@ -77,6 +78,21 @@ public sealed class SettingsService
         return File.Exists(Path.Combine(_dataDirectory, $"block-notification-media.{extension}")) ||
                File.Exists(Path.Combine(_dataDirectory, "block-notification.png"));
     }
+
+    private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "top-left" => "top-left",
+        "top-right" => "top-right",
+        "bottom-right" or "right" => "bottom-right",
+        _ => "bottom-left"
+    };
+
+    private static string NormalizeMediaLayout(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "thumbnail" => "thumbnail",
+        "banner" => "banner",
+        _ => "large"
+    };
 
     public void Save(string key, string value)
     {

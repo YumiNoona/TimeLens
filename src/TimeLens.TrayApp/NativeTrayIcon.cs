@@ -59,7 +59,7 @@ public sealed class NativeTrayIcon : IDisposable
     private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
     private readonly List<(ToastWindow Window, string Position)> _activeToasts = [];
 
-    private sealed record ToastRequest(string Title, string Text, string? ImagePath, string Position);
+    private sealed record ToastRequest(string Title, string Text, string? ImagePath, string Position, string MediaLayout);
 
     public NativeTrayIcon(string? iconPath = null)
     {
@@ -262,10 +262,11 @@ public sealed class NativeTrayIcon : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "The tray message loop failed.");
     }
 
-    public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null, string position = "left")
+    public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null,
+        string position = "bottom-left", string mediaLayout = "large")
     {
         if (_disposed) return;
-        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, position == "right" ? "right" : "left"));
+        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, NormalizePosition(position), NormalizeMediaLayout(mediaLayout)));
         var window = _hWnd;
         if (window != IntPtr.Zero) PostMessageW(window, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
     }
@@ -273,7 +274,7 @@ public sealed class NativeTrayIcon : IDisposable
     private void OnToastClosed(ToastWindow closed)
     {
         _activeToasts.RemoveAll(item => ReferenceEquals(item.Window, closed) || item.Window.IsClosed);
-        foreach (var position in new[] { "left", "right" })
+        foreach (var position in new[] { "top-left", "top-right", "bottom-left", "bottom-right" })
         {
             var index = 0;
             foreach (var item in _activeToasts.Where(item => item.Position == position))
@@ -416,7 +417,7 @@ public sealed class NativeTrayIcon : IDisposable
                     {
                         _activeToasts.RemoveAll(item => item.Window.IsClosed);
                         var stackIndex = _activeToasts.Count(item => item.Position == toast.Position);
-                        var window = new ToastWindow(toast.Title, toast.Text, toast.ImagePath, stackIndex, toast.Position, OnToastClosed);
+                        var window = new ToastWindow(toast.Title, toast.Text, toast.ImagePath, stackIndex, toast.Position, toast.MediaLayout, OnToastClosed);
                         _activeToasts.Add((window, toast.Position));
                     }
                     catch (Exception ex) { ToastFailed?.Invoke(ex); }
@@ -434,6 +435,21 @@ public sealed class NativeTrayIcon : IDisposable
         TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);
         PostMessageW(_hWnd, WM_NULL, IntPtr.Zero, IntPtr.Zero);
     }
+
+    private static string NormalizePosition(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "top-left" => "top-left",
+        "top-right" => "top-right",
+        "bottom-right" or "right" => "bottom-right",
+        _ => "bottom-left"
+    };
+
+    private static string NormalizeMediaLayout(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "thumbnail" => "thumbnail",
+        "banner" => "banner",
+        _ => "large"
+    };
 
     [DllImport("user32.dll")]
     private static extern IntPtr PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);

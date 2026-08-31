@@ -21,7 +21,8 @@ internal static class Program
                 Check(settings.BlockTitle == BlockNotification.DefaultTitle &&
                       settings.BlockMessage == BlockNotification.DefaultMessage &&
                       settings.BlockImageVersion == "" && settings.BlockMediaType == "" &&
-                      settings.BlockNotifyIntervalSeconds == 300 && settings.BlockNotifyPosition == "left",
+                      settings.BlockNotifyIntervalSeconds == 300 && settings.BlockNotifyPosition == "bottom-left" &&
+                      settings.BlockMediaLayout == "large",
                       "Fresh block reminder defaults were not loaded.");
                 Check(Query(path, "SELECT count(*) FROM custom_rules") == 0, "Fresh rules table missing.");
             });
@@ -63,7 +64,8 @@ internal static class Program
                 Check(BlockTargetAction.Normalize("youtube.com", "hide") is null, "A desktop-only mode was accepted for a website.");
                 Check(BlockTargetAction.Resolve("reddit.com", "hide", "hide") == "strict", "Legacy desktop actions were not safely mapped to website Strict.");
                 Check(BlockTargetAction.Resolve("editor.exe", null, "hide") == "hide", "Legacy app action was not retained.");
-                Check(!BlockTargetAction.IsUnsafeShellAction("explorer.exe", "notify", "hide"), "Explorer Notify was rejected.");
+                Check(BlockTargetAction.Resolve("editor.exe", "notify", "strict") == "hide", "Legacy app Notify was not migrated to Hide.");
+                Check(BlockTargetAction.Resolve("explorer.exe", "notify", "strict") == "hide", "Explorer Notify was not migrated to Hide.");
                 Check(!BlockTargetAction.IsUnsafeShellAction("explorer.exe", "hide", "notify"), "Explorer Hide was rejected.");
                 Check(BlockTargetAction.IsUnsafeShellAction("explorer.exe", "kill", "hide"), "Explorer Kill was accepted.");
                 Check(BlockTargetAction.IsUnsafeShellAction("explorer.exe", "strict", "hide"), "Explorer Strict was accepted.");
@@ -89,7 +91,8 @@ internal static class Program
                 service.Save("retention_days", "365");
                 service.Save("theme", "dark");
                 service.Save("block_notify_interval_seconds", "1800");
-                service.Save("block_notify_position", "right");
+                service.Save("block_notify_position", "top-right");
+                service.Save("block_media_layout", "banner");
                 service.Save("first_run_done", "true");
                 using (var conn = new SqliteConnection($"Data Source={path}"))
                 {
@@ -102,7 +105,8 @@ internal static class Program
                 }
                 var settings = DatabaseInitializer.Initialize(path);
                 Check(settings.RetentionDays == 365 && settings.Theme == "dark" &&
-                      settings.BlockNotifyIntervalSeconds == 1800 && settings.BlockNotifyPosition == "right",
+                      settings.BlockNotifyIntervalSeconds == 1800 && settings.BlockNotifyPosition == "top-right" &&
+                      settings.BlockMediaLayout == "banner",
                       "Saved preferences changed.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='wake'") == 1, "Saved retention was ignored; history was deleted.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='sleep'") == 0, "Expired history was not purged.");

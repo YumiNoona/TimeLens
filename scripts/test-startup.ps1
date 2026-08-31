@@ -84,12 +84,13 @@ try {
 
     # Exercise the production custom-reminder API, image pipeline, and the native
     # toast dispatch that marshals API calls onto the tray message-loop thread.
-    $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.'; blockNotifyIntervalSeconds = 5; blockNotifyPosition = 'left' } | ConvertTo-Json -Compress
+    $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.'; blockNotifyIntervalSeconds = 5; blockNotifyPosition = 'bottom-left'; blockMediaLayout = 'banner' } | ConvertTo-Json -Compress
     $notificationBytes = [Text.Encoding]::UTF8.GetBytes($notificationBody)
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json; charset=utf-8' -Body $notificationBytes -TimeoutSec 5
     $savedSettings = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
     if ($savedSettings.blockTitle -ne 'Deep Work' -or $savedSettings.blockMessage -notmatch '\{target\}' -or
-        $savedSettings.blockNotifyIntervalSeconds -ne 5 -or $savedSettings.blockNotifyPosition -ne 'left') {
+        $savedSettings.blockNotifyIntervalSeconds -ne 5 -or $savedSettings.blockNotifyPosition -ne 'bottom-left' -or
+        $savedSettings.blockMediaLayout -ne 'banner') {
         throw 'Custom block notification settings did not persist.'
     }
 
@@ -123,10 +124,12 @@ try {
     $unblockedState = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=www.example.com' -TimeoutSec 5
     if ($unblockedState.action -ne 'none' -or [bool]$unblockedState.blocked) { throw 'Removing a website did not unblock it immediately.' }
 
-    # File Explorer is discoverable and can use non-destructive modes, but the API
+    # File Explorer is discoverable and can use Hide, but the API
     # must reject Kill/Strict so focus controls cannot tear down the Windows shell.
     $safeExplorer = @{ focusBlocklist = '[{"i":"explorer.exe","m":"u","a":"notify"}]' } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $safeExplorer -TimeoutSec 5
+    $migratedExplorer = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
+    if ($migratedExplorer.focusBlocklist -notmatch '"a":"hide"') { throw 'Legacy desktop Notify did not migrate to Hide.' }
     $unsafeExplorer = @{ focusBlocklist = '[{"i":"explorer.exe","m":"u","a":"kill"}]' } | ConvertTo-Json -Compress
     $unsafeResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $unsafeExplorer -SkipHttpErrorCheck -TimeoutSec 5
     if ($unsafeResponse.StatusCode -ne 400) { throw 'Destructive File Explorer blocking was not rejected.' }
@@ -148,7 +151,8 @@ try {
     $mediaContract = Invoke-RestMethod 'http://127.0.0.1:47821/api/browser-block-state?domain=example.com' -TimeoutSec 5
     if ($mediaContract.presentation.mediaType -ne 'image/png' -or
         $mediaContract.presentation.repeatIntervalSeconds -ne 5 -or
-        $mediaContract.presentation.position -ne 'left' -or
+        $mediaContract.presentation.position -ne 'bottom-left' -or
+        $mediaContract.presentation.mediaLayout -ne 'banner' -or
         -not $mediaContract.presentation.mediaUrl -or -not $mediaContract.presentation.imageUrl) {
         throw 'Browser reminder media, interval, position, or compatibility URL was missing.'
     }
@@ -195,6 +199,41 @@ try {
     [void][TimeLensStartupProbe]::SendMessageW($toastWindow, 0x0202, [IntPtr]::Zero, $closeClick)
     Start-Sleep -Milliseconds 100
     if ([TimeLensStartupProbe]::IsWindow($toastWindow)) { throw 'The native toast close button did not dismiss the notification.' }
+
+    foreach ($corner in @('top-left', 'top-right', 'bottom-left', 'bottom-right')) {
+        $cornerBody = @{ blockNotifyPosition = $corner } | ConvertTo-Json -Compress
+        $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $cornerBody -TimeoutSec 5
+        $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/preview' -Method Post -TimeoutSec 5
+        $cornerDeadline = [DateTime]::UtcNow.AddSeconds(2)
+        do {
+            Start-Sleep -Milliseconds 50
+            $cornerWindow = [TimeLensStartupProbe]::FindWindowW('TLToast', $null)
+        } while ($cornerWindow -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $cornerDeadline)
+        if ($cornerWindow -eq [IntPtr]::Zero) { throw "Native toast was not created at $corner." }
+        $cornerRect = New-Object TimeLensStartupProbe+Rect
+        if (-not [TimeLensStartupProbe]::GetWindowRect($cornerWindow, [ref]$cornerRect)) { throw "Could not inspect $corner toast." }
+        $horizontalGap = if ($corner.EndsWith('right')) { $workRect.Right - $cornerRect.Right } else { $cornerRect.Left - $workRect.Left }
+        $verticalGap = if ($corner.StartsWith('top')) { $cornerRect.Top - $workRect.Top } else { $workRect.Bottom - $cornerRect.Bottom }
+        if ($horizontalGap -lt 12 -or $horizontalGap -gt 48 -or $verticalGap -lt 12 -or $verticalGap -gt 48) {
+            throw "Native toast did not dock correctly at $corner."
+        }
+        [void][TimeLensStartupProbe]::SendMessageW($cornerWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    }
+
+    # A rapidly animated GIF previously threw from ImageAnimator.UpdateFrames inside
+    # the native WndProc and terminated the whole app. Keep several GIF toasts alive
+    # long enough to advance frames and verify the packaged process remains healthy.
+    $gif = 'R0lGODlhMAAwAPcfMQAAACQAAEgAAGwAAJAAALQAANgAAPwAAAAkACQkAEgkAGwkAJAkALQkANgkAPwkAABIACRIAEhIAGxIAJBIALRIANhIAPxIAABsACRsAEhsAGxsAJBsALRsANhsAPxsAACQACSQAEiQAGyQAJCQALSQANiQAPyQAAC0ACS0AEi0AGy0AJC0ALS0ANi0APy0AADYACTYAEjYAGzYAJDYALTYANjYAPzYAAD8ACT8AEj8AGz8AJD8ALT8ANj8APz8AAAAVSQAVUgAVWwAVZAAVbQAVdgAVfwAVQAkVSQkVUgkVWwkVZAkVbQkVdgkVfwkVQBIVSRIVUhIVWxIVZBIVbRIVdhIVfxIVQBsVSRsVUhsVWxsVZBsVbRsVdhsVfxsVQCQVSSQVUiQVWyQVZCQVbSQVdiQVfyQVQC0VSS0VUi0VWy0VZC0VbS0Vdi0Vfy0VQDYVSTYVUjYVWzYVZDYVbTYVdjYVfzYVQD8VST8VUj8VWz8VZD8VbT8Vdj8Vfz8VQAAqiQAqkgAqmwAqpAAqrQAqtgAqvwAqgAkqiQkqkgkqmwkqpAkqrQkqtgkqvwkqgBIqiRIqkhIqmxIqpBIqrRIqthIqvxIqgBsqiRsqkhsqmxsqpBsqrRsqthsqvxsqgCQqiSQqkiQqmyQqpCQqrSQqtiQqvyQqgC0qiS0qki0qmy0qpC0qrS0qti0qvy0qgDYqiTYqkjYqmzYqpDYqrTYqtjYqvzYqgD8qiT8qkj8qmz8qpD8qrT8qtj8qvz8qgAA/yQA/0gA/2wA/5AA/7QA/9gA//wA/wAk/yQk/0gk/2wk/5Ak/7Qk/9gk//wk/wBI/yRI/0hI/2xI/5BI/7RI/9hI//xI/wBs/yRs/0hs/2xs/5Bs/7Rs/9hs//xs/wCQ/ySQ/0iQ/2yQ/5CQ/7SQ/9iQ//yQ/wC0/yS0/0i0/2y0/5C0/7S0/9i0//y0/wDY/yTY/0jY/2zY/5DY/7TY/9jY//zY/wD8/yT8/0j8/2z8/5D8/7T8/9j8//z8/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQEBQAfACwAAAAAMAAwAAAI/wDjoIqTSqDBgQUHKiR40GDChg8XRkRjkOJAi3EwaqzI8WLHjB8bLhwpsiTJkyY9ksS4kOXHliVdlozocKZNkjQRblQJkufOnkB/YjRJFKXRogd9fhS6tKnSmjhvQpQq8SBTpViDOgWK9KjXrkmBwlwZsyzZhVShTo3KFuJVrVnf/gT7tW7RuFvl5o2zaFnfv8vUVm07eK3AZZSWMVK8jJlevJD5+p3cl65lr4wTL6bEc2xDl51fSgZcmbDg0whnMmaGuPFjuLB/kp58ufbJzJkjv2Y6uzRD06mB/z6sefXuvVl7B7bLvCjuzaGjixUdWnna4IYLS1zd2jHy2N+tN1YfL/I5Yt3fmaIern19TvbH0Ue2Td+rdNDT75s1eJ29+/6pxAeefHHUZ+BJBAqoHnbtMfgfYQqmt9WBFCqk31mf7efZQAB2KFyAEiY4IXkk3jXgiREGBAAh+QQFBQAAACwvAC8AAQABAAAIBAABBAQAIfkEBQUAAAAsLwAvAAEAAQAACAQAAQQEACH5BAUFAAAALC8ALwABAAEAAAgEAAEEBAAh+QQFBQAAACwvAC8AAQABAAAIBAABBAQAOw=='
+    $gifBody = @{ dataUrl = "data:image/gif;base64,$gif" } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/media' -Method Post -ContentType 'application/json' -Body $gifBody -TimeoutSec 5
+    1..3 | ForEach-Object { $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/preview' -Method Post -TimeoutSec 5 }
+    Start-Sleep -Milliseconds 1800
+    $process.Refresh()
+    if ($process.HasExited) { throw 'Animated GIF reminders terminated the TimeLens process.' }
+    do {
+        $gifWindow = [TimeLensStartupProbe]::FindWindowW('TLToast', $null)
+        if ($gifWindow -ne [IntPtr]::Zero) { [void][TimeLensStartupProbe]::SendMessageW($gifWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) }
+    } while ($gifWindow -ne [IntPtr]::Zero)
 
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/block/media' -Method Delete -TimeoutSec 5
     if (Get-ChildItem -LiteralPath $dataDir -Filter 'block-notification*' -ErrorAction SilentlyContinue) {

@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 5.0.1 applies saved website-notification corner and media-layout changes immediately to an open blocked tab. The extension hydrates custom media on its live block check, moves the existing reminder to the selected corner, and redraws it as Thumbnail, Large, or Full banner without waiting for a page reload or the next reminder interval. The desktop dashboard now keeps the app picker from resizing its card and records block-opening counts in Block and History.
+Version 5.0.2 keeps Block workspace cards independently sized while the app picker is open. It also removes the dashboard view reset and background Block refreshes that caused the Block, Rules, and Settings pages to flash. The open-app list refreshes only when its picker opens or the user selects Refresh.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v5.0.1`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v5.0.2`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

@@ -159,7 +159,6 @@
       </div>
     {/if}
 
-    {#key view}
     <div class="view-pane">
     {#if $loading && !$data && (view === 'today' || view === 'apps' || view === 'timeline')}
       <div class="view-loading">
@@ -366,7 +365,6 @@
       </div>
     {/if}
     </div>
-    {/key}
   </main>
 </div>
 

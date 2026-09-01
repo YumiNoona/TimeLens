@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fade } from 'svelte/transition';
   import NavRail from './lib/components/NavRail.svelte';
   import StatCard from './lib/components/StatCard.svelte';
 
@@ -161,7 +160,7 @@
     {/if}
 
     {#key view}
-    <div class="view-pane" in:fade={{ duration: 150 }} out:fade={{ duration: 100 }}>
+    <div class="view-pane">
     {#if $loading && !$data && (view === 'today' || view === 'apps' || view === 'timeline')}
       <div class="view-loading">
         <div class="view-loading-pulse"></div>

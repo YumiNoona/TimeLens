@@ -1,5 +1,5 @@
 const githubApi = 'https://api.github.com';
-const minimumReleaseMajor = 4;
+const minimumReleaseMajor = 5;
 
 function repository() {
   return process.env.GITHUB_REPOSITORY || 'YumiNoona/TimeLens';

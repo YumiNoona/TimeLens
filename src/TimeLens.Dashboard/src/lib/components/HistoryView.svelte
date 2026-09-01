@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { BrowserHourEntry, DashboardData } from '../types';
-  import { getBrowserHourly, getDashboardData } from '../api';
+  import type { BlockAttemptEntry, BrowserHourEntry, DashboardData } from '../types';
+  import { getBlockAttempts, getBrowserHourly, getDashboardData } from '../api';
   import StatCard from './StatCard.svelte';
   import TopApps from './TopApps.svelte';
   import TopSites from './TopSites.svelte';
@@ -33,6 +33,7 @@
   let selectedDate = $state(todayIso);
   let historyData = $state<DashboardData | null>(null);
   let hourly = $state<BrowserHourEntry[]>([]);
+  let blockAttempts = $state<BlockAttemptEntry[]>([]);
   let isLoading = $state(true);
   let loadError = $state<string | null>(null);
   let requestId = 0;
@@ -58,9 +59,12 @@
       historyData.summary.activeSeconds > 0 ||
       historyData.summary.idleSeconds > 0 ||
       historyData.browserSites.length > 0 ||
-      historyData.audioSessions.length > 0
+      historyData.audioSessions.length > 0 ||
+      blockAttempts.length > 0
     )
   );
+
+  const totalBlockedOpenings = $derived(blockAttempts.reduce((total, attempt) => total + attempt.count, 0));
 
   const visibleTimeline = $derived(historyData ? normalizeTimeline(historyData.timeline, $timelineMinSegmentSeconds) : []);
 
@@ -70,13 +74,15 @@
     loadError = null;
 
     try {
-      const [dashboard, browserHours] = await Promise.all([
+      const [dashboard, browserHours, attempts] = await Promise.all([
         getDashboardData(date),
-        getBrowserHourly(date)
+        getBrowserHourly(date),
+        getBlockAttempts(date)
       ]);
       if (currentRequest !== requestId) return;
       historyData = dashboard;
       hourly = browserHours;
+      blockAttempts = attempts;
     } catch (error) {
       if (currentRequest !== requestId) return;
       loadError = error instanceof Error ? error.message : 'Could not load this day';
@@ -248,6 +254,25 @@
           </div>
         </section>
       </div>
+
+      {#if blockAttempts.length > 0}
+        <section class="block-attempts card" aria-label="Blocked opening attempts">
+          <div class="card-header">
+            <i class="ti ti-shield-x" aria-hidden="true"></i>
+            <div class="card-title">Blocked openings</div>
+            <span class="attempt-total">{totalBlockedOpenings} attempt{totalBlockedOpenings === 1 ? '' : 's'}</span>
+          </div>
+          <div class="attempt-list">
+            {#each blockAttempts as attempt}
+              <div class="attempt-row">
+                <div><strong>{attempt.target}</strong><span>Last attempt {new Date(attempt.lastAttempt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></div>
+                <span class="attempt-action">{attempt.action}</span>
+                <strong>{attempt.count}×</strong>
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
 
       {#if !hasActivity}
         <div class="empty-day">
@@ -443,6 +468,16 @@
   .empty-day strong { color: var(--clr-text-pri); font-size: var(--text-sm); }
   .empty-day span { font-size: var(--text-xs); }
 
+  .block-attempts { margin-bottom: var(--space-4); }
+  .attempt-total { margin-left: auto; color: var(--md-primary); font: var(--weight-semibold) var(--text-xs) var(--font-mono); }
+  .attempt-list { display: grid; }
+  .attempt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--clr-border); }
+  .attempt-row > div { min-width: 0; display: grid; gap: 2px; }
+  .attempt-row div strong { overflow: hidden; color: var(--clr-text-pri); font: var(--weight-medium) var(--text-sm) var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+  .attempt-row div span { color: var(--clr-text-sec); font-size: var(--text-xs); }
+  .attempt-row > strong { color: var(--clr-text-pri); font-family: var(--font-mono); }
+  .attempt-action { min-width: 54px; padding: 3px 6px; border: 1px solid var(--clr-border); border-radius: var(--radius-full); color: var(--clr-text-sec); font: var(--weight-semibold) 10px var(--font-mono); text-align: center; text-transform: capitalize; }
+
   .timeline-section {
     background: var(--clr-bg-sec);
     border: 1px solid var(--clr-border);
@@ -465,6 +500,9 @@
     .date-picker { flex: 1; }
     .date-picker input { width: 100%; }
     .history-grid { grid-template-columns: 1fr; }
+    .attempt-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .attempt-row > strong { grid-column: 2; grid-row: 1; }
+    .attempt-action { grid-column: 2; grid-row: 2; }
   }
 
   @media (max-width: 520px) {

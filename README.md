@@ -15,7 +15,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Production v4
+## Production v5
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 4.2.3 adds reliable top-left, top-right, bottom-left, and bottom-right notification docking with consistent viewport padding. Media can use Thumbnail, Large, or Full banner layouts. Website Notify remains non-enforcing, while desktop apps now expose only Hide, Kill, and Strict; legacy desktop Notify targets migrate safely to Hide. Native GIF rendering is isolated from the window callback so a bad animation frame cannot terminate TimeLens. Version 4.2.2 introduced persistent stacked reminders and PNG, JPEG, GIF, MP4, and WebM media. Card rearranging remains limited to Today and History.
+Version 5.0.1 applies saved website-notification corner and media-layout changes immediately to an open blocked tab. The extension hydrates custom media on its live block check, moves the existing reminder to the selected corner, and redraws it as Thumbnail, Large, or Full banner without waiting for a page reload or the next reminder interval. The desktop dashboard now keeps the app picker from resizing its card and records block-opening counts in Block and History.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -101,13 +101,13 @@ Set these Vercel environment variables:
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
 | `GITHUB_DOWNLOAD_ASSET` | `TimeLens-Setup.exe` |
-| `GITHUB_RELEASE_MAJOR` | `4` for the production-v4 update channel; stale lower values are safely raised to the current production minimum |
+| `GITHUB_RELEASE_MAJOR` | `5` for the production-v5 update channel; stale lower values are safely raised to the current production minimum |
 
 All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 
 `/api/download` redirects website visitors to the installer, while `/api/app-download` is reserved for the verified raw-EXE updater flow. Both authenticate server-side and redirect to GitHub's short-lived signed asset URLs. The binaries bypass Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while downloads remain available through the website by design.
 
-`/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a `v4.x.x` tag, and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
+`/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a `v5.x.x` tag, and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
 
 ## Releasing and updates
 
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v4.2.3`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v5.0.1`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

@@ -133,6 +133,7 @@ public static class ApiHost
         Action<string>? deleteRule = null,
         Func<string, bool>? enforceBlock = null,
         Action<string>? showBlockPreview = null,
+        Action<string, string>? recordBlockAttempt = null,
         UpdateService? updateService = null,
         Action? requestShutdown = null)
     {
@@ -954,7 +955,12 @@ public static class ApiHost
             // Focus mode block check — runs regardless of TrackBrowser setting
             var browserBlock = BrowserBlockResponse(evt.Domain);
             if (browserBlock.Action != "none" && browserBlock.Presentation is not null)
-                LiveStatusStore.PendingBrowserBlock = new(browserBlock.Presentation.Target, browserBlock.Action);
+            {
+                if (recordBlockAttempt is not null)
+                    recordBlockAttempt(browserBlock.Presentation.Target, browserBlock.Action);
+                else
+                    LiveStatusStore.PendingBrowserBlock = new(browserBlock.Presentation.Target, browserBlock.Action);
+            }
 
             if (!LiveStatusStore.Settings.TrackBrowser)
             {
@@ -1746,25 +1752,36 @@ public static class ApiHost
 
         app.MapGet("/api/block/stats", async (HttpContext ctx) =>
         {
+            var dateText = ctx.Request.Query["date"].FirstOrDefault();
+            var localDay = DateTime.TryParseExact(dateText, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var requestedDay)
+                ? requestedDay.Date
+                : DateTime.Now.Date;
+            var dayStart = DateTime.SpecifyKind(localDay, DateTimeKind.Local).ToUniversalTime();
+            var dayEnd = dayStart.AddDays(1);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT blocked_exe, blocked_action, COUNT(*) as cnt
+                SELECT blocked_exe, blocked_action, COUNT(*) as cnt, MAX(timestamp) AS last_attempt
                 FROM block_log
-                WHERE timestamp >= date('now', 'start of day')
+                WHERE timestamp >= $dayStart AND timestamp < $dayEnd
                 GROUP BY blocked_exe, blocked_action
-                ORDER BY cnt DESC
+                ORDER BY last_attempt DESC, cnt DESC
                 """;
+            cmd.Parameters.AddWithValue("$dayStart", dayStart.ToString("o", CultureInfo.InvariantCulture));
+            cmd.Parameters.AddWithValue("$dayEnd", dayEnd.ToString("o", CultureInfo.InvariantCulture));
             using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             arr.WriteStartArray();
             using var r = await cmd.ExecuteReaderAsync();
             while (await r.ReadAsync())
             {
                 arr.WriteStartObject();
+                arr.WriteString("target", r.GetString(0));
                 arr.WriteString("exe", r.GetString(0));
                 arr.WriteString("action", r.GetString(1));
                 arr.WriteNumber("count", r.GetInt32(2));
+                arr.WriteString("lastAttempt", r.IsDBNull(3) ? "" : r.GetString(3));
                 arr.WriteEndObject();
             }
             arr.WriteEndArray();

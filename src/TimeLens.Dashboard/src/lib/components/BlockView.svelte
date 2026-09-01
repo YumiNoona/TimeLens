@@ -5,6 +5,7 @@
   type Action = 'notify' | 'hide' | 'kill' | 'strict';
   type TargetKind = 'app' | 'website';
   type BlockEntry = { i: string; m: 'u' | 't'; e?: string; a?: Action };
+  type BlockAttempt = { target?: string; exe?: string; action: Action; count: number; lastAttempt?: string };
   type RetryAction = () => Promise<void>;
 
   const DEFAULT_TITLE = 'Focus Mode';
@@ -51,6 +52,7 @@
   let imageUploading = $state(false);
   let notificationStatus = $state('');
   let runningProcs = $state<string[]>([]);
+  let blockAttempts = $state<BlockAttempt[]>([]);
   let showSuggestions = $state(false);
   let extensionConnected = $state(false);
   let extensionBrowser = $state('');
@@ -108,7 +110,7 @@
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'TimeLens is not responding';
     }
-    await Promise.all([loadRunning(), loadExtensionStatus()]);
+    await Promise.all([loadRunning(), loadExtensionStatus(), loadBlockAttempts()]);
   }
 
   async function loadRunning() {
@@ -125,6 +127,26 @@
       extensionConnected = status.connected === true;
       extensionBrowser = status.browser && status.browser !== 'unknown' ? status.browser : '';
     } catch { extensionConnected = false; extensionBrowser = ''; }
+  }
+
+  async function loadBlockAttempts() {
+    try {
+      const response = await fetch('/api/block/stats');
+      blockAttempts = response.ok ? await response.json() : [];
+    } catch { blockAttempts = []; }
+  }
+
+  function attemptsFor(entry: BlockEntry): BlockAttempt[] {
+    return blockAttempts.filter((attempt) => (attempt.target || attempt.exe || '').toLowerCase() === entry.i.toLowerCase());
+  }
+
+  function attemptLabel(entry: BlockEntry): string {
+    const attempts = attemptsFor(entry);
+    const count = attempts.reduce((total, attempt) => total + Number(attempt.count || 0), 0);
+    if (!count) return 'No blocked openings yet';
+    const latest = attempts.map((attempt) => attempt.lastAttempt).filter(Boolean).sort().at(-1);
+    const suffix = latest ? ` · last ${new Date(latest).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+    return `${count} blocked opening${count === 1 ? '' : 's'}${suffix}`;
   }
 
   async function postProtectedSetting(payload: Record<string, unknown>, retry: RetryAction | null): Promise<Response | null> {
@@ -330,7 +352,8 @@
     load();
     const processTimer = setInterval(loadRunning, 5000);
     const extensionTimer = setInterval(loadExtensionStatus, 15000);
-    return () => { clearInterval(processTimer); clearInterval(extensionTimer); };
+    const attemptsTimer = setInterval(loadBlockAttempts, 10000);
+    return () => { clearInterval(processTimer); clearInterval(extensionTimer); clearInterval(attemptsTimer); };
   });
 </script>
 
@@ -395,7 +418,7 @@
         {#each items as entry, index}
           <div class="target-row">
             <span class="target-icon"><i class="ti {iconFor(entry)}"></i></span>
-            <div class="target-name"><strong>{entry.i}</strong><span>{isApp(entry) ? 'Desktop app' : 'Website'} · {timeLabel(entry)}</span></div>
+            <div class="target-name"><strong>{entry.i}</strong><span>{isApp(entry) ? 'Desktop app' : 'Website'} · {timeLabel(entry)}</span><small class:has-attempts={attemptsFor(entry).length > 0}>{attemptLabel(entry)}</small></div>
             <div class="action-pills">{#each actionsFor(isApp(entry) ? 'app' : 'website', entry.i) as action}<button class="tooltip-button" class:active={effectiveAction(entry) === action.id} data-tooltip={action.description} onclick={() => changeAction(index, action.id)} aria-label={`${action.label} ${entry.i}: ${action.description}`}><i class="ti {action.icon}"></i><span>{action.label}</span></button>{/each}</div>
             {#if isApp(entry)}<button class="icon-button" onclick={() => testApp(entry)} disabled={!focusMode} title="Test now" aria-label={`Test ${entry.i}`}><i class="ti {lastTested === entry.i ? 'ti-check' : 'ti-player-play'}"></i></button>{/if}
             <button class="icon-button remove" onclick={() => removeTarget(index)} title="Remove and unblock" aria-label={`Remove ${entry.i}`} disabled={saving}><i class="ti ti-trash"></i></button>
@@ -420,6 +443,11 @@
   .message-fields{display:grid;grid-template-columns:minmax(150px,.5fr) minmax(260px,1fr);gap:10px;padding:8px 16px}.message-fields label,.target-input,.duration,.notify-settings label{display:grid;gap:5px}.message-fields label>span,.target-input>span,.duration>span,.notify-settings label>span,.field-label{color:var(--clr-text-sec);font-size:10px;font-weight:600}.message-fields input,.target-input input,.duration select,.notify-settings input,.notify-settings select,.unlock-modal input{height:36px;min-width:0;padding:0 10px;color:var(--clr-text-pri);background:var(--clr-bg-ter);border:1px solid var(--clr-border);border-radius:8px;font:12px inherit;outline:none}.message-fields input:focus,.target-input input:focus,.duration select:focus,.notify-settings input:focus,.notify-settings select:focus,.unlock-modal input:focus{border-color:var(--md-primary)}.notify-settings{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:10px;padding:8px 16px}.notify-settings:has(.custom-interval){grid-template-columns:repeat(4,minmax(110px,1fr))}.custom-interval>div{display:grid;grid-template-columns:minmax(72px,.7fr) 1fr;gap:6px}.image-actions{gap:8px;padding:8px 16px 16px}.file-button,.plain{height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-bg-ter);color:var(--clr-text-sec);font:11px inherit;cursor:pointer}.file-button input{display:none}.plain.danger:hover{color:var(--md-error);border-color:var(--md-error)}.image-actions small{margin-left:auto;color:var(--clr-text-ter);font-size:9px}
   .add-panel{position:relative;padding-bottom:14px;overflow:visible}.add-panel header{margin-bottom:12px}.kind-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 16px 12px;padding:4px;background:var(--clr-bg-ter);border-radius:10px}.kind-tabs button,.mode-row button,.action-pills button{border:1px solid transparent;background:transparent;color:var(--clr-text-sec);font:11px inherit;cursor:pointer}.kind-tabs button{height:32px;border-radius:7px}.kind-tabs button.active{color:var(--clr-text-pri);background:var(--clr-bg-sec);border-color:var(--clr-border)}.kind-tabs i,.mode-row i{margin-right:5px}.field-label{margin:0 16px 6px}.mode-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 16px 12px;overflow:visible}.mode-row button{height:34px;border-color:var(--clr-border);border-radius:8px;background:var(--clr-bg-ter)}.mode-row button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.target-picker{margin:0 16px 10px}.target-input{margin:0}.target-input>div{height:38px;display:flex;align-items:center;padding-left:10px;border:1px solid var(--clr-border);border-radius:9px;background:var(--clr-bg-ter)}.target-input>div:focus-within{border-color:var(--md-primary)}.target-input>div>i{color:var(--clr-text-ter)}.target-input input{height:36px;flex:1;border:0;background:transparent}.target-input button{height:30px;margin-right:3px;padding:0 10px;border:0;border-radius:7px;background:var(--md-primary);color:var(--md-on-primary);font:600 11px inherit;cursor:pointer}.target-input button i{margin-right:4px}.suggestions{max-height:220px;overflow:auto;margin-top:6px;padding:5px;border:1px solid var(--clr-border);border-radius:10px;background:var(--clr-bg-sec);box-shadow:var(--shadow-md)}.suggestions>button{width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--clr-text-pri);font:11px inherit;cursor:pointer}.suggestions>button:hover{background:var(--clr-bg-ter)}.suggestions>button span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left}.suggestions>button small{color:var(--clr-text-ter);font-size:9px}.suggestions-head{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 7px;color:var(--clr-text-ter);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.suggestions-head button{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--md-primary);font:9px inherit;cursor:pointer}.suggestions-empty{padding:14px 8px;color:var(--clr-text-ter);font-size:10px;text-align:center}.duration{margin:0 16px 10px}.duration select{width:100%}.mode-note{display:flex;align-items:flex-start;gap:8px;margin:0 16px;padding:9px 10px;border-radius:9px;background:color-mix(in srgb,var(--md-primary) 6%,var(--clr-bg-ter));color:var(--clr-text-sec);font-size:10px;line-height:1.4}.mode-note i{color:var(--md-primary);font-size:14px}
   .targets-panel{overflow:visible}.targets-panel header{min-height:58px}.extension.ready{color:var(--md-primary);background:var(--md-primary-cont)}.target-list{display:grid}.target-row{min-height:64px;gap:10px;padding:9px 12px;border-top:1px solid var(--clr-border)}.target-row:first-child{border-top:0}.target-icon{width:36px;height:36px;display:grid;place-items:center;flex:0 0 36px;border-radius:10px;color:var(--md-primary);background:var(--md-primary-cont)}.target-name{min-width:150px;flex:1;display:grid;gap:2px}.target-name strong{color:var(--clr-text-pri);font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis}.target-name span{color:var(--clr-text-sec);font-size:10px}.action-pills{display:flex;gap:4px}.action-pills button{height:30px;display:flex;align-items:center;gap:4px;padding:0 8px;border-color:var(--clr-border);border-radius:7px;background:var(--clr-bg-ter)}.action-pills button.active{color:var(--md-primary);border-color:var(--md-primary);background:var(--md-primary-cont)}.icon-button{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-bg-ter);color:var(--clr-text-sec);cursor:pointer}.icon-button:hover{color:var(--md-primary);border-color:var(--md-primary)}.icon-button.remove:hover{color:var(--md-error);border-color:var(--md-error)}.icon-button:disabled{opacity:.35;cursor:not-allowed}.empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:4px;color:var(--clr-text-sec)}.empty i{font-size:26px;color:var(--md-primary)}.empty strong{font-size:13px;color:var(--clr-text-pri)}.empty span{font-size:11px}
+  /* The picker stays a fixed-height control; its list overlays the panel instead of resizing it. */
+  .target-picker{position:relative;z-index:8}.suggestions{position:absolute;z-index:60;top:calc(100% + 6px);right:0;left:0;max-height:min(280px,42vh);overflow-x:hidden;overflow-y:auto;scrollbar-gutter:stable;box-sizing:border-box}
+  /* Each media setting has a clearly different preview footprint. */
+  .preview-shell.browser .preview{width:min(360px,100%)}.preview-shell.browser .preview.media-large{width:min(520px,100%)}.preview-shell.browser .preview.media-banner{width:min(660px,100%);min-height:0}.preview.media-banner img,.preview.media-banner video,.preview.media-banner .preview-icon{height:230px}.preview.media-banner>div{padding:2px 4px 4px}
+  .target-name small{color:var(--clr-text-ter);font:9px var(--font-mono)}.target-name small.has-attempts{color:var(--md-primary)}
   .tooltip-button{position:relative}.tooltip-button::after{content:attr(data-tooltip);position:absolute;z-index:40;left:50%;top:calc(100% + 8px);width:max-content;max-width:220px;padding:7px 9px;border:1px solid var(--clr-border-strong);border-radius:8px;background:var(--clr-bg-pri);color:var(--clr-text-pri);box-shadow:var(--shadow-md);font:10px/1.35 var(--font-display);text-align:left;white-space:normal;opacity:0;pointer-events:none;transform:translate(-50%,-3px);transition:opacity .14s,transform .14s}.tooltip-button:hover::after,.tooltip-button:focus-visible::after{opacity:1;transform:translate(-50%,0)}
   .modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.62);backdrop-filter:blur(5px)}.unlock-modal{width:min(380px,100%);position:relative;display:grid;gap:11px;padding:24px;border:1px solid var(--clr-border);border-radius:16px;background:var(--clr-bg-sec);box-shadow:var(--shadow-lg)}.unlock-modal h2,.unlock-modal p{margin:0}.unlock-modal h2{font-size:17px}.unlock-modal p{color:var(--clr-text-sec);font-size:12px}.modal-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:11px;color:var(--md-primary);background:var(--md-primary-cont)}.modal-close{position:absolute;right:12px;top:10px;border:0;background:transparent;color:var(--clr-text-sec);font-size:20px;cursor:pointer}.unlock-button{height:36px;border:0;border-radius:8px;background:var(--md-primary);color:var(--md-on-primary);font:600 12px inherit;cursor:pointer}.unlock-error{color:var(--md-error);font-size:11px}
   @media(max-width:1000px){.workspace{grid-template-columns:1fr}}

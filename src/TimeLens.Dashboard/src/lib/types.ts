@@ -72,6 +72,13 @@ export interface BrowserHourEntry {
   visits: number;
 }
 
+export interface BlockAttemptEntry {
+  target: string;
+  action: 'notify' | 'hide' | 'kill' | 'strict';
+  count: number;
+  lastAttempt: string;
+}
+
 export interface DashboardData {
   summary: TodaySummary;
   timeline: TimelineBlock[];

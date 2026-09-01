@@ -1,4 +1,4 @@
-import type { BrowserHourEntry, DashboardData } from './types';
+import type { BlockAttemptEntry, BrowserHourEntry, DashboardData } from './types';
 
 const API = '';
 
@@ -16,4 +16,9 @@ export async function getDashboardData(date?: string): Promise<DashboardData> {
 export async function getBrowserHourly(date?: string): Promise<BrowserHourEntry[]> {
   const query = date ? `?date=${encodeURIComponent(date)}` : '';
   return fetchJson<BrowserHourEntry[]>(`${API}/api/browser-hourly${query}`);
+}
+
+export async function getBlockAttempts(date?: string): Promise<BlockAttemptEntry[]> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  return fetchJson<BlockAttemptEntry[]>(`${API}/api/block/stats${query}`);
 }

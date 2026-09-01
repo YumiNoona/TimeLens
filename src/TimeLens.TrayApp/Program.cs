@@ -664,6 +664,7 @@ internal static class Program
             deleteRule: DeleteRule,
             enforceBlock: EnforceBlock,
             showBlockPreview: target => ShowBlockToast(target, force: true),
+            recordBlockAttempt: writer.InsertBlockLog,
             updateService: updateService,
             requestShutdown: RequestShutdown);
 

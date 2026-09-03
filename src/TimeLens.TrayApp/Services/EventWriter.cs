@@ -61,6 +61,29 @@ public sealed class EventWriter
         }
     }
 
+    /// <summary>
+    /// Ends the foreground activity segment without creating a replacement row.
+    /// This is used when focus moves to a browser tracked by the extension, a Windows
+    /// shell surface, or an idle/away span. Leaving the preceding app open here makes
+    /// it incorrectly inherit that time.
+    /// </summary>
+    public void CloseCurrentAppEvent()
+    {
+        lock (_openEventLock)
+        {
+            if (_lastOpenEventId is not (long id)) return;
+            _queue.ExecuteSync(conn =>
+            {
+                using var close = conn.CreateCommand();
+                close.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
+                close.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                close.Parameters.AddWithValue("$id", id);
+                close.ExecuteNonQuery();
+            });
+            _lastOpenEventId = null;
+        }
+    }
+
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)
     {
         var ts = DateTime.UtcNow.ToString("o");

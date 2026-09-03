@@ -120,9 +120,7 @@ public sealed class AnalyticsService
                 COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
                     (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
                 ELSE 0 END), 0) AS active_secs,
-                COALESCE(SUM(CASE WHEN session_state IN ('idle', 'away') AND COALESCE(category, '') != 'system' THEN
-                    (julianday(COALESCE(end_time, $rangeEnd)) - julianday(start_time)) * 86400
-                ELSE 0 END), 0) AS idle_secs
+                0 AS idle_secs
             FROM app_events
             WHERE local_date = $date
             """;
@@ -141,6 +139,19 @@ public sealed class AnalyticsService
                 idleSecs = Convert.ToInt32(r["idle_secs"]);
             }
         }
+
+        // Idle belongs to the machine, not to whichever window was foreground when
+        // input stopped. Use dedicated spans so Explorer/Figma/browser rows cannot
+        // inflate both their own time and the idle total.
+        cmd.CommandText = """
+            SELECT COALESCE(SUM(MAX(0,
+                (julianday(MIN(COALESCE(end_time, $rangeEnd), $rangeEnd)) -
+                 julianday(MAX(start_time, $today))) * 86400
+            )), 0)
+            FROM idle_spans
+            WHERE start_time < $rangeEnd AND COALESCE(end_time, $rangeEnd) > $today
+            """;
+        idleSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
         // Sum active time in productive categories for focus score
         cmd.CommandText = """

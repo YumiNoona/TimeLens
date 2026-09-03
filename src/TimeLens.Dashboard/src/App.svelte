@@ -54,6 +54,15 @@
     return 'Good evening';
   });
 
+  function siteMinutes(domain: string): number {
+    return browserTime.find((entry) => entry.domain === domain)?.totalMinutes ?? 0;
+  }
+
+  function compactDuration(minutes: number): string {
+    if (minutes < 60) return `${minutes}m`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+
   function applyTheme(t: string) {
     activeTheme = t;
     applyInterfacePreferences();
@@ -247,7 +256,7 @@
                 {#each browserSites.slice(0, 3) as site}
                   <div class="teaser-row">
                     <span class="teaser-domain">{site.domain.replace(/^www\./, '')}</span>
-                    <span class="teaser-count">{site.visits} visit{site.visits !== 1 ? 's' : ''}</span>
+                    <span class="teaser-count">{compactDuration(siteMinutes(site.domain))} · {site.visits} visit{site.visits !== 1 ? 's' : ''}</span>
                   </div>
                 {/each}
               </div>

@@ -232,6 +232,22 @@ public static class DatabaseInitializer
             """;
         backfill2.ExecuteNonQuery();
 
+        // Older versions recorded Windows shell surfaces as utilities or development.
+        // They are retained in the timeline but excluded from useful activity totals.
+        using var reclassifyShell = conn.CreateCommand();
+        reclassifyShell.CommandText = """
+            UPDATE app_events SET category = 'system'
+            WHERE lower(exe_name) IN (
+                'explorer.exe', 'shellexperiencehost.exe', 'shellhost.exe', 'searchhost.exe',
+                'searchapp.exe', 'startmenuexperiencehost.exe', 'textinputhost.exe',
+                'applicationframehost.exe', 'lockapp.exe', 'dwm.exe', 'sihost.exe',
+                'taskhostw.exe', 'runtimebroker.exe', 'widgets.exe', 'widgetservice.exe',
+                'ctfmon.exe', 'audiodg.exe', 'fontdrvhost.exe', 'timelens.exe',
+                'timelens.trayapp.exe'
+            )
+            """;
+        reclassifyShell.ExecuteNonQuery();
+
         // Create/migrate the schema before reading settings. A fresh installation has
         // no settings table yet. Load the saved retention before deleting any history.
         var settings = new SettingsService(dbPath).Load();

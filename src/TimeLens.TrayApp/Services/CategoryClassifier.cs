@@ -9,6 +9,19 @@ public sealed record CustomRule(string Pattern, string Category, string RuleType
 
 public sealed class CategoryClassifier : ICategoryClassifier
 {
+    // These processes own the desktop, taskbar, Start menu, lock screen, and other
+    // Windows surfaces. They are foreground noise rather than meaningful activity.
+    // Keep them out of focus totals even when an older custom rule categorised them.
+    private static readonly HashSet<string> SystemForegroundApps = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer.exe", "shellexperiencehost.exe", "shellhost.exe", "searchhost.exe",
+        "searchapp.exe", "startmenuexperiencehost.exe", "textinputhost.exe",
+        "applicationframehost.exe", "lockapp.exe", "dwm.exe", "sihost.exe",
+        "taskhostw.exe", "runtimebroker.exe", "widgets.exe", "widgetservice.exe",
+        "ctfmon.exe", "audiodg.exe", "fontdrvhost.exe", "timelens.exe",
+        "timelens.trayapp.exe"
+    };
+
     private static readonly Dictionary<string, string> BuiltInExeRules = new(StringComparer.OrdinalIgnoreCase)
     {
         ["code.exe"] = "development",
@@ -120,6 +133,9 @@ public sealed class CategoryClassifier : ICategoryClassifier
 
     public string Classify(string exeName, string? windowTitle = null, string? domain = null)
     {
+        if (SystemForegroundApps.Contains(Path.GetFileName(exeName)))
+            return "system";
+
         // Custom rules first, ordered by priority (lower = higher priority)
         foreach (var rule in CustomRules.OrderBy(r => r.Priority))
         {

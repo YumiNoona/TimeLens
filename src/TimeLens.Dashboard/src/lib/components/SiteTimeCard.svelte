@@ -4,19 +4,32 @@
   const filtered = $derived(
     browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com')
   );
+
+  function formatDuration(minutes: number): string {
+    if (minutes < 60) return `${minutes}m`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+
+  function activityKind(domain: string): string {
+    const value = domain.toLowerCase();
+    if (/(youtube|netflix|primevideo|disneyplus|hotstar|twitch)/.test(value)) return 'Video & media';
+    if (/(udemy|coursera|pluralsight|skillshare|edx|khanacademy)/.test(value)) return 'Learning';
+    if (/(github|gitlab|stackoverflow|developer\.mozilla|learn\.microsoft)/.test(value)) return 'Development';
+    return 'Website';
+  }
 </script>
 
 {#if filtered.length > 0}
   <div class="card">
     <div class="card-header">
       <i class="ti ti-clock" aria-hidden="true"></i>
-      <div class="card-title">Time on sites</div>
+      <div class="card-title">Active time on sites</div>
     </div>
     <div class="browser-time-list">
       {#each filtered as bt}
         <div class="bt-row">
-          <span class="bt-domain">{bt.domain.replace(/^www\./, '')}</span>
-          <span class="bt-time">{bt.totalMinutes}m</span>
+          <span class="bt-domain"><strong>{bt.domain.replace(/^www\./, '')}</strong><small>{activityKind(bt.domain)}</small></span>
+          <span class="bt-time">{formatDuration(bt.totalMinutes)}</span>
         </div>
       {/each}
     </div>
@@ -41,6 +54,8 @@
   .bt-row:last-child { border-bottom: none; }
 
   .bt-domain {
+    display: grid;
+    gap: 2px;
     font-size: var(--text-sm);
     font-family: var(--font-mono);
     color: var(--clr-text-pri);
@@ -50,6 +65,9 @@
     flex: 1;
     margin-right: var(--space-3);
   }
+
+  .bt-domain strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
+  .bt-domain small { color: var(--clr-text-ter); font: 10px var(--font-display); }
 
   .bt-time {
     font-size: var(--text-xs);

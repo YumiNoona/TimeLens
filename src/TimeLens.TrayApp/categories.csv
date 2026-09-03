@@ -361,7 +361,7 @@ wolframalpha.com,domain,education,substring
 quizlet.com,domain,education,substring
 
 # ------ UTILITIES: System & File Management ------
-explorer.exe,exe,utilities,substring
+explorer.exe,exe,system,substring
 7zfm.exe,exe,utilities,substring
 winrar.exe,exe,utilities,substring
 winzip32.exe,exe,utilities,substring
@@ -428,3 +428,79 @@ copilot.microsoft.com,domain,work,substring
 perplexity.ai,domain,work,substring
 you.com,domain,work,substring
 poe.com,domain,work,substring
+
+# ------ CORE DEFAULTS: Games & launchers ------
+r5apex_dx12.exe,exe,gaming,substring
+r5apex.exe,exe,gaming,substring
+apex.exe,exe,gaming,substring
+valorant.exe,exe,gaming,substring
+valorant-win64-shipping.exe,exe,gaming,substring
+gta5.exe,exe,gaming,substring
+playgta5.exe,exe,gaming,substring
+gta5launcher.exe,exe,gaming,substring
+cod.exe,exe,gaming,substring
+codhq.exe,exe,gaming,substring
+modernwarfare.exe,exe,gaming,substring
+modernwarfareiii.exe,exe,gaming,substring
+steam.exe,exe,gaming,substring
+steamwebhelper.exe,exe,gaming,substring
+epicgameslauncher.exe,exe,gaming,substring
+riotclientservices.exe,exe,gaming,substring
+riotclientux.exe,exe,gaming,substring
+battlenet.exe,exe,gaming,substring
+eadesktop.exe,exe,gaming,substring
+origin.exe,exe,gaming,substring
+upc.exe,exe,gaming,substring
+ubisoftconnect.exe,exe,gaming,substring
+rockstargameslauncher.exe,exe,gaming,substring
+
+# ------ CORE DEFAULTS: Creative & game development ------
+figma.exe,exe,design,substring
+figma agent.exe,exe,design,substring
+unrealeditor.exe,exe,development,substring
+unrealengine.exe,exe,development,substring
+godot.exe,exe,development,substring
+godot4.exe,exe,development,substring
+unity.exe,exe,development,substring
+unityhub.exe,exe,development,substring
+blender.exe,exe,design,substring
+maya.exe,exe,design,substring
+3dsmax.exe,exe,design,substring
+adobe photoshop.exe,exe,design,substring
+photoshop.exe,exe,design,substring
+
+# ------ CORE DEFAULTS: Coding & AI workspaces ------
+chatgpt.exe,exe,development,substring
+claude.exe,exe,development,substring
+opencode.exe,exe,development,substring
+code.exe,exe,development,substring
+code - insiders.exe,exe,development,substring
+cursor.exe,exe,development,substring
+devenv.exe,exe,development,substring
+visualstudio.exe,exe,development,substring
+
+# ------ CORE DEFAULTS: Windows shell surfaces ------
+startmenuexperiencehost.exe,exe,system,substring
+searchhost.exe,exe,system,substring
+searchapp.exe,exe,system,substring
+shellexperiencehost.exe,exe,system,substring
+shellhost.exe,exe,system,substring
+textinputhost.exe,exe,system,substring
+applicationframehost.exe,exe,system,substring
+lockapp.exe,exe,system,substring
+dwm.exe,exe,system,substring
+runtimebroker.exe,exe,system,substring
+widgets.exe,exe,system,substring
+
+# ------ CORE DEFAULTS: Video, streaming & learning ------
+youtube.com,domain,media,substring
+music.youtube.com,domain,media,substring
+netflix.com,domain,media,substring
+primevideo.com,domain,media,substring
+disneyplus.com,domain,media,substring
+hotstar.com,domain,media,substring
+twitch.tv,domain,media,substring
+udemy.com,domain,education,substring
+coursera.org,domain,education,substring
+pluralsight.com,domain,education,substring
+skillshare.com,domain,education,substring

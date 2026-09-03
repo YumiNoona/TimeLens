@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 5.0.3 keeps the Windows startup launch silent and prevents a first-run prompt from appearing at sign-in. TimeLens uses the same application icon for the executable, tray, installer, Start menu, desktop shortcuts, Task Manager, and Windows Startup list.
+Version 5.1.0 makes activity totals match real use: Windows shell surfaces and idle periods no longer inflate app time, browser time counts only while the browser is foreground, and site durations exclude unattended time. Default categories now cover common games, launchers, creative tools, game engines, coding and AI tools, browsers, learning, and video services.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v5.0.3`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v5.1.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

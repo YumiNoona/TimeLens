@@ -153,18 +153,36 @@ internal static class Program
         if (settings.TrackAudio)
             idleMonitor.AudioMonitorRef = audioMonitor;
 
-        void WriteAppEvent()
+        bool IsExtensionTrackedBrowser(string exe)
         {
-            var (exe, title, pid) = Win32.GetForegroundWindowInfo();
-            if (ShouldSkipBrowserAppRow(exe)) return;
+            var normalized = Path.GetFileName(exe).ToLowerInvariant();
+            return normalized is "chrome.exe" or "msedge.exe" or "microsoftedge.exe" or "firefox.exe" or
+                "zen.exe" or "brave.exe" or "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe"
+                && (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2;
+        }
+
+        void WriteAppEvent(string? foregroundExe = null, string? foregroundTitle = null, int? foregroundPid = null, string? forcedState = null)
+        {
+            var (detectedExe, detectedTitle, detectedPid) = Win32.GetForegroundWindowInfo();
+            var exe = foregroundExe ?? detectedExe;
+            var title = foregroundTitle ?? detectedTitle;
+            var pid = foregroundPid ?? detectedPid;
+            if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
+                exe = ResolveConsoleExe(title) ?? exe;
             var cat = classifier.Classify(exe, title);
-            var state = idleMonitor.GetState();
-            var project = CategoryClassifier.ExtractProject(exe, title);
-            writer.OpenAppEvent(exe, title, pid, state, cat, project);
+            var state = forcedState ?? idleMonitor.GetState();
             LiveStatusStore.CurrentApp = exe;
             LiveStatusStore.IsIdle = state != "active";
             LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
             LiveStatusStore.SystemState = state;
+            if (state != "active" || IsExtensionTrackedBrowser(exe) || cat == "system")
+            {
+                writer.CloseCurrentAppEvent();
+                return;
+            }
+            var project = CategoryClassifier.ExtractProject(exe, title);
+            writer.OpenAppEvent(exe, title, pid, state, cat, project);
         }
 
         // Blocklist enforcement — entries: {i: identifier, m: 'u'|'t', e?: expiresAt}
@@ -470,41 +488,12 @@ internal static class Program
             catch { }
         }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
 
-        // Browser exes for which we skip app-level rows when the extension is active.
-        // Without this, every tab switch also creates an app row → redundant Browsing entries.
-        var browserExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "chrome.exe", "msedge.exe", "microsoftedge.exe", "firefox.exe",
-            "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe"
-        };
-
-        bool ShouldSkipBrowserAppRow(string exe) =>
-            browserExes.Contains(exe) &&
-            (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2;
-
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
-            if (ShouldSkipBrowserAppRow(exe)) return;
-
-            // Resolve conhost/OpenConsole to the actual console process (cmd/powershell/pwsh).
-            // conhost.exe is the window owner for all console windows — the real target
-            // is the shell process attached to it. Resolve by title to match blocklist entries.
-            if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
-            {
-                exe = ResolveConsoleExe(title) ?? exe;
-            }
-
-            var cat = classifier.Classify(exe, title);
-            var state = idleMonitor.GetState();
-            var project = CategoryClassifier.ExtractProject(exe, title);
-            writer.OpenAppEvent(exe, title, pid, state, cat, project);
-            LiveStatusStore.IsIdle = state != "active";
-            LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
-            LiveStatusStore.SystemState = state;
+            WriteAppEvent(exe, title, pid);
 
             // Focus mode — blocklist check on foreground switch
-            if (LiveStatusStore.Settings.FocusMode && state == "active")
+            if (LiveStatusStore.Settings.FocusMode && !LiveStatusStore.IsIdle)
             {
                 var blocked = FindBlockedExecutable(exe) is not null;
                 if (blocked)
@@ -537,6 +526,7 @@ internal static class Program
             if (from == "active" && (to == "idle" || to == "away"))
             {
                 var (exe, _, _) = Win32.GetForegroundWindowInfo();
+                writer.CloseCurrentAppEvent();
                 writer.StartIdleSpan(exe, to == "away" ? "away" : "input_idle");
             }
             else if ((from == "idle" || from == "away") && to == "active")
@@ -582,12 +572,8 @@ internal static class Program
                     LiveStatusStore.PendingIdleReturn = true;
 
                 lastSystemState = curState;
-                var (exe, title, pid) = Win32.GetForegroundWindowInfo();
-                if (ShouldSkipBrowserAppRow(exe)) return;
-                var cat = classifier.Classify(exe, title);
-                var project = CategoryClassifier.ExtractProject(exe, title);
-                writer.OpenAppEvent(exe, title, pid, curState, cat, project);
-                LiveStatusStore.CurrentApp = exe;
+                if (curState == "active") WriteAppEvent(forcedState: curState);
+                else writer.CloseCurrentAppEvent();
             }
         }, null, 10_000, 10_000);
 

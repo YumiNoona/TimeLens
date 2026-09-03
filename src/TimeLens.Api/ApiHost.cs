@@ -26,6 +26,15 @@ public static class ApiHost
     private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static bool IsTrackedBrowserForeground(string? browser)
+    {
+        var exe = Path.GetFileName(LiveStatusStore.CurrentApp ?? string.Empty).ToLowerInvariant();
+        if (string.Equals(browser, "firefox", StringComparison.OrdinalIgnoreCase))
+            return exe is "firefox.exe" or "zen.exe" or "floorp.exe" or "waterfox.exe" or "librewolf.exe";
+        return exe is "chrome.exe" or "msedge.exe" or "microsoftedge.exe" or "brave.exe" or
+            "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe";
+    }
+
     private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
     {
         "top-left" => "top-left",
@@ -983,6 +992,16 @@ public static class ApiHost
                 await closeCmd.ExecuteNonQueryAsync();
             }
 
+            // Extensions can keep an active tab alive while their browser is behind
+            // another app. Record only when that browser owns the foreground window.
+            if (!IsTrackedBrowserForeground(evt.Browser))
+            {
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsJsonAsync(browserBlock, AppJsonContext.Default.BrowserBlockResponseDto);
+                return;
+            }
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id, local_date)
@@ -1067,6 +1086,14 @@ public static class ApiHost
                 closeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
                 closeCmd.Parameters.AddWithValue("$id", prevEventId);
                 await closeCmd.ExecuteNonQueryAsync();
+            }
+
+            if (!IsTrackedBrowserForeground(browser))
+            {
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"ok\":true}");
+                return;
             }
 
             // Open a new row — bounds max miscalculation to heartbeat interval
@@ -1208,20 +1235,41 @@ public static class ApiHost
             if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
             var localDate = queryDate.Date;
             var dateStr = localDate.ToString("yyyy-MM-dd");
-            var eodUtc = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
-
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
+
+            // Browser heartbeats identify the visible tab, but they keep arriving while
+            // the PC is unattended. Subtract OS idle spans so a background YouTube,
+            // WhatsApp, or dashboard tab does not turn into hours of claimed use.
+            var idleRanges = new List<(DateTime Start, DateTime End)>();
+            using (var idleCmd = conn.CreateCommand())
+            {
+                idleCmd.CommandText = """
+                    SELECT start_time, COALESCE(end_time, $now)
+                    FROM idle_spans
+                    WHERE start_time < $now AND COALESCE(end_time, $now) > $dayStart
+                    ORDER BY start_time
+                    """;
+                idleCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+                idleCmd.Parameters.AddWithValue("$dayStart", TimeZoneInfo.ConvertTimeToUtc(localDate).ToString("o"));
+                using var idleReader = await idleCmd.ExecuteReaderAsync();
+                while (await idleReader.ReadAsync())
+                {
+                    idleRanges.Add((
+                        DateTime.Parse(idleReader.GetString(0), null, DateTimeStyles.RoundtripKind),
+                        DateTime.Parse(idleReader.GetString(1), null, DateTimeStyles.RoundtripKind)));
+                }
+            }
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT domain, start_time,
-                       COALESCE(end_time, LEAD(start_time, 1, $eod) OVER (ORDER BY start_time)) AS next_time
+                SELECT domain, start_time, COALESCE(end_time, $now) AS end_time
                 FROM browser_events
                 WHERE local_date = $date
                 ORDER BY start_time
                 """;
             cmd.Parameters.AddWithValue("$date", dateStr);
-            cmd.Parameters.AddWithValue("$eod", eodUtc.ToString("o"));
+            cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
 
             var domainSecs = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             using var r = await cmd.ExecuteReaderAsync();
@@ -1231,9 +1279,19 @@ public static class ApiHost
                 var start = DateTime.Parse(r.GetString(1), null, DateTimeStyles.RoundtripKind);
                 var next = DateTime.Parse(r.GetString(2), null, DateTimeStyles.RoundtripKind);
                 var secs = (next - start).TotalSeconds;
+                foreach (var idle in idleRanges)
+                {
+                    var overlapStart = start > idle.Start ? start : idle.Start;
+                    var overlapEnd = next < idle.End ? next : idle.End;
+                    if (overlapEnd > overlapStart)
+                        secs -= (overlapEnd - overlapStart).TotalSeconds;
+                }
                 if (secs > 0)
                 {
-                    var capped = Math.Min(secs, 3600); // cap at 1 hour per event to avoid outliers
+                    // The extension rotates the visible-tab event every 45 seconds.
+                    // A 2-minute ceiling still tolerates delayed service workers while
+                    // preventing a crashed or sleeping tab from becoming a multi-hour visit.
+                    var capped = Math.Min(secs, 120);
                     domainSecs.TryGetValue(domain, out var cur);
                     domainSecs[domain] = cur + capped;
                 }

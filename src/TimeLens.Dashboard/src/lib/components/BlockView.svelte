@@ -180,6 +180,27 @@
     finally { unlocking = false; }
   }
 
+  async function exitTimeLens() {
+    try {
+      const headers: Record<string, string> = {};
+      if (unlockToken) headers['X-TimeLens-Unlock'] = unlockToken;
+      const response = await fetch('/api/app/exit', { method: 'POST', headers });
+      if (response.status === 423) {
+        unlockToken = '';
+        pendingAction = exitTimeLens;
+        unlockPassword = '';
+        unlockError = '';
+        showUnlock = true;
+        return;
+      }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not close TimeLens');
+      notificationStatus = 'Closing TimeLens…';
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : 'Could not close TimeLens';
+    }
+  }
+
   async function saveAll(next: BlockEntry[], retry: RetryAction | null = null): Promise<boolean> {
     saving = true;
     try {
@@ -359,7 +380,7 @@
   <section class="focus-bar">
     <div class="focus-state"><span class:active={focusMode}><i class="ti ti-shield-check"></i></span><div><strong>{focusMode ? 'Protection on' : 'Protection off'}</strong><small>{items.length} {items.length === 1 ? 'target' : 'targets'}</small></div></div>
     <div class="focus-actions">
-      {#if blockProtectionEnabled}<span class="locked"><i class="ti ti-lock"></i>Protected</span>{/if}
+      {#if blockProtectionEnabled}<span class="locked"><i class="ti ti-lock"></i>Protected</span><button class="protected-exit" onclick={exitTimeLens}><i class="ti ti-power"></i>Exit</button>{/if}
       <label class="switch-label"><span>{focusMode ? 'On' : 'Off'}</span><input class="toggle" type="checkbox" checked={focusMode} onchange={(event) => saveFocus((event.currentTarget as HTMLInputElement).checked)} /></label>
     </div>
   </section>
@@ -432,7 +453,7 @@
 {/if}
 
 <style>
-  .block-page{display:grid;gap:14px}.notice{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;font-size:12px}.notice.error{color:var(--md-error);background:var(--md-err-cont);border:1px solid color-mix(in srgb,var(--md-error) 28%,transparent)}.notice span{flex:1}.notice button{border:0;background:transparent;color:inherit;font-size:18px;cursor:pointer}
+  .block-page{display:grid;gap:14px}.notice{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;font-size:12px}.notice.error{color:var(--md-error);background:var(--md-err-cont);border:1px solid color-mix(in srgb,var(--md-error) 28%,transparent)}.notice span{flex:1}.notice button{border:0;background:transparent;color:inherit;font-size:18px;cursor:pointer}.protected-exit{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--clr-border);border-radius:8px;color:var(--clr-text-sec);background:var(--clr-bg-ter);font-size:10px;cursor:pointer}.protected-exit:hover{border-color:var(--md-primary);color:var(--md-primary)}
   .focus-bar,.panel{background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:var(--shape-lg)}.focus-bar{min-height:66px;display:flex;align-items:center;justify-content:space-between;padding:12px 16px}.focus-state,.focus-actions,.switch-label,.panel header,.image-actions,.target-row{display:flex;align-items:center}.focus-state{gap:11px}.focus-state>span{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;color:var(--clr-text-sec);background:var(--clr-bg-ter)}.focus-state>span.active{color:var(--md-primary);background:var(--md-primary-cont)}.focus-state div{display:grid;gap:2px}.focus-state strong{font-size:14px;color:var(--clr-text-pri)}.focus-state small{font-size:11px;color:var(--clr-text-sec)}.focus-actions{gap:10px}.locked,.extension{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:999px;background:var(--clr-bg-ter);color:var(--clr-text-sec);font-size:10px}.switch-label{gap:8px;color:var(--clr-text-pri);font-size:11px;font-weight:600}.toggle{appearance:none;width:40px;height:22px;margin:0;position:relative;border:0;border-radius:99px;background:var(--clr-border-strong);cursor:pointer}.toggle:after{content:'';position:absolute;width:18px;height:18px;top:2px;left:2px;border-radius:50%;background:white;transition:transform .18s}.toggle:checked{background:var(--md-primary)}.toggle:checked:after{transform:translateX(18px)}
   .workspace{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);align-items:start;gap:14px}.workspace>.panel{align-self:start}.panel{overflow:hidden}.panel header{min-height:62px;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--clr-border)}.panel header>div{display:grid;gap:2px}.kicker{color:var(--md-primary);font-size:9px;font-weight:700;letter-spacing:.12em}.panel h2{margin:0;color:var(--clr-text-pri);font-size:14px}.save{height:31px;padding:0 12px;border:1px solid var(--md-primary);border-radius:8px;background:var(--md-primary);color:var(--md-on-primary);font:600 11px inherit;cursor:pointer}.save:disabled{opacity:.4;cursor:not-allowed}
   .preview-shell{padding:16px 16px 8px}.preview-shell.browser{display:flex;justify-content:flex-start}.preview{min-height:78px;display:flex;align-items:center;gap:12px;padding:12px;border-left:3px solid var(--md-primary);border-radius:12px;background:#151b1d;border-top:1px solid #2a3639;border-right:1px solid #2a3639;border-bottom:1px solid #2a3639;box-shadow:0 10px 26px rgba(0,0,0,.2)}.browser .preview{width:min(480px,100%)}.preview img,.preview video,.preview-icon{width:52px;height:52px;flex:0 0 52px;border-radius:9px}.preview.media-large{min-height:124px}.preview.media-large img,.preview.media-large video,.preview.media-large .preview-icon{width:124px;height:96px;flex-basis:124px}.preview.media-banner{display:grid;align-items:stretch;gap:10px}.preview.media-banner img,.preview.media-banner video,.preview.media-banner .preview-icon{width:100%;height:180px;display:grid;flex:none}.preview img,.preview video{object-fit:cover;background:#0b1113}.preview-icon{display:grid;place-items:center;color:var(--md-primary);background:var(--md-primary-cont);font-size:20px}.preview>div{min-width:0;display:grid;gap:2px}.preview span{color:var(--md-primary);font-size:9px;text-transform:uppercase;letter-spacing:.08em}.preview strong{color:#f3f7f6;font-size:13px}.preview p{margin:0;color:#b3c2bf;font-size:11px;line-height:1.35;white-space:normal;overflow-wrap:anywhere}

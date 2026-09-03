@@ -24,6 +24,7 @@ internal static class Program
         var smokeTestIndex = Array.IndexOf(args, "--smoke-test");
         var smokeTest = smokeTestIndex >= 0;
         var startupRequested = args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
+        var updatedRequested = args.Any(arg => string.Equals(arg, "--updated", StringComparison.OrdinalIgnoreCase));
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
         using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
@@ -47,7 +48,7 @@ internal static class Program
             var iconPath = EnsureRuntimeFile(dataDir, "runtime/TimeLens.ico", "TimeLens.ico");
             NativeLibrary.Load(sqlitePath);
 
-            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested);
+            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested, updatedRequested);
         }
         catch (Exception ex)
         {
@@ -96,7 +97,7 @@ internal static class Program
         return targetPath;
     }
 
-    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest, bool startupRequested)
+    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest, bool startupRequested, bool updatedRequested)
     {
         var dbPath = Path.Combine(dataDir, "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -723,6 +724,14 @@ internal static class Program
         var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)
             ? File.GetLastWriteTimeUtc(executablePath).Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture)
             : DateTime.UtcNow.Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture);
+        void OpenDashboard()
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}",
+                UseShellExecute = true
+            });
+        }
         if (settings.TrackInput) inputMonitor.InputActivityTick += OnInputTick;
         if (settings.TrackAudio) audioMonitor.SessionAudioChanged += OnAudioChanged;
         tray.StartupRequested += () =>
@@ -764,14 +773,23 @@ internal static class Program
                     }
                 }
             }, apiCts.Token);
+
+            if (updatedRequested)
+            {
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(1_500, apiCts.Token);
+                        OpenDashboard();
+                    }
+                    catch (OperationCanceledException) { }
+                }, apiCts.Token);
+            }
         };
         tray.OpenDashboardRequested += () =>
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}",
-                UseShellExecute = true
-            });
+            OpenDashboard();
         };
         tray.InstallExtensionRequested += () =>
         {
@@ -783,6 +801,11 @@ internal static class Program
         };
         tray.ExitRequested += () =>
         {
+            if (LiveStatusStore.Settings.BlockProtectionEnabled)
+            {
+                tray.ShowBalloon("TimeLens is protected", "Unlock protected blocks from the Block page before exiting.", true);
+                return;
+            }
             RequestShutdown();
         };
 

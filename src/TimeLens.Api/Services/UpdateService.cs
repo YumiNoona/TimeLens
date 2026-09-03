@@ -234,10 +234,11 @@ public sealed class UpdateService : IDisposable
               }
             }
             if (-not $copied) {
-              Start-Process -FilePath {{target}}
+              "$(Get-Date -Format o) Replacement failed" | Set-Content -LiteralPath (Join-Path {{PowerShellLiteral(updateDirectory)}} 'last-update.log') -Encoding utf8
               exit 3
             }
-            Start-Process -FilePath {{target}}
+            "$(Get-Date -Format o) Replacement complete" | Set-Content -LiteralPath (Join-Path {{PowerShellLiteral(updateDirectory)}} 'last-update.log') -Encoding utf8
+            Start-Process -FilePath {{target}} -ArgumentList '--updated' -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}}
             Start-Sleep -Milliseconds 500
             Remove-Item -LiteralPath {{staged}} -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath {{script}} -Force -ErrorAction SilentlyContinue

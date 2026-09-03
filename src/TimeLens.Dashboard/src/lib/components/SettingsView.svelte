@@ -239,6 +239,7 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || 'Update failed');
       updateStatus = result;
+      if (result.restarting) void waitForUpdatedDashboard(result.latestVersion);
     } catch (error) {
       updateStatus = {
         ...updateStatus,
@@ -248,6 +249,32 @@
     } finally {
       if (!updateStatus.restarting) updateBusy = false;
     }
+  }
+
+  async function waitForUpdatedDashboard(expectedVersion: string | undefined) {
+    const deadline = Date.now() + 75_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+      try {
+        const response = await fetch('/api/update/status', { cache: 'no-store' });
+        if (!response.ok) continue;
+        const status: UpdateStatus = await response.json();
+        if (status.currentVersion === expectedVersion) {
+          const next = new URL(window.location.href);
+          next.searchParams.set('v', String(Date.now()));
+          window.location.replace(next.toString());
+          return;
+        }
+      } catch {
+        // The old local API is expected to disappear while the executable is replaced.
+      }
+    }
+    updateStatus = {
+      ...updateStatus,
+      restarting: false,
+      error: 'TimeLens did not return after the update. Open it again from Start or run the installer.'
+    };
+    updateBusy = false;
   }
 
   function clearProtectionFields() {

@@ -504,3 +504,43 @@ udemy.com,domain,education,substring
 coursera.org,domain,education,substring
 pluralsight.com,domain,education,substring
 skillshare.com,domain,education,substring
+
+# ------ CORE DEFAULTS: Hardware, utilities & cloud ------
+# Hardware companion apps are useful utilities, not productive foreground work.
+armourycrate.exe,exe,utilities,substring
+armourycrate.service.exe,exe,system,substring
+asus_framework.exe,exe,system,substring
+myasus.exe,exe,utilities,substring
+nvidia overlay.exe,exe,utilities,substring
+nvidia app.exe,exe,utilities,substring
+nvidia share.exe,exe,system,substring
+geforce experience.exe,exe,utilities,substring
+nvcontainer.exe,exe,system,substring
+nvdisplay.container.exe,exe,system,substring
+amdsoftware.exe,exe,utilities,substring
+radeonsoftware.exe,exe,utilities,substring
+radeonsoftwarestartuptask.exe,exe,system,substring
+intelunison.exe,exe,utilities,substring
+intelgraphicscommandcenter.exe,exe,utilities,substring
+razer synapse.exe,exe,utilities,substring
+razercentralservice.exe,exe,system,substring
+lghub.exe,exe,utilities,substring
+logioptionsplus_agent.exe,exe,system,substring
+icue.exe,exe,utilities,substring
+corsair.service.exe,exe,system,substring
+steelseriesgg.exe,exe,utilities,substring
+msi center.exe,exe,utilities,substring
+alienware command center.exe,exe,utilities,substring
+lenovo vantage.exe,exe,utilities,substring
+hp.omen.omencommandcenter.exe,exe,utilities,substring
+
+onedrive.exe,exe,work,substring
+dropbox.exe,exe,work,substring
+googledrivefs.exe,exe,work,substring
+snippingtool.exe,exe,utilities,substring
+photos.exe,exe,utilities,substring
+microsoft.photos.exe,exe,utilities,substring
+calculatorapp.exe,exe,utilities,substring
+windowsalarms.exe,exe,utilities,substring
+settings.exe,exe,system,substring
+systemsettings.exe,exe,system,substring

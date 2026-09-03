@@ -303,6 +303,27 @@ public static class ApiHost
             }
         });
 
+        app.MapPost("/api/app/exit", async (HttpContext ctx) =>
+        {
+            if (BlockProtectionService.IsEnabled(dbPath) && !HasBlockUnlock(ctx))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status423Locked;
+                await ctx.Response.WriteAsync("{\"error\":\"Password required to exit while blocks are protected\",\"code\":\"block_locked\"}");
+                return;
+            }
+
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+            if (requestShutdown is not null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(250);
+                    requestShutdown();
+                });
+            }
+        });
+
         app.MapPost("/api/block/protection/setup", async (HttpContext ctx) =>
         {
             if (BlockProtectionService.IsEnabled(dbPath))

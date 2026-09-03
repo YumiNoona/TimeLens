@@ -41,7 +41,7 @@
 
         <article id="overview" data-search="overview local tracker system tray dashboard getting started">
           <header><span>01</span><div><p>GET STARTED</p><h2>What TimeLens does</h2></div></header>
-          <p class="lead">TimeLens records which desktop app is in the foreground, aggregates input counts, detects idle and audio activity, and—when the extension is installed—records browser domains and audible tabs.</p>
+          <p class="lead">TimeLens records meaningful foreground work, separates idle spans from app time, recognizes audible media, and—when the extension is installed—records browser domains only while that browser is in front.</p>
           <div class="note"><strong>It counts activity, not content.</strong><p>Keyboard and mouse input are stored as totals in one-minute buckets. TimeLens does not record the keys you press, your messages, passwords, document contents, or screenshots.</p></div>
           <div class="feature-grid">
             <div><b>Tray application</b><p>Runs quietly in the Windows notification area and owns the local tracking service.</p></div>
@@ -74,7 +74,7 @@
 
         <article id="today" data-search="today active time focus score keystrokes clicks idle top apps categories cards drag layout">
           <header><span>04</span><div><p>DASHBOARD</p><h2>Today</h2></div></header>
-          <p>The Today tab is a live summary of the current date. Active time excludes idle periods, Focus score estimates how concentrated the day was, and input totals show counts—not typed content.</p>
+          <p>The Today tab is a live summary of the current date. Active time excludes idle periods and Windows shell surfaces, Focus score estimates how concentrated the day was, and input totals show counts—not typed content.</p>
           <dl><div><dt>Active time</dt><dd>Foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>A compact signal based on switching patterns and category balance; use it as context, not a grade.</dd></div><div><dt>Top apps</dt><dd>Applications ranked by tracked active duration.</dd></div><div><dt>Categories</dt><dd>Time grouped using built-in and custom Rules.</dd></div></dl>
           <div class="tip"><strong>Arrange the dashboard.</strong><p>Hover a movable card and drag its grip. TimeLens remembers card order separately for each page. Use <kbd>Alt</kbd> + an arrow key while the grip is focused for keyboard reordering.</p></div>
         </article>
@@ -112,14 +112,14 @@
             <div><span>03</span><i data-lucide="octagon-x" aria-hidden="true"></i><b>Kill</b><p>Terminates a matching desktop process immediately.</p></div>
             <div><span>04</span><i data-lucide="shield-check" aria-hidden="true"></i><b>Strict</b><p>Stops desktop relaunches or shows the custom full-page website screen.</p></div>
           </div>
-          <ol class="steps compact"><li><span>1</span><div><b>Choose App or Website</b><p>Apps offer all four modes; websites offer only Notify and Strict.</p></div></li><li><span>2</span><div><b>Pick a mode and target</b><p>Search running executables or paste a website URL.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Use a timed block or keep it active until manually removed.</p></div></li><li><span>4</span><div><b>Enable protection</b><p>Removing a target makes it usable again immediately.</p></div></li></ol>
+          <ol class="steps compact"><li><span>1</span><div><b>Choose App or Website</b><p>Apps offer Hide, Kill, and Strict; websites offer Notify and Strict.</p></div></li><li><span>2</span><div><b>Pick a mode and target</b><p>Search running executables or paste a website URL.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Use a timed block or keep it active until manually removed.</p></div></li><li><span>4</span><div><b>Enable protection</b><p>Choose Strict targets only or all focus targets, then require a password before protected entries can be removed.</p></div></li></ol>
           <div class="warning"><strong>Use Kill and Strict carefully.</strong><p>Unsaved work in a terminated application can be lost. Never target Windows shells, security software, or TimeLens itself.</p></div>
         </article>
 
         <article id="password" data-search="password protection shared pc disable remove strict focus pbkdf2 recovery">
           <header><span>10</span><div><p>CONTROL</p><h2>Password protection</h2></div></header>
-          <p>Password protection is optional. When enabled, TimeLens requires authorization before Focus Mode is disabled, enforcement is weakened, or protected targets are removed.</p>
-          <ul class="check-list"><li>Open Settings → Block password and create a password of at least six characters.</li><li>The password is converted to a salted PBKDF2 hash and stored locally; the original password is not retained.</li><li>Unlock attempts are throttled to slow casual guessing.</li><li>Protection prevents casual dashboard changes, but it cannot stop a Windows administrator from deleting the application or its local data.</li></ul>
+          <p>Password protection is optional. Choose whether it applies to Strict targets only or every focus target, and whether the tray Exit command needs a password.</p>
+          <ul class="check-list"><li>Open Settings → Block password and create a password of at least six characters.</li><li>With Strict targets only selected, removing or weakening a Strict app or website requires the password. Choose All focus targets to cover every entry.</li><li>The password is converted to a salted PBKDF2 hash and stored locally; the original password is not retained.</li><li>Unlock attempts are throttled to slow casual guessing. Changing the protection scope or disabling protected exit also asks for the password.</li><li>Protection prevents casual dashboard and tray bypasses. Windows Task Manager can still end a normal user process; separate Windows accounts and a locked screen are required for stronger PC security.</li></ul>
           <div class="warning"><strong>Keep the password somewhere safe.</strong><p>TimeLens cannot reveal a forgotten password. Removing local settings can reset protection, but also changes your local configuration.</p></div>
         </article>
 
@@ -137,7 +137,7 @@
             <section><h3>Appearance</h3><p>Choose the accent theme, comfortable or compact density, motion preference, and the dashboard tab opened by default.</p></section>
             <section><h3>Tracking</h3><p>Toggle browser, input, and audio signals and set the idle threshold. Disabling a signal stops future collection; it does not delete existing rows.</p></section>
             <section><h3>Timeline & history</h3><p>Choose grouped or flat default timeline, show or hide window titles, filter quick switches, set the heatmap range, time format, and refresh interval.</p></section>
-            <section><h3>Focus & reminders</h3><p>Configure break reminders and Focus Mode from one place.</p></section>
+            <section><h3>Focus & reminders</h3><p>Configure break reminders and Focus Mode from one place. Block password options choose Strict-only or all-target protection and control protected tray exit.</p></section>
             <section><h3>Data & storage</h3><p>Choose retention from 30 to 365 days, inspect database size, and export today or the last 30 days as CSV.</p></section>
             <section><h3>Goals</h3><p>Create minimum or maximum daily targets for an app or category. Goals provide context and reminders; they do not modify raw activity.</p></section>
             <section><h3>Card layout</h3><p>Reset a rearranged page or restore every dashboard page to its original card order.</p></section>
@@ -154,7 +154,7 @@
         <article id="troubleshooting" data-search="troubleshooting dashboard not open extension disconnected blocks not working tray port antivirus reset">
           <header><span>14</span><div><p>REFERENCE</p><h2>Troubleshooting</h2></div></header>
           <div class="faq">
-            <details><summary>The dashboard does not open</summary><p>Confirm the tray icon is running, then open <code>http://127.0.0.1:47821/</code>. If another TimeLens instance exists, close all copies and launch the newest EXE once.</p></details>
+            <details><summary>The dashboard does not open</summary><p>Confirm the tray icon is running, then open <code>http://127.0.0.1:47821/</code>. The address intentionally remains local to your PC. If another TimeLens instance exists, close all copies and launch the newest EXE once.</p></details>
             <details><summary>The extension says disconnected</summary><p>Keep the tray app running, reload the extension from Firefox Add-ons, and open a new tab. Confirm that <code>http://127.0.0.1:47821</code> opens while TimeLens is running.</p></details>
             <details><summary>Website blocking does not work</summary><p>Website enforcement requires the extension. Confirm Focus Mode is enabled, the entry is a domain rather than a full URL, and the current browser has the TimeLens extension loaded.</p></details>
             <details><summary>An app is categorized incorrectly</summary><p>Open Rules, look for a custom rule that is too broad, and replace it with an exact executable or domain match.</p></details>
@@ -165,7 +165,7 @@
         <article id="update" data-search="update upgrade uninstall remove backup data exe version">
           <header><span>15</span><div><p>REFERENCE</p><h2>Update or remove TimeLens</h2></div></header>
           <div class="split">
-            <section><p class="mini">UPDATE</p><h3>Update from Settings</h3><p>Open Settings → Software updates, check for a release, and choose Update now. TimeLens verifies the download, replaces the EXE, and restarts without moving your local database.</p></section>
+            <section><p class="mini">UPDATE</p><h3>Update from Settings</h3><p>Open Settings → Software updates, check for a release, and choose Update now. TimeLens verifies the download, replaces the EXE, restarts, opens a fresh dashboard, and preserves the local database. If Windows blocks replacement, download and run the current Setup installer once.</p></section>
             <section><p class="mini">REMOVE</p><h3>Use Windows uninstall</h3><p>Exit TimeLens, then remove it from Windows Settings → Apps → Installed apps. Delete <code>%LOCALAPPDATA%\TimeLens</code> separately only if you also want to permanently erase history and settings.</p></section>
           </div>
         </article>

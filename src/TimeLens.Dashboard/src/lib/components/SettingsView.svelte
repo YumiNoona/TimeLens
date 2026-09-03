@@ -44,6 +44,8 @@
   let timelineMinSegmentSeconds = $state(60);
   let heatmapDays = $state(273);
   let blockProtectionEnabled = $state(false);
+  let blockProtectionScope = $state<'strict' | 'all'>('strict');
+  let blockExitProtection = $state(true);
   let protectionCurrentPassword = $state('');
   let protectionNewPassword = $state('');
   let protectionConfirmPassword = $state('');
@@ -134,6 +136,8 @@
       timelineMinSegmentSeconds = s.timelineMinSegmentSeconds ?? 60;
       heatmapDays = s.heatmapDays ?? 273;
       blockProtectionEnabled = s.blockProtectionEnabled ?? false;
+      blockProtectionScope = s.blockProtectionScope === 'all' ? 'all' : 'strict';
+      blockExitProtection = s.blockExitProtection ?? true;
       timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
       timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds);
       heatmapDaysStore.set(heatmapDays);
@@ -327,6 +331,27 @@
       protectionMessage = 'Password protection disabled';
   }
 
+  async function saveProtectionOptions() {
+    if (!protectionCurrentPassword) return;
+    protectionBusy = true;
+    protectionMessage = '';
+    protectionError = '';
+    try {
+      const response = await fetch('/api/block/protection/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: protectionCurrentPassword, scope: blockProtectionScope, protectExit: blockExitProtection })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not save protection options');
+      protectionCurrentPassword = '';
+      protectionMessage = 'Protection options saved';
+      await load();
+    } catch (error) {
+      protectionError = error instanceof Error ? error.message : 'Could not save protection options';
+    } finally { protectionBusy = false; }
+  }
+
   onMount(() => { void load(); void checkUpdates(); });
 </script>
 
@@ -491,13 +516,15 @@
   <section class="card card-wide protection-card">
     <div class="card-header protection-header">
       <span class="section-icon"><i class="ti ti-lock-password" aria-hidden="true"></i></span>
-      <div><h2>Block password</h2><p>Require a password before restrictions can be disabled, downgraded, or removed.</p></div>
+      <div><h2>Block password</h2><p>Choose which blocks need a password to weaken or remove, and whether tray exit is protected.</p></div>
       <span class="protection-state" class:enabled={blockProtectionEnabled}><i class="ti {blockProtectionEnabled ? 'ti-shield-lock' : 'ti-shield-off'}" aria-hidden="true"></i>{blockProtectionEnabled ? 'Protected' : 'Optional'}</span>
     </div>
     <div class="protection-body">
       <div class="protection-form">
         {#if blockProtectionEnabled}
           <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
+          <label><span>Protect changes</span><select bind:value={blockProtectionScope}><option value="strict">Strict targets only</option><option value="all">All focus targets</option></select></label>
+          <label class="protection-toggle"><span>Protect tray exit</span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} /></label>
         {/if}
         <label><span>{blockProtectionEnabled ? 'New password' : 'Password'}</span><input type="password" bind:value={protectionNewPassword} autocomplete="new-password" placeholder="6–128 characters" /></label>
         <label><span>Confirm password</span><input type="password" bind:value={protectionConfirmPassword} autocomplete="new-password" placeholder="Type it again" /></label>
@@ -506,6 +533,7 @@
         <div class="protection-actions">
           {#if blockProtectionEnabled}
             <button class="danger-btn" type="button" onclick={disableProtection} disabled={!protectionCurrentPassword || protectionBusy}>Disable protection</button>
+            <button class="secondary-btn" type="button" onclick={saveProtectionOptions} disabled={!protectionCurrentPassword || protectionBusy}>Save protection options</button>
             <button class="primary-btn" type="button" onclick={changeProtectionPassword} disabled={!protectionCurrentPassword || protectionNewPassword.length < 6 || !protectionConfirmPassword || protectionBusy}>Change password</button>
           {:else}
             <button class="primary-btn" type="button" onclick={enableProtection} disabled={protectionNewPassword.length < 6 || !protectionConfirmPassword || protectionBusy}><i class="ti ti-lock"></i>Enable protection</button>
@@ -667,6 +695,8 @@
   .protection-body { padding: 14px 16px 16px; }
   .protection-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
   .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
+  .protection-form select { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; outline: none; }
+  .protection-toggle { justify-content: space-between; }
   .protection-form label:first-child:nth-last-child(3) { grid-column: auto; }
   .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
   .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }

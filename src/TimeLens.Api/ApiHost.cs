@@ -92,13 +92,22 @@ public static class ApiHost
         return new(true, action == "strict", action, presentation);
     }
 
+    private static bool IsPasswordProtected(BlockEntry entry, string fallback, AppSettings settings) =>
+        settings.BlockProtectionScope == "all" ||
+        BlockEntryHelper.ActionFor(entry, fallback) == "strict";
+
+    private static bool HasPasswordProtectedTarget(AppSettings settings) =>
+        (BlockEntryHelper.TryParseBlockEntries(settings.FocusBlocklist) ?? [])
+            .Any(entry => !entry.IsExpired() && IsPasswordProtected(entry, settings.BlockAction, settings));
+
     private static bool WeakensBlocklist(string currentJson, string nextJson)
     {
         var current = BlockEntryHelper.TryParseBlockEntries(currentJson) ?? [];
         var next = BlockEntryHelper.TryParseBlockEntries(nextJson) ?? [];
         var nextById = next.ToDictionary(entry => entry.I, StringComparer.OrdinalIgnoreCase);
+        var settings = LiveStatusStore.Settings;
 
-        foreach (var existing in current.Where(entry => !entry.IsExpired()))
+        foreach (var existing in current.Where(entry => !entry.IsExpired() && IsPasswordProtected(entry, settings.BlockAction, settings)))
         {
             if (!nextById.TryGetValue(existing.I, out var replacement)) return true;
             if (existing.M == "u" && replacement.M != "u") return true;
@@ -106,7 +115,7 @@ public static class ApiHost
                 DateTime.TryParse(existing.E, null, DateTimeStyles.RoundtripKind, out var existingExpiry) &&
                 DateTime.TryParse(replacement.E, null, DateTimeStyles.RoundtripKind, out var replacementExpiry) &&
                 replacementExpiry < existingExpiry) return true;
-            var fallback = LiveStatusStore.Settings.BlockAction;
+            var fallback = settings.BlockAction;
             if (BlockActionStrength(BlockEntryHelper.ActionFor(replacement, fallback)) <
                 BlockActionStrength(BlockEntryHelper.ActionFor(existing, fallback))) return true;
         }
@@ -115,8 +124,8 @@ public static class ApiHost
 
     private static bool RequiresBlockUnlock(string name, string value) => name switch
     {
-        "focusMode" => LiveStatusStore.Settings.FocusMode && value == "false",
-        "blockAction" => BlockActionStrength(value) < BlockActionStrength(LiveStatusStore.Settings.BlockAction),
+        "focusMode" => LiveStatusStore.Settings.FocusMode && value == "false" && HasPasswordProtectedTarget(LiveStatusStore.Settings),
+        "blockAction" => BlockActionStrength(value) < BlockActionStrength(LiveStatusStore.Settings.BlockAction) && HasPasswordProtectedTarget(LiveStatusStore.Settings),
         "focusBlocklist" => WeakensBlocklist(LiveStatusStore.Settings.FocusBlocklist, value),
         _ => false
     };
@@ -305,7 +314,7 @@ public static class ApiHost
 
         app.MapPost("/api/app/exit", async (HttpContext ctx) =>
         {
-            if (BlockProtectionService.IsEnabled(dbPath) && !HasBlockUnlock(ctx))
+            if (BlockProtectionService.IsEnabled(dbPath) && LiveStatusStore.Settings.BlockExitProtection && !HasBlockUnlock(ctx))
             {
                 ctx.Response.StatusCode = StatusCodes.Status423Locked;
                 await ctx.Response.WriteAsync("{\"error\":\"Password required to exit while blocks are protected\",\"code\":\"block_locked\"}");
@@ -1049,6 +1058,31 @@ public static class ApiHost
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsJsonAsync(browserBlock, AppJsonContext.Default.BrowserBlockResponseDto);
+        });
+
+        app.MapPost("/api/block/protection/options", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+            var password = doc.RootElement.TryGetProperty("password", out var passwordProp) ? passwordProp.GetString() ?? "" : "";
+            var scope = doc.RootElement.TryGetProperty("scope", out var scopeProp) ? scopeProp.GetString() ?? "" : "";
+            var protectExit = doc.RootElement.TryGetProperty("protectExit", out var exitProp) && exitProp.ValueKind == System.Text.Json.JsonValueKind.True;
+            if (scope is not ("strict" or "all"))
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Invalid protection scope\"}");
+                return;
+            }
+            if (BlockProtectionService.TryUnlock(dbPath, password, out var retryAfter) is null)
+            {
+                ctx.Response.StatusCode = retryAfter > 0 ? 429 : 401;
+                await ctx.Response.WriteAsync(retryAfter > 0 ? $"{{\"error\":\"Too many attempts. Try again in {retryAfter} seconds\"}}" : "{\"error\":\"Current password is incorrect\"}");
+                return;
+            }
+            saveSetting?.Invoke("block_protection_scope", scope);
+            saveSetting?.Invoke("block_exit_protection", protectExit ? "true" : "false");
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { BlockProtectionScope = scope, BlockExitProtection = protectExit };
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
         app.MapGet("/api/browser-block-state", async (HttpContext ctx) =>

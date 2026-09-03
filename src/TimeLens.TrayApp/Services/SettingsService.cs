@@ -56,6 +56,8 @@ public sealed class SettingsService
             TimelineMinSegmentSeconds = int.TryParse(dict.GetValueOrDefault("timeline_min_segment_seconds", "60"), out var tmss) ? tmss : 60,
             HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "273"), out var hd) ? hd : 273,
             BlockProtectionEnabled = dict.GetValueOrDefault("block_protection_enabled", "false") == "true",
+            BlockProtectionScope = dict.GetValueOrDefault("block_protection_scope", "strict") == "all" ? "all" : "strict",
+            BlockExitProtection = dict.GetValueOrDefault("block_exit_protection", "true") != "false",
         };
     }
 

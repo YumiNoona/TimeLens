@@ -32,7 +32,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 3. Finish setup and open the tray menu to choose **Open Dashboard**.
 4. Choose **Install Browser Extension** to open the official [TimeLens Tracker listing](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/).
 
-Setup installs the self-contained app to `%LOCALAPPDATA%\Programs\TimeLens` by default, without requesting administrator access. On first launch TimeLens extracts the native SQLite library, category data, and tray icon to `%LOCALAPPDATA%\TimeLens\runtime`. The local dashboard is available only on the same PC at `http://127.0.0.1:47821`, and uninstalling the app does not silently erase activity history. See the [desktop guide](docs/desktop.md) for local aliases, update recovery, and block-protection limits.
+Setup installs the self-contained app to `%LOCALAPPDATA%\Programs\TimeLens` by default, without requesting administrator access. On first launch TimeLens extracts the native SQLite library, category data, and tray icon to `%LOCALAPPDATA%\TimeLens\runtime`. The local dashboard is available only on the same PC at `http://127.0.0.1:47821`, and uninstalling the app does not silently erase activity history. The deployed documentation in [`web/docs.html`](web/docs.html) covers update recovery and block-protection limits.
 
 ## Build
 
@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 5.2.0 completes the update handoff and adds protected exit. The old dashboard waits for the replacement process, the new app reopens a fresh dashboard, and a block password prevents casual exit from the tray. Default categories now also cover common hardware companions, cloud clients, capture tools, Photos, and Windows settings.
+Version 5.3.0 adds configurable password scope: protect Strict targets only or all focus targets, and choose whether tray exit requires the password. The public documentation now explains the real Windows security boundary, update recovery, and local-only dashboard design.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -76,7 +76,6 @@ TimeLens/
 ├── server/                      # server-only GitHub release integration
 ├── web/                         # public landing page and documentation
 ├── installer/                   # Inno Setup per-user Windows installer
-├── docs/                        # desktop operation, privacy, update, and protection guide
 ├── src/
 │   ├── TimeLens.Core/           # models and interfaces
 │   ├── TimeLens.Api/            # local Kestrel API and updater
@@ -120,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v5.2.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v5.3.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

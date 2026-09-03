@@ -90,4 +90,10 @@ public record AppSettings
 
     [JsonPropertyName("blockProtectionEnabled")]
     public bool BlockProtectionEnabled { get; init; } = false;
+
+    [JsonPropertyName("blockProtectionScope")]
+    public string BlockProtectionScope { get; init; } = "strict";
+
+    [JsonPropertyName("blockExitProtection")]
+    public bool BlockExitProtection { get; init; } = true;
 }

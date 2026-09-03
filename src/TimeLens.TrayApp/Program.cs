@@ -801,7 +801,7 @@ internal static class Program
         };
         tray.ExitRequested += () =>
         {
-            if (LiveStatusStore.Settings.BlockProtectionEnabled)
+            if (LiveStatusStore.Settings.BlockProtectionEnabled && LiveStatusStore.Settings.BlockExitProtection)
             {
                 tray.ShowBalloon("TimeLens is protected", "Unlock protected blocks from the Block page before exiting.", true);
                 return;

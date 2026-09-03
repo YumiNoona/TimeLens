@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>5.0.2</Version>
+    <Version>5.0.3</Version>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SelfContained>true</SelfContained>
@@ -13,6 +13,10 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>TimeLens.ico</ApplicationIcon>
+    <AssemblyTitle>TimeLens</AssemblyTitle>
+    <Product>TimeLens</Product>
+    <Company>Veil</Company>
+    <Description>TimeLens desktop activity tracker</Description>
     <OutputType>WinExe</OutputType>
     <DebugType>none</DebugType>
     <NoWarn>CA1416</NoWarn>

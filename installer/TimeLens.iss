@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "5.0.2"
+  #define AppVersion "5.0.3"
 #endif
 
 #define AppName "TimeLens"
@@ -59,8 +59,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "..\TimeLens.exe"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0
+Name: "{autodesktop}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "TimeLens"; ValueData: """{app}\{#AppExeName}"" --startup"; Tasks: startup; Flags: uninsdeletevalue

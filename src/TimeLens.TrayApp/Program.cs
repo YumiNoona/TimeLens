@@ -23,6 +23,7 @@ internal static class Program
         // prompts, and no registry changes. Normal launches always use LocalAppData.
         var smokeTestIndex = Array.IndexOf(args, "--smoke-test");
         var smokeTest = smokeTestIndex >= 0;
+        var startupRequested = args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
         using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
@@ -46,7 +47,7 @@ internal static class Program
             var iconPath = EnsureRuntimeFile(dataDir, "runtime/TimeLens.ico", "TimeLens.ico");
             NativeLibrary.Load(sqlitePath);
 
-            MainImpl(dataDir, categoriesPath, iconPath, smokeTest);
+            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested);
         }
         catch (Exception ex)
         {
@@ -95,7 +96,7 @@ internal static class Program
         return targetPath;
     }
 
-    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest)
+    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest, bool startupRequested)
     {
         var dbPath = Path.Combine(dataDir, "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -603,6 +604,16 @@ internal static class Program
         void CompleteFirstRun()
         {
             if (firstRunDone || smokeTest) return;
+            if (startupRequested)
+            {
+                // A Run-key launch must stay silent: do not put a first-run prompt in
+                // front of the user's desktop while Windows is signing in.
+                var autoStartEnabled = AutoStartManager.IsAutoStartEnabled();
+                settingsSvc.Save("auto_start", autoStartEnabled ? "true" : "false");
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { AutoStart = autoStartEnabled };
+                settingsSvc.Save("first_run_done", "true");
+                return;
+            }
             var result = MessageBox(IntPtr.Zero,
                 "Start TimeLens automatically when you log in?",
                 "TimeLens Setup",

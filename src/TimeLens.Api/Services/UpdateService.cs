@@ -16,7 +16,7 @@ public sealed class UpdateService : IDisposable
     private readonly SemaphoreSlim _installGate = new(1, 1);
     private bool _disposed;
 
-    private sealed record ReleaseManifest(string Version, Uri DownloadUri, string Sha256, long Size);
+    private sealed record ReleaseManifest(string Version, Uri DownloadUri, string Sha256, long Size, string? ReleaseNotes);
 
     public UpdateService(string? feedUrl = null)
     {
@@ -42,8 +42,9 @@ public sealed class UpdateService : IDisposable
                 CurrentVersion = current,
                 LatestVersion = manifest.Version,
                 UpdateAvailable = available,
+                ReleaseNotes = manifest.ReleaseNotes,
                 Message = available
-                    ? $"TimeLens {manifest.Version} is ready to install."
+                    ? $"TimeLens {manifest.Version} is available to install."
                     : "You have the latest production version."
             };
         }
@@ -72,6 +73,7 @@ public sealed class UpdateService : IDisposable
                 {
                     CurrentVersion = current,
                     LatestVersion = manifest.Version,
+                    ReleaseNotes = manifest.ReleaseNotes,
                     Message = "You have the latest production version."
                 };
             }
@@ -130,6 +132,7 @@ public sealed class UpdateService : IDisposable
                 LatestVersion = manifest.Version,
                 UpdateAvailable = true,
                 Restarting = true,
+                ReleaseNotes = manifest.ReleaseNotes,
                 Message = $"TimeLens {manifest.Version} is verified. Restarting to finish the update…"
             };
         }
@@ -166,6 +169,9 @@ public sealed class UpdateService : IDisposable
         var downloadUrl = root.GetProperty("downloadUrl").GetString() ?? "";
         var sha256 = root.GetProperty("sha256").GetString() ?? "";
         var size = root.TryGetProperty("size", out var sizeElement) ? sizeElement.GetInt64() : 0;
+        var releaseNotes = root.TryGetProperty("releaseNotes", out var notesElement) && notesElement.ValueKind == JsonValueKind.String
+            ? notesElement.GetString()
+            : null;
 
         _ = ParseVersion(version);
         if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var downloadUri) || downloadUri.Scheme != Uri.UriSchemeHttps)
@@ -175,7 +181,7 @@ public sealed class UpdateService : IDisposable
         if (size < 0 || size > MaximumDownloadBytes)
             throw new InvalidDataException("The update size is invalid.");
 
-        return new ReleaseManifest(version, downloadUri, sha256, size);
+        return new ReleaseManifest(version, downloadUri, sha256, size, releaseNotes);
     }
 
     private static string CurrentVersion()

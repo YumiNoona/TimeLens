@@ -67,6 +67,7 @@
     restarting: boolean;
     message: string;
     error?: string;
+    releaseNotes?: string;
   };
   let updateStatus: UpdateStatus = $state({
     currentVersion: __APP_VERSION__,
@@ -75,6 +76,9 @@
     message: 'Check for a newer production release.'
   });
   let updateBusy = $state(false);
+  let releaseDialog: HTMLDialogElement | undefined = $state();
+  let releaseDialogVersion = $state('');
+  let releaseDialogNotes = $state('');
 
   const API = '/api/settings';
   const themes = [
@@ -220,6 +224,7 @@
       const response = await fetch('/api/update/status', { cache: 'no-store' });
       if (!response.ok) throw new Error();
       updateStatus = await response.json();
+      showCompletedUpdate(updateStatus);
     } catch {
       updateStatus = {
         currentVersion: __APP_VERSION__,
@@ -243,7 +248,11 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || 'Update failed');
       updateStatus = result;
-      if (result.restarting) void waitForUpdatedDashboard(result.latestVersion);
+      if (result.restarting) {
+        sessionStorage.setItem('timelens.updatedTo', result.latestVersion ?? '');
+        sessionStorage.setItem('timelens.updatedFrom', result.currentVersion ?? updateStatus.currentVersion);
+        void waitForUpdatedDashboard(result.latestVersion);
+      }
     } catch (error) {
       updateStatus = {
         ...updateStatus,
@@ -279,6 +288,18 @@
       error: 'TimeLens did not return after the update. Open it again from Start or run the installer.'
     };
     updateBusy = false;
+  }
+
+  function showCompletedUpdate(status: UpdateStatus) {
+    const updatedTo = sessionStorage.getItem('timelens.updatedTo');
+    if (!updatedTo || updatedTo !== status.currentVersion) return;
+    const updatedFrom = sessionStorage.getItem('timelens.updatedFrom');
+    sessionStorage.removeItem('timelens.updatedTo');
+    sessionStorage.removeItem('timelens.updatedFrom');
+    releaseDialogVersion = status.currentVersion;
+    releaseDialogNotes = status.releaseNotes?.trim() || 'TimeLens has been updated successfully.';
+    if (updatedFrom) releaseDialogNotes = `Updated from ${updatedFrom} to ${status.currentVersion}.\n\n${releaseDialogNotes}`;
+    releaseDialog?.showModal();
   }
 
   function clearProtectionFields() {
@@ -367,9 +388,12 @@
     </div>
     <div class="update-row">
       <div class="update-copy">
-        <span class="update-badge" class:available={updateStatus.updateAvailable}>
-          {updateStatus.updateAvailable ? `Version ${updateStatus.latestVersion} available` : `Installed ${updateStatus.currentVersion}`}
-        </span>
+        <div class="update-versions">
+          <span class="update-badge">Installed {updateStatus.currentVersion}</span>
+          {#if updateStatus.updateAvailable && updateStatus.latestVersion}
+            <span class="update-badge available">New update {updateStatus.latestVersion} available</span>
+          {/if}
+        </div>
         <span class:error={Boolean(updateStatus.error)}>{updateStatus.error ?? updateStatus.message}</span>
       </div>
       <div class="update-actions">
@@ -382,6 +406,17 @@
           </button>
         {/if}
       </div>
+    </div>
+  </section>
+
+  <section class="card compact-card help-card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-book-2" aria-hidden="true"></i></span>
+      <div><h2>Help & documentation</h2><p>Installation, tracking, blocking, privacy, and update help.</p></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><span class="setting-label">TimeLens guide</span><span class="setting-desc">Open the complete setup and troubleshooting guide.</span></div>
+      <a class="secondary-btn docs-button" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-external-link" aria-hidden="true"></i>Open docs</a>
     </div>
   </section>
 
@@ -624,6 +659,15 @@
 
 </div>
 
+<dialog class="release-dialog" bind:this={releaseDialog} aria-labelledby="release-dialog-title">
+  <div class="release-dialog-head">
+    <div><span class="release-kicker">UPDATE COMPLETE</span><h2 id="release-dialog-title">TimeLens {releaseDialogVersion} is ready</h2></div>
+    <button class="icon-btn" type="button" aria-label="Close update details" onclick={() => releaseDialog?.close()}><i class="ti ti-x" aria-hidden="true"></i></button>
+  </div>
+  <p class="release-dialog-copy">{releaseDialogNotes}</p>
+  <div class="release-dialog-actions"><button class="primary-btn" type="button" onclick={() => releaseDialog?.close()}>Continue</button></div>
+</dialog>
+
 <style>
   .settings { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
   .card, .card-wide, .warning { grid-column: 1; }
@@ -642,10 +686,12 @@
   .setting-row { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--clr-border); }
   .update-row { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 18px 16px; border-top: 1px solid var(--clr-border); }
   .update-copy { min-width: 0; display: flex; align-items: center; gap: 10px; color: var(--clr-text-sec); font-size: 11px; }
+  .update-versions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .update-copy .error { color: var(--md-error); }
   .update-badge { flex: 0 0 auto; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font: 10px var(--font-mono); }
   .update-badge.available { color: var(--md-primary); background: var(--md-primary-cont); }
   .update-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+  .docs-button { text-decoration: none; }
   .setting-row.muted { opacity: .48; }
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
@@ -706,6 +752,13 @@
   .protection-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
   .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .danger-btn:hover { background: var(--md-err-cont); }
+  .release-dialog { width: min(510px, calc(100vw - 32px)); padding: 0; overflow: hidden; border: 1px solid var(--clr-border-strong); border-radius: var(--shape-lg); color: var(--clr-text-pri); background: var(--clr-bg-sec); box-shadow: var(--shadow-lg); }
+  .release-dialog::backdrop { background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
+  .release-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 20px 15px; border-bottom: 1px solid var(--clr-border); }
+  .release-kicker { display: block; margin-bottom: 6px; color: var(--md-primary); font: 10px var(--font-mono); letter-spacing: .09em; }
+  .release-dialog h2 { margin: 0; font-size: 18px; }
+  .release-dialog-copy { max-height: 280px; margin: 0; padding: 18px 20px; overflow: auto; color: var(--clr-text-sec); font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
+  .release-dialog-actions { display: flex; justify-content: flex-end; padding: 14px 20px 20px; border-top: 1px solid var(--clr-border); }
   @media (max-width: 960px) {
     .compact-card { grid-template-columns: 1fr; }
     .compact-card .setting-row:nth-child(odd) { border-left: 0; }

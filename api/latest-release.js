@@ -20,6 +20,7 @@ export default async function handler(request, response) {
     return response.status(200).json({
       version: releaseVersion(release.tag_name),
       publishedAt: release.published_at,
+      releaseNotes: String(release.body || '').slice(0, 16000),
       size: executable.size,
       sha256,
       downloadUrl: `${protocol}://${host}/api/app-download`,

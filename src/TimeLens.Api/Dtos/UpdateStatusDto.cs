@@ -8,4 +8,5 @@ public sealed record UpdateStatusDto
     public bool Restarting { get; init; }
     public string Message { get; init; } = "";
     public string? Error { get; init; }
+    public string? ReleaseNotes { get; init; }
 }

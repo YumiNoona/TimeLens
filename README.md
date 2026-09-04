@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 5.4.0 makes updates clear and recoverable: Settings shows the installed and available versions, then presents the release notes after a successful restart. It also adds a direct documentation link and consolidates the public site footer around the TimeLens/Veil credit.
+Version 5.5.0 simplifies Settings and makes focus protection easier to understand. Common desktop apps receive built-in categories from first use, historical uncategorized activity is refreshed safely, and the Block page keeps exit controls in the protected tray menu.
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v5.4.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The production desktop, dashboard, installer, and companion extension packages are released as `v5.5.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 

@@ -57,6 +57,23 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["ShellExperienceHost.exe"] = "system",
         ["explorer.exe"] = "system",
         ["OpenCode.exe"] = "development",
+        ["figma.exe"] = "design",
+        ["unrealeditor.exe"] = "development",
+        ["godot.exe"] = "development",
+        ["unity.exe"] = "development",
+        ["chatgpt.exe"] = "development",
+        ["claude.exe"] = "development",
+        ["r5apex_dx12.exe"] = "gaming",
+        ["r5apex.exe"] = "gaming",
+        ["valorant.exe"] = "gaming",
+        ["gta5.exe"] = "gaming",
+        ["steam.exe"] = "gaming",
+        ["steamwebhelper.exe"] = "gaming",
+        ["armourycrate.exe"] = "utilities",
+        ["nvidia overlay.exe"] = "utilities",
+        ["onedrive.exe"] = "work",
+        ["snippingtool.exe"] = "utilities",
+        ["photos.exe"] = "utilities",
     };
 
     private static readonly Dictionary<string, string> DomainRules = new(StringComparer.OrdinalIgnoreCase)

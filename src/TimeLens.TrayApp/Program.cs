@@ -3,6 +3,7 @@ using TimeLens.Api;
 using TimeLens.Api.Services;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
+using System.Security.Cryptography;
 
 namespace TimeLens.TrayApp;
 
@@ -79,7 +80,7 @@ internal static class Program
         using var resource = typeof(Program).Assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Embedded runtime resource is missing: {resourceName}");
 
-        if (File.Exists(targetPath) && new FileInfo(targetPath).Length == resource.Length)
+        if (File.Exists(targetPath) && EmbeddedResourceMatches(resource, targetPath))
             return targetPath;
 
         var temporaryPath = targetPath + ".new";
@@ -95,6 +96,16 @@ internal static class Program
         }
 
         return targetPath;
+    }
+
+    private static bool EmbeddedResourceMatches(Stream resource, string targetPath)
+    {
+        if (new FileInfo(targetPath).Length != resource.Length) return false;
+        var embeddedHash = SHA256.HashData(resource);
+        resource.Position = 0;
+        using var installed = File.OpenRead(targetPath);
+        var installedHash = SHA256.HashData(installed);
+        return CryptographicOperations.FixedTimeEquals(embeddedHash, installedHash);
     }
 
     private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest, bool startupRequested, bool updatedRequested)
@@ -145,6 +156,7 @@ internal static class Program
             while (reader.Read())
                 classifier.AddCustomRule(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4));
         }
+        RefreshDefaultCategories(dbPath, classifier);
         var winWatcher = new WinEventWatcher();
         var idleMonitor = new IdleMonitor { IdleThresholdSeconds = settings.IdleThresholdSeconds };
         var sessionWatcher = new SessionWatcher();
@@ -810,5 +822,35 @@ internal static class Program
         };
 
         tray.Run();
+    }
+
+    private static void RefreshDefaultCategories(string dbPath, CategoryClassifier classifier)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+        var uncategorized = new List<(long Id, string Exe, string Title)>();
+        using (var select = conn.CreateCommand())
+        {
+            select.CommandText = "SELECT id, exe_name, COALESCE(window_title, '') FROM app_events WHERE category IS NULL OR lower(category) = 'other'";
+            using var reader = select.ExecuteReader();
+            while (reader.Read()) uncategorized.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2)));
+        }
+        if (uncategorized.Count == 0) return;
+
+        using var transaction = conn.BeginTransaction();
+        using var update = conn.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = "UPDATE app_events SET category = $category WHERE id = $id";
+        var category = update.CreateParameter(); category.ParameterName = "$category"; update.Parameters.Add(category);
+        var id = update.CreateParameter(); id.ParameterName = "$id"; update.Parameters.Add(id);
+        foreach (var entry in uncategorized)
+        {
+            var resolved = classifier.Classify(entry.Exe, entry.Title);
+            if (resolved == "other") continue;
+            category.Value = resolved;
+            id.Value = entry.Id;
+            update.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 }

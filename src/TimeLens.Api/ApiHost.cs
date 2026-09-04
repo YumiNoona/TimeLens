@@ -964,6 +964,12 @@ public static class ApiHost
             arr.WriteString("spotify.exe", "media"); arr.WriteString("vlc.exe", "media"); arr.WriteString("mpc-hc.exe", "media"); arr.WriteString("wmplayer.exe", "media");
             arr.WriteString("TimeLens.TrayApp.exe", "system"); arr.WriteString("ShellExperienceHost.exe", "system"); arr.WriteString("explorer.exe", "system");
             arr.WriteString("OpenCode.exe", "development");
+            arr.WriteString("figma.exe", "design"); arr.WriteString("unrealeditor.exe", "development"); arr.WriteString("godot.exe", "development"); arr.WriteString("unity.exe", "development");
+            arr.WriteString("chatgpt.exe", "development"); arr.WriteString("claude.exe", "development");
+            arr.WriteString("r5apex_dx12.exe", "gaming"); arr.WriteString("r5apex.exe", "gaming"); arr.WriteString("valorant.exe", "gaming"); arr.WriteString("gta5.exe", "gaming");
+            arr.WriteString("steam.exe", "gaming"); arr.WriteString("steamwebhelper.exe", "gaming"); arr.WriteString("epicgameslauncher.exe", "gaming"); arr.WriteString("ubisoftconnect.exe", "gaming");
+            arr.WriteString("armourycrate.exe", "utilities"); arr.WriteString("nvidia overlay.exe", "utilities"); arr.WriteString("nvidia app.exe", "utilities");
+            arr.WriteString("onedrive.exe", "work"); arr.WriteString("dropbox.exe", "work"); arr.WriteString("snippingtool.exe", "utilities"); arr.WriteString("photos.exe", "utilities");
             arr.WriteEndObject();
             arr.WritePropertyName("domainRules");
             arr.WriteStartObject();

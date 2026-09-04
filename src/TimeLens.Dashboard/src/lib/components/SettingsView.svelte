@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { resetCardLayouts } from '../actions/reorderable';
   import {
     heatmapDays as heatmapDaysStore,
     timeFormat as timeFormatStore,
@@ -55,11 +54,6 @@
   let apiReachable = $state(true);
   let savingKey = $state('');
   let saveMessage = $state('');
-  let goals: { id: number; goalType: string; target: string; thresholdMinutes: number; notifyAt: number }[] = $state([]);
-  let goalTarget = $state('');
-  let goalType = $state('max_time');
-  let goalMinutes = $state(60);
-  let layoutTarget = $state('today');
   type UpdateStatus = {
     currentVersion: string;
     latestVersion?: string;
@@ -104,11 +98,6 @@
     { id: 'rules', label: 'Rules' },
     { id: 'settings', label: 'Settings' },
   ];
-  const layoutTargets = [
-    { id: 'today', label: 'Today' },
-    { id: 'history', label: 'History' },
-  ];
-
   function fmtSize(bytes: number): string {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -158,10 +147,6 @@
       const response = await fetch('/api/db-size');
       dbSizeBytes = (await response.json()).sizeBytes ?? 0;
     } catch { }
-    try {
-      const response = await fetch('/api/goals');
-      goals = await response.json();
-    } catch { }
   }
 
   async function save(key: string, value: boolean | number | string) {
@@ -193,29 +178,6 @@
 
   function exportCsv(range: string) {
     window.open(`/api/export?format=csv&range=${range}`, '_blank');
-  }
-
-  async function addGoal() {
-    const target = goalTarget.trim();
-    if (!target) return;
-    try {
-      const response = await fetch('/api/goals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goalType, target, thresholdMinutes: goalMinutes, notifyAt: 80 }),
-      });
-      if (!response.ok) throw new Error();
-      goalTarget = '';
-      await load();
-    } catch { apiReachable = false; }
-  }
-
-  async function removeGoal(id: number) {
-    try {
-      const response = await fetch(`/api/goals/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error();
-      await load();
-    } catch { apiReachable = false; }
   }
 
   async function checkUpdates() {
@@ -409,17 +371,6 @@
     </div>
   </section>
 
-  <section class="card compact-card help-card">
-    <div class="card-header">
-      <span class="section-icon"><i class="ti ti-book-2" aria-hidden="true"></i></span>
-      <div><h2>Help & documentation</h2><p>Installation, tracking, blocking, privacy, and update help.</p></div>
-    </div>
-    <div class="setting-row">
-      <div class="setting-info"><span class="setting-label">TimeLens guide</span><span class="setting-desc">Open the complete setup and troubleshooting guide.</span></div>
-      <a class="secondary-btn docs-button" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-external-link" aria-hidden="true"></i>Open docs</a>
-    </div>
-  </section>
-
   <section class="card compact-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-layout-dashboard" aria-hidden="true"></i></span>
@@ -559,7 +510,7 @@
         {#if blockProtectionEnabled}
           <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
           <label><span>Protect changes</span><select bind:value={blockProtectionScope}><option value="strict">Strict targets only</option><option value="all">All focus targets</option></select></label>
-          <label class="protection-toggle"><span>Protect tray exit</span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} /></label>
+          <label class="protection-toggle"><span><strong>Protect tray exit</strong><small>Ask for the current password before TimeLens can close from its tray menu.</small></span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} aria-label="Protect tray exit" /></label>
         {/if}
         <label><span>{blockProtectionEnabled ? 'New password' : 'Password'}</span><input type="password" bind:value={protectionNewPassword} autocomplete="new-password" placeholder="6–128 characters" /></label>
         <label><span>Confirm password</span><input type="password" bind:value={protectionConfirmPassword} autocomplete="new-password" placeholder="Type it again" /></label>
@@ -602,61 +553,6 @@
     </div>
   </section>
 
-  <section class="card card-wide">
-    <div class="card-header">
-      <span class="section-icon"><i class="ti ti-target-arrow" aria-hidden="true"></i></span>
-      <div><h2>Goals</h2><p>Set a maximum or minimum daily target for an app or category.</p></div>
-    </div>
-    <div class="goal-layout">
-      <div class="goal-list">
-        {#if goals.length > 0}
-          {#each goals as goal}
-            <div class="goal-row">
-              <span class="goal-icon"><i class="ti ti-target" aria-hidden="true"></i></span>
-              <div class="setting-info"><span class="setting-label">{goal.target}</span><span class="setting-desc">{goal.goalType === 'max_time' ? 'Maximum' : 'Minimum'} {goal.thresholdMinutes} min · alert at {goal.notifyAt}%</span></div>
-              <button class="icon-btn danger" onclick={() => removeGoal(goal.id)} aria-label="Remove {goal.target}"><i class="ti ti-trash" aria-hidden="true"></i></button>
-            </div>
-          {/each}
-        {:else}
-          <div class="goal-empty"><i class="ti ti-target-off" aria-hidden="true"></i><span>No goals yet</span></div>
-        {/if}
-      </div>
-      <div class="goal-form">
-        <label for="goal-target">New goal</label>
-        <div class="goal-fields">
-          <input id="goal-target" class="text-input" placeholder="App or category" bind:value={goalTarget} />
-          <select class="select" bind:value={goalType}><option value="max_time">Maximum</option><option value="min_time">Minimum</option></select>
-          <select class="select" bind:value={goalMinutes}>{#each [15, 30, 60, 90, 120, 180, 240] as minutes}<option value={minutes}>{minutes} min</option>{/each}</select>
-          <button class="primary-btn" onclick={addGoal} disabled={!goalTarget.trim()}><i class="ti ti-plus" aria-hidden="true"></i> Add goal</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="card card-wide layout-settings-card">
-    <div class="card-header">
-      <span class="section-icon"><i class="ti ti-layout-dashboard"></i></span>
-      <div>
-        <h2>Card layout</h2>
-        <p>Restore the original card order for one page or the entire dashboard.</p>
-      </div>
-    </div>
-    <div class="layout-reset-row">
-      <label>
-        <span>Dashboard page</span>
-        <select class="select wide" bind:value={layoutTarget} aria-label="Dashboard page to reset">
-          {#each layoutTargets as page}
-            <option value={page.id}>{page.label}</option>
-          {/each}
-        </select>
-      </label>
-      <div class="button-group">
-        <button class="secondary-btn" type="button" onclick={() => resetCardLayouts(layoutTarget)}>Reset selected page</button>
-        <button class="secondary-btn" type="button" onclick={() => resetCardLayouts('all')}>Reset all layouts</button>
-      </div>
-    </div>
-  </section>
-
 </div>
 
 <dialog class="release-dialog" bind:this={releaseDialog} aria-labelledby="release-dialog-title">
@@ -671,9 +567,9 @@
 <style>
   .settings { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
   .card, .card-wide, .warning { grid-column: 1; }
-  .card-header, .button-group, .goal-fields { display: flex; align-items: center; }
+  .card-header, .button-group { display: flex; align-items: center; }
   .card-header div { display: flex; flex-direction: column; gap: 2px; }
-  .section-icon, .goal-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 20%, transparent); }
+  .section-icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--md-primary); background: var(--md-primary-cont); border: 1px solid color-mix(in srgb, var(--md-primary) 20%, transparent); }
   .warning { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: var(--md-error); background: color-mix(in srgb, var(--md-error) 10%, transparent); border: 1px solid color-mix(in srgb, var(--md-error) 22%, transparent); border-radius: var(--shape-md); font-size: 12px; }
   .card { background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-lg); overflow: hidden; padding: 0; }
   .compact-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -691,7 +587,6 @@
   .update-badge { flex: 0 0 auto; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font: 10px var(--font-mono); }
   .update-badge.available { color: var(--md-primary); background: var(--md-primary-cont); }
   .update-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
-  .docs-button { text-decoration: none; }
   .setting-row.muted { opacity: .48; }
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
@@ -702,10 +597,10 @@
   .toggle::after { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: white; box-shadow: var(--shadow-xs); transition: transform var(--duration-base) var(--ease-out); }
   .toggle:checked { background: var(--md-primary); }
   .toggle:checked::after { transform: translateX(18px); }
-  .select, .text-input { height: 34px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px inherit; outline: none; }
+  .select { height: 34px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px inherit; outline: none; }
   .select { min-width: 96px; padding: 0 28px 0 10px; cursor: pointer; }
   .select.wide { min-width: 132px; }
-  .select:focus, .text-input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 12%, transparent); }
+  .select:focus { border-color: var(--md-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-primary) 12%, transparent); }
   .select:disabled { cursor: not-allowed; }
   .theme-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 10px; padding: 2px 18px 18px; }
   .theme-swatch { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 12px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-md); font: 12px inherit; cursor: pointer; transition: transform var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
@@ -713,37 +608,26 @@
   .theme-swatch.selected { color: var(--clr-text-pri); border-color: var(--md-primary); background: color-mix(in srgb, var(--md-primary) 7%, var(--clr-bg-ter)); }
   .theme-swatch i { margin-left: auto; color: var(--md-primary); }
   .swatch-dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); }
-  .button-group { gap: 6px; }
-  .layout-reset-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 4px 18px 18px; }
-  .layout-reset-row label { min-width: 210px; display: flex; flex-direction: column; gap: 7px; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; }
   .primary-btn, .secondary-btn, .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .primary-btn { height: 34px; padding: 0 13px; border: 1px solid var(--md-primary); background: var(--md-primary); color: var(--md-on-primary); font-weight: 600; }
   .secondary-btn { height: 32px; padding: 0 10px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); }
   .secondary-btn:hover { border-color: var(--md-primary); color: var(--md-primary); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   .path { color: var(--clr-text-sec); font: 11px var(--font-mono); white-space: nowrap; }
-  .goal-layout { padding: 0 18px 18px; display: grid; gap: 12px; }
-  .goal-list { display: grid; gap: 7px; }
-  .goal-row { min-height: 50px; display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-md); }
-  .goal-icon { width: 30px; height: 30px; border-radius: 8px; }
-  .goal-row .setting-info { flex: 1; }
   .icon-btn { width: 30px; height: 30px; border: 0; color: var(--clr-text-sec); background: transparent; }
-  .icon-btn.danger:hover { color: var(--md-error); background: var(--md-err-cont); }
-  .goal-empty { min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--clr-text-ter); border: 1px dashed var(--clr-border); border-radius: var(--shape-md); font-size: 12px; }
-  .goal-form { padding: 12px; background: color-mix(in srgb, var(--clr-bg-ter) 72%, transparent); border-radius: var(--shape-md); }
-  .goal-form > label { display: block; margin-bottom: 8px; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-  .goal-fields { gap: 8px; }
-  .text-input { flex: 1; min-width: 180px; padding: 0 10px; font-family: var(--font-mono); }
   .protection-header { border-bottom: 1px solid var(--clr-border); }
   .protection-header > div { flex: 1; }
   .protection-state { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--clr-text-sec); background: var(--clr-bg-ter); border-radius: var(--shape-full); font-size: 10px; font-weight: 600; }
   .protection-state.enabled { color: var(--md-primary); background: var(--md-primary-cont); }
   .protection-body { padding: 14px 16px 16px; }
-  .protection-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end; }
+  .protection-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
   .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
   .protection-form select { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; outline: none; }
-  .protection-toggle { justify-content: space-between; }
-  .protection-form label:first-child:nth-last-child(3) { grid-column: auto; }
+  .protection-toggle { grid-column: 1 / -1; min-height: 58px; flex-direction: row !important; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--clr-border); border-radius: var(--shape-md); background: color-mix(in srgb, var(--md-primary) 5%, var(--clr-bg-ter)); }
+  .protection-toggle > span { display: grid; gap: 3px; }
+  .protection-toggle strong { color: var(--clr-text-pri); font-size: 12px; }
+  .protection-toggle small { color: var(--clr-text-sec); font-size: 10px; font-weight: 400; line-height: 1.35; }
+  .protection-toggle input.toggle { width: 40px; height: 22px; flex: 0 0 40px; padding: 0; border: 0; }
   .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
   .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
   .protection-feedback { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 8px 9px; border-radius: var(--shape-sm); font-size: 10px; }
@@ -765,17 +649,12 @@
     .settings-columns { grid-template-columns: 1fr; }
     .settings-columns .setting-row:nth-child(even) { border-left: 0; }
     .theme-grid { grid-template-columns: repeat(2, 1fr); }
-    .protection-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 620px) {
-    .layout-reset-row { align-items: stretch; flex-direction: column; }
-    .layout-reset-row label { min-width: 0; }
-    .layout-reset-row .button-group { flex-wrap: wrap; }
     .protection-form { grid-template-columns: 1fr; }
-    .setting-row.export-row, .goal-fields { align-items: stretch; flex-direction: column; }
+    .setting-row.export-row { align-items: stretch; flex-direction: column; }
     .theme-grid { grid-template-columns: 1fr; }
     .select, .select.wide { min-width: 112px; }
-    .goal-fields .select, .goal-fields .primary-btn { width: 100%; }
     .update-row { align-items: stretch; flex-direction: column; }
     .update-copy { align-items: flex-start; flex-direction: column; }
     .update-actions { justify-content: flex-end; }

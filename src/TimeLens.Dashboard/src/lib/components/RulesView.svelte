@@ -317,9 +317,9 @@
   <!-- Running Processes -->
   {#if runningProcs.length > 0}
     <div class="card">
-      <div class="card-header">Running Apps <span class="count-badge">{runningProcs.filter(p => !rules.some(r => r.pattern === p) && !builtinExe[p]).length}</span></div>
+      <div class="card-header">Running Apps <span class="count-badge">{runningProcs.filter(p => !rules.some(r => r.target === 'exe' && r.pattern.toLowerCase() === p.toLowerCase()) && !builtinExe[p.toLowerCase()]).length}</span></div>
       <div class="running-grid">
-        {#each runningProcs.filter(p => !rules.some(r => r.pattern === p) && !builtinExe[p]) as proc}
+        {#each runningProcs.filter(p => !rules.some(r => r.target === 'exe' && r.pattern.toLowerCase() === p.toLowerCase()) && !builtinExe[p.toLowerCase()]) as proc}
           <button class="running-chip" onclick={() => { newPattern = proc; newCat = 'other'; newRuleType = 'substring'; newTarget = 'exe'; }}>
             <code>{proc}</code>
             <span class="chip-hint">+ assign</span>

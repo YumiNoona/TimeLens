@@ -356,8 +356,9 @@
         <div class="page-heading">
           <p class="page-eyebrow">Preferences</p>
           <h1 class="page-title">Settings</h1>
-          <p class="page-purpose">Configure tracking, privacy, appearance, reminders, storage, and goals.</p>
+          <p class="page-purpose">Configure tracking, privacy, appearance, reminders, and storage.</p>
         </div>
+        <a class="page-docs" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-book-2" aria-hidden="true"></i>Docs</a>
       </div>
       <div class="content"><SettingsView
         ontheme={applyTheme}
@@ -551,6 +552,8 @@
   }
 
   .page-heading { min-width: 0; }
+  .page-docs { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; color: var(--clr-text-sec); background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; text-decoration: none; transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
+  .page-docs:hover { color: var(--md-primary); border-color: var(--md-primary); background: var(--md-primary-cont); }
   .page-eyebrow {
     color: var(--md-primary);
     font-size: var(--type-page-eyebrow);

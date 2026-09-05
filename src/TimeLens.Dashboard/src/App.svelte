@@ -40,7 +40,14 @@
   let density = 'comfortable';
   let motionEnabled = true;
 
-  function goTo(id: string) { view = id; }
+  function needsCompanionData(targetView = view): boolean {
+    return targetView === 'today' || targetView === 'apps' || targetView === 'browser';
+  }
+
+  function goTo(id: string) {
+    view = id;
+    if (needsCompanionData(id)) void loadCompanionData();
+  }
 
   const dateStr = $derived(now.toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -95,6 +102,7 @@
   }
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let refreshInFlight = false;
 
   async function loadCompanionData(): Promise<void> {
     const [sites, time, audio, hours] = await Promise.allSettled([
@@ -127,12 +135,24 @@
     } catch { }
   }
 
+  async function refreshVisibleData(isBackground = true): Promise<void> {
+    if (refreshInFlight) return;
+    refreshInFlight = true;
+    try {
+      const work: Promise<void>[] = [refresh(isBackground)];
+      if (needsCompanionData()) work.push(loadCompanionData());
+      await Promise.all(work);
+    } finally {
+      refreshInFlight = false;
+    }
+  }
+
   function startPoll() {
     if (pollTimer) return;
     const interval = Math.max(5, pollInterval) * 1000;
     pollTimer = setInterval(async () => {
       now = new Date();
-      await Promise.all([refresh(true), loadCompanionData()]);
+      await refreshVisibleData();
     }, interval);
   }
 
@@ -152,13 +172,13 @@
       return;
     }
     now = new Date();
-    void Promise.all([refresh(true), loadCompanionData()]);
+    void refreshVisibleData();
     startPoll();
   }
 </script>
 
 <div class="shell">
-  <NavRail active={view} onselect={(id) => view = id} />
+  <NavRail active={view} onselect={goTo} />
 
   <main class="main">
     {#if $error}

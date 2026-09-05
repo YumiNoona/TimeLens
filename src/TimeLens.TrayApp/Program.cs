@@ -13,6 +13,7 @@ internal static class Program
     private const int MB_YESNO = 0x04;
     private const int MB_ICONQUESTION = 0x20;
     private const int IDYES = 6;
+    private const string BuiltInCategoryRefreshRevision = "2";
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
@@ -442,19 +443,37 @@ internal static class Program
         {
             try
             {
-                var today = DateTime.UtcNow.Date.ToString("o");
                 using var conn = new Microsoft.Data.Sqlite.SqliteConnection(goalDbPath);
                 conn.Open();
+
+                // Goals are no longer configured from the dashboard. Preserve any
+                // legacy goals, but avoid an activity aggregation every five minutes
+                // when a user has none.
+                var goals = new List<(int Id, string Type, string Target, int Threshold, int NotifyAt, string LastNotified)>();
+                using (var goalCmd = conn.CreateCommand())
+                {
+                    goalCmd.CommandText = "SELECT id, goal_type, target, threshold_minutes, notify_at, COALESCE(last_notified,'') FROM goals WHERE enabled = 1";
+                    using var goalReader = goalCmd.ExecuteReader();
+                    while (goalReader.Read())
+                    {
+                        goals.Add((
+                            goalReader.GetInt32(0), goalReader.GetString(1), goalReader.GetString(2),
+                            goalReader.GetInt32(3), goalReader.GetInt32(4), goalReader.GetString(5)));
+                    }
+                }
+                if (goals.Count == 0) return;
+
+                var today = DateTime.Now.ToString("yyyy-MM-dd");
 
                 // Query today's active time per app and category
                 using var timeCmd = conn.CreateCommand();
                 timeCmd.CommandText = """
                     SELECT COALESCE(category,''), exe_name, SUM((julianday(COALESCE(end_time,$now)) - julianday(start_time)) * 86400)
                     FROM app_events
-                    WHERE start_time >= $t0 AND session_state = 'active'
+                    WHERE local_date = $date AND session_state = 'active'
                     GROUP BY 1, 2
                     """;
-                timeCmd.Parameters.AddWithValue("$t0", today);
+                timeCmd.Parameters.AddWithValue("$date", today);
                 timeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
                 var times = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var catTimes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -469,32 +488,22 @@ internal static class Program
                     if (!string.IsNullOrEmpty(cat)) catTimes[cat] = catTimes.GetValueOrDefault(cat) + mins;
                 }
 
-                // Check each active goal
-                using var goalCmd = conn.CreateCommand();
-                goalCmd.CommandText = "SELECT id, goal_type, target, threshold_minutes, notify_at, COALESCE(last_notified,'') FROM goals WHERE enabled = 1";
-                using var gr = goalCmd.ExecuteReader();
                 var now = DateTime.UtcNow;
-                while (gr.Read())
+                foreach (var goal in goals)
                 {
-                    var id = gr.GetInt32(0);
-                    var goalType = gr.GetString(1);
-                    var target = gr.GetString(2);
-                    var threshold = gr.GetInt32(3);
-                    var notifyAt = gr.GetInt32(4);
-                    var lastNotified = gr.GetString(5);
-                    var notifyPct = notifyAt > 0 ? notifyAt : 80;
-                    var limit = threshold * notifyPct / 100;
-                    var current = goalType == "max_time"
-                        ? (catTimes.GetValueOrDefault(target) > 0 ? catTimes.GetValueOrDefault(target) : times.GetValueOrDefault(target))
-                        : catTimes.GetValueOrDefault(target);
+                    var notifyPct = goal.NotifyAt > 0 ? goal.NotifyAt : 80;
+                    var limit = goal.Threshold * notifyPct / 100;
+                    var current = goal.Type == "max_time"
+                        ? (catTimes.GetValueOrDefault(goal.Target) > 0 ? catTimes.GetValueOrDefault(goal.Target) : times.GetValueOrDefault(goal.Target))
+                        : catTimes.GetValueOrDefault(goal.Target);
                     if (current < limit) continue;
-                    if (!string.IsNullOrEmpty(lastNotified) && DateTime.TryParse(lastNotified, null, System.Globalization.DateTimeStyles.RoundtripKind, out var ln) && (now - ln).TotalMinutes < 5)
+                    if (!string.IsNullOrEmpty(goal.LastNotified) && DateTime.TryParse(goal.LastNotified, null, System.Globalization.DateTimeStyles.RoundtripKind, out var ln) && (now - ln).TotalMinutes < 5)
                         continue;
-                    tray?.ShowBalloon("Goal Alert", $"'{target}' has reached {current}/{threshold} min today", false);
+                    tray?.ShowBalloon("Goal Alert", $"'{goal.Target}' has reached {current}/{goal.Threshold} min today", false);
                     using var upd = conn.CreateCommand();
                     upd.CommandText = "UPDATE goals SET last_notified = $now WHERE id = $id";
                     upd.Parameters.AddWithValue("$now", now.ToString("o"));
-                    upd.Parameters.AddWithValue("$id", id);
+                    upd.Parameters.AddWithValue("$id", goal.Id);
                     upd.ExecuteNonQuery();
                 }
             }
@@ -828,6 +837,12 @@ internal static class Program
     {
         using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
         conn.Open();
+        using (var revision = conn.CreateCommand())
+        {
+            revision.CommandText = "SELECT value FROM settings WHERE key = 'builtin_category_refresh_revision'";
+            var applied = revision.ExecuteScalar() as string;
+            if (string.Equals(applied, BuiltInCategoryRefreshRevision, StringComparison.Ordinal)) return;
+        }
         var uncategorized = new List<(long Id, string Exe, string Title)>();
         using (var select = conn.CreateCommand())
         {
@@ -835,22 +850,27 @@ internal static class Program
             using var reader = select.ExecuteReader();
             while (reader.Read()) uncategorized.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2)));
         }
-        if (uncategorized.Count == 0) return;
-
-        using var transaction = conn.BeginTransaction();
-        using var update = conn.CreateCommand();
-        update.Transaction = transaction;
-        update.CommandText = "UPDATE app_events SET category = $category WHERE id = $id";
-        var category = update.CreateParameter(); category.ParameterName = "$category"; update.Parameters.Add(category);
-        var id = update.CreateParameter(); id.ParameterName = "$id"; update.Parameters.Add(id);
-        foreach (var entry in uncategorized)
+        if (uncategorized.Count > 0)
         {
-            var resolved = classifier.Classify(entry.Exe, entry.Title);
-            if (resolved == "other") continue;
-            category.Value = resolved;
-            id.Value = entry.Id;
-            update.ExecuteNonQuery();
+            using var transaction = conn.BeginTransaction();
+            using var update = conn.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE app_events SET category = $category WHERE id = $id";
+            var category = update.CreateParameter(); category.ParameterName = "$category"; update.Parameters.Add(category);
+            var id = update.CreateParameter(); id.ParameterName = "$id"; update.Parameters.Add(id);
+            foreach (var entry in uncategorized)
+            {
+                var resolved = classifier.Classify(entry.Exe, entry.Title);
+                if (resolved == "other") continue;
+                category.Value = resolved;
+                id.Value = entry.Id;
+                update.ExecuteNonQuery();
+            }
+            transaction.Commit();
         }
-        transaction.Commit();
+        using var saveRevision = conn.CreateCommand();
+        saveRevision.CommandText = "INSERT INTO settings (key, value) VALUES ('builtin_category_refresh_revision', $revision) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+        saveRevision.Parameters.AddWithValue("$revision", BuiltInCategoryRefreshRevision);
+        saveRevision.ExecuteNonQuery();
     }
 }

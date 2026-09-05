@@ -112,6 +112,24 @@ internal static class Program
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='sleep'") == 0, "Expired history was not purged.");
                 Check(Query(path, "SELECT count(*) FROM settings WHERE key='first_run_done' AND value='true'") == 1, "Onboarding reset.");
             });
+            Run("Restart closes orphaned browser activity and retains dashboard indexes", () =>
+            {
+                var path = Path.Combine(directory, "browser-restart.db");
+                DatabaseInitializer.Initialize(path);
+                using (var conn = new SqliteConnection($"Data Source={path}"))
+                {
+                    conn.Open();
+                    using var insert = conn.CreateCommand();
+                    insert.CommandText = "INSERT INTO browser_events(domain, start_time, browser, local_date) VALUES ('example.com', $start, 'chrome', $date)";
+                    insert.Parameters.AddWithValue("$start", DateTime.UtcNow.AddMinutes(-2).ToString("o"));
+                    insert.Parameters.AddWithValue("$date", DateTime.Now.ToString("yyyy-MM-dd"));
+                    insert.ExecuteNonQuery();
+                }
+                DatabaseInitializer.Initialize(path);
+                Check(Query(path, "SELECT count(*) FROM browser_events WHERE end_time IS NOT NULL") == 1, "An open browser row survived restart.");
+                Check(Query(path, "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_app_local_date_state'") == 1, "App dashboard index was not created.");
+                Check(Query(path, "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_browser_local_date'") == 1, "Browser dashboard index was not created.");
+            });
             Run("Legacy rules migrate before the priority index is created", () =>
             {
                 var path = Path.Combine(directory, "legacy.db");

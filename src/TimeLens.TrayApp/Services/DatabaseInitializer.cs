@@ -134,10 +134,13 @@ public static class DatabaseInitializer
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_media_layout', 'large');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
+            CREATE INDEX IF NOT EXISTS idx_app_local_date_state ON app_events(local_date, session_state);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
+            CREATE INDEX IF NOT EXISTS idx_browser_local_date ON browser_events(local_date);
             CREATE INDEX IF NOT EXISTS idx_input_activity_ts ON input_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audio_activity_ts ON audio_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_session_events_ts ON session_events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_block_log_timestamp ON block_log(timestamp);
             """;
         cmd.ExecuteNonQuery();
 
@@ -219,6 +222,14 @@ public static class DatabaseInitializer
         patchOrphans.Parameters.AddWithValue("$cutoff", orphanCutoff);
         patchOrphans.Parameters.AddWithValue("$fortyeight", DateTime.UtcNow.AddHours(48).ToString("o"));
         patchOrphans.ExecuteNonQuery();
+
+        // Browser tab IDs are held in memory by the extension bridge. After a desktop
+        // restart that map is empty, so any previously open browser rows must end here
+        // rather than being counted as an uninterrupted visit for hours or days.
+        using var closeBrowserOrphans = conn.CreateCommand();
+        closeBrowserOrphans.CommandText = "UPDATE browser_events SET end_time = $now WHERE end_time IS NULL";
+        closeBrowserOrphans.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+        closeBrowserOrphans.ExecuteNonQuery();
 
         // Backfill session_state for rows that still have NULL
         using var backfill = conn.CreateCommand();

@@ -107,7 +107,7 @@ All non-secret values above already have these defaults in the server code. With
 
 `/api/download` redirects website visitors to the installer, while `/api/app-download` is reserved for the verified raw-EXE updater flow. Both authenticate server-side and redirect to GitHub's short-lived signed asset URLs. The binaries bypass Vercel's function payload limit and the GitHub token is never sent to the browser. The source repository can be private while downloads remain available through the website by design.
 
-`/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a `v5.x.x` tag, and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
+`/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a supported production tag (`v5.0.0` or later), and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
 
 ## Releasing and updates
 

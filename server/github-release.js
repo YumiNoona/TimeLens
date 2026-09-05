@@ -39,23 +39,21 @@ export function installerAssetName() {
 }
 
 export async function getLatestRelease(assetName = applicationAssetName()) {
-  const configuredMajor = String(process.env.GITHUB_RELEASE_MAJOR || minimumReleaseMajor);
-  if (!/^\d+$/.test(configuredMajor)) throw new Error('GITHUB_RELEASE_MAJOR must be a number.');
-  const releaseMajor = String(Math.max(Number(configuredMajor), minimumReleaseMajor));
-
   const response = await githubFetch(`${githubApi}/repos/${repository()}/releases?per_page=50`);
   const releases = await response.json();
   const release = releases.find((candidate) => {
     const version = String(candidate.tag_name || '').replace(/^v/i, '');
     const assetNames = new Set((candidate.assets || []).map((asset) => asset.name));
+    const major = Number(version.split('.')[0]);
     return !candidate.draft && !candidate.prerelease &&
-      version.startsWith(`${releaseMajor}.`) &&
+      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) &&
+      Number.isInteger(major) && major >= minimumReleaseMajor &&
       assetNames.has(applicationAssetName()) &&
       assetNames.has(installerAssetName()) &&
       assetNames.has(assetName) &&
       assetNames.has('SHA256SUMS.txt');
   });
-  if (!release) throw new Error(`No production v${releaseMajor} release contains the required assets.`);
+  if (!release) throw new Error(`No production TimeLens release v${minimumReleaseMajor} or later contains the required assets.`);
 
   const asset = release.assets.find((candidate) => candidate.name === assetName);
   return { release, asset };

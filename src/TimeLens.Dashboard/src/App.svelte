@@ -200,7 +200,7 @@
           <div class="today-header-left">
             <p class="today-greeting">{greeting}</p>
             <h1 class="today-date">{dateStr}</h1>
-            <p class="today-purpose">Your current-day overview: time, focus, input, apps, and categories.</p>
+            <p class="today-purpose">Activity since local midnight. Sessions crossing midnight are split between days.</p>
           </div>
         </div>
 

@@ -8,14 +8,15 @@ public sealed class AudioMonitor : IDisposable
     private IAudioSessionManager2? _sessionManager;
     private SessionNotificationSink? _notificationSink;
     private IntPtr _notificationSinkPtr;
-    private readonly HashSet<(int pid, string exe)> _activeSessions = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(int pid, string exe), byte> _activeSessions = new();
     private readonly List<(SessionEventsSink sink, IntPtr ptr, IAudioSessionControl2 ctl2)> _sessionSinks = [];
 
     // COM callbacks must fire on the thread that registered them (must be STA).
     // Capture the main thread context on first Start() and marshal subsequent calls.
     private System.Threading.SynchronizationContext? _mainCtx;
 
-    public bool AnyAudioPlaying => _activeSessions.Count > 0;
+    public bool AnyAudioPlaying => !_activeSessions.IsEmpty;
+    public bool IsPlayingFor(string exe) => _activeSessions.Keys.Any(key => string.Equals(key.exe, exe, StringComparison.OrdinalIgnoreCase));
     public event Action<int, string, bool>? SessionAudioChanged;
 
     public void Start()
@@ -114,7 +115,7 @@ public sealed class AudioMonitor : IDisposable
         var (pid, exe) = GetSessionInfo(ctl2);
         var key = (pid, exe);
 
-        if (!_activeSessions.Add(key)) { Marshal.ReleaseComObject(ctl2); return; }
+        if (!_activeSessions.TryAdd(key, 0)) { Marshal.ReleaseComObject(ctl2); return; }
 
         var sink = new SessionEventsSink(key, OnSessionStateChanged, OnSessionDisconnected);
         var ptr = Marshal.GetComInterfaceForObject(sink, typeof(IAudioSessionEvents));
@@ -130,19 +131,19 @@ public sealed class AudioMonitor : IDisposable
     {
         if (state == AudioSessionState.Active)
         {
-            if (_activeSessions.Add(key))
+            if (_activeSessions.TryAdd(key, 0))
                 SessionAudioChanged?.Invoke(key.pid, key.exe, true);
         }
         else
         {
-            if (_activeSessions.Remove(key))
+            if (_activeSessions.TryRemove(key, out _))
                 SessionAudioChanged?.Invoke(key.pid, key.exe, false);
         }
     }
 
     private void OnSessionDisconnected((int pid, string exe) key)
     {
-        if (_activeSessions.Remove(key))
+        if (_activeSessions.TryRemove(key, out _))
             SessionAudioChanged?.Invoke(key.pid, key.exe, false);
 
         lock (_sessionSinks)

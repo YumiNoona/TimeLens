@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/TimeLens.TrayApp/Watchers/InputMonitor.cs" Link="InputMonitor.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Watchers/WinEventWatcher.cs" Link="WinEventWatcher.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Win32.cs" Link="Win32.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/RuntimeDiagnostics.cs" Link="RuntimeDiagnostics.cs" />
+    <ProjectReference Include="../../src/TimeLens.Api/TimeLens.Api.csproj" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/DatabaseInitializer.cs" Link="DatabaseInitializer.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/SettingsService.cs" Link="SettingsService.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/EventWriter.cs" Link="EventWriter.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/WriterQueue.cs" Link="WriterQueue.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Watchers/IdleMonitor.cs" Link="IdleMonitor.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Watchers/AudioMonitor.cs" Link="AudioMonitor.cs" />
+  </ItemGroup>
+</Project>

@@ -56,6 +56,9 @@ jobs:
       - name: Check fresh-install and database migration regressions
         run: dotnet run --project tests/TimeLens.Startup.Tests -c Release
 
+      - name: Check tracking and local-day regressions
+        run: dotnet run --project tests/TimeLens.Tracking.Tests -c Release
+
       - name: Publish TrayApp (Native AOT)
         run: |
           dotnet publish src\TimeLens.TrayApp -c Release -r win-x64 --self-contained true `
@@ -129,4 +132,6 @@ jobs:
             TimeLens-Chrome-Extension.zip
             TimeLens-Firefox-Extension.zip
             SHA256SUMS.txt
-          generate_release_notes: true
+          name: TimeLens ${{ env.VERSION }} — Keep your time in focus
+          body_path: docs/releases/${{ env.VERSION }}.md
+          generate_release_notes: false

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TimeLens Tracker",
-  "version": "6.0.1",
+  "version": "6.2.0",
   "description": "Tracks activity and provides Notify or Strict website focus modes for TimeLens",
   "permissions": [
     "tabs",

@@ -89,8 +89,10 @@ if (-not $SkipDashboard) {
 
 # --- Publish .NET ---
 & $header "=== Checking database startup regressions ==="
-dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release
+dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release --self-contained true
 if ($LASTEXITCODE -ne 0) { throw "Startup regression checks failed" }
+dotnet run --project "$root\tests\TimeLens.Tracking.Tests" -c Release --self-contained true -r win-x64
+if ($LASTEXITCODE -ne 0) { throw "Tracking regression checks failed" }
 
 & $header "=== Publishing TimeLens (Native AOT, $Config) ==="
 try {

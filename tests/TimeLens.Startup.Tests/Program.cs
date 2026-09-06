@@ -222,6 +222,12 @@ internal static class Program
             // Simulate the version-4 keyboard activation delivered by the shell.
             SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
             Check(opened == 1, "Keyboard activation did not open the dashboard.");
+            Action failingLaunch = () => throw new IOException("Injected browser launch failure");
+            tray.OpenDashboardRequested += failingLaunch;
+            SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
+            tray.OpenDashboardRequested -= failingLaunch;
+            SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
+            Check(opened == 3 && IsWindow(hwnd), "A failed dashboard launch stopped the native tray loop.");
             var icon = new IconData { Size = 976, Window = hwnd, Id = 100 };
             Check(Shell_NotifyIconW(2, ref icon), "Could not remove the test icon to simulate Explorer restarting.");
             Check(Shell_NotifyIconGetRect(ref identifier, out _) != 0, "Test icon was not removed.");

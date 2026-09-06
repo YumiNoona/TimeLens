@@ -849,19 +849,19 @@ public static class ApiHost
             cmd.CommandText = """
                 SELECT exe_name,
                        COALESCE(SUM(
-                           (julianday(COALESCE(end_time, $now)) - julianday(start_time)) * 86400
+                           MAX(0, MIN(julianday(COALESCE(end_time, $now)), julianday($now)) - MAX(julianday(start_time), julianday($today))) * 86400
                        ), 0) AS secs
                 FROM app_events
                 WHERE (category = 'other' OR category IS NULL)
                   AND session_state = 'active'
-                  AND start_time >= $today
+                  AND julianday(start_time) < julianday($now) AND julianday(COALESCE(end_time, $now)) > julianday($today)
                 GROUP BY exe_name
                 HAVING secs > 60
                 ORDER BY secs DESC
                 LIMIT 30
                 """;
             cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-            cmd.Parameters.AddWithValue("$today", DateTime.UtcNow.Date.ToString("o"));
+            cmd.Parameters.AddWithValue("$today", DateTime.Today.ToUniversalTime().ToString("o"));
 
             ctx.Response.ContentType = "application/json";
             using var w = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
@@ -1653,53 +1653,23 @@ public static class ApiHost
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            if (range == "30days")
-            {
-                cmd.CommandText = """
-                    SELECT start_time, exe_name, window_title, category, session_state,
-                           COALESCE((julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400, 0) AS duration_secs
-                    FROM app_events
-                    WHERE start_time >= date('now', '-30 days')
-                    ORDER BY start_time
-                    """;
-            }
-            else if (range != "today")
-            {
-                cmd.CommandText = """
-                    SELECT start_time, exe_name, window_title, category, session_state,
-                           COALESCE((julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400, 0) AS duration_secs
-                    FROM app_events
-                    WHERE start_time >= $t0 AND start_time < $t1
-                    ORDER BY start_time
-                    """;
-                if (DateTime.TryParse(range, out var d))
-                {
-                    var d0 = TimeZoneInfo.ConvertTimeToUtc(d.Date);
-                    var d1 = d0.AddDays(1);
-                    cmd.Parameters.AddWithValue("$t0", d0.ToString("o"));
-                    cmd.Parameters.AddWithValue("$t1", d1.ToString("o"));
-                }
-                else
-                {
-                    cmd.CommandText = """
-                        SELECT start_time, exe_name, window_title, category, session_state,
-                               COALESCE((julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400, 0) AS duration_secs
-                        FROM app_events
-                        WHERE start_time >= date('now', 'start of day')
-                        ORDER BY start_time
-                        """;
-                }
-            }
-            else
-            {
-                cmd.CommandText = """
-                    SELECT start_time, exe_name, window_title, category, session_state,
-                           COALESCE((julianday(COALESCE(end_time, datetime('now'))) - julianday(start_time)) * 86400, 0) AS duration_secs
-                    FROM app_events
-                    WHERE start_time >= date('now', 'start of day')
-                    ORDER BY start_time
-                    """;
-            }
+            var exportDay = DateTime.Today;
+            if (range != "today" && range != "30days" && DateTime.TryParse(range, out var selectedDay))
+                exportDay = DateTime.SpecifyKind(selectedDay.Date, DateTimeKind.Local);
+            var rangeStart = (range == "30days" ? exportDay.AddDays(-29) : exportDay).ToUniversalTime();
+            var rangeEnd = exportDay.AddDays(1).ToUniversalTime();
+            if (rangeEnd > DateTime.UtcNow) rangeEnd = DateTime.UtcNow;
+            cmd.CommandText = """
+                SELECT start_time, exe_name, window_title, category, session_state,
+                    MAX(0, MIN(julianday(COALESCE(end_time, $end)), julianday($end)) -
+                        MAX(julianday(start_time), julianday($start))) * 86400 AS duration_secs
+                FROM app_events
+                WHERE julianday(start_time) < julianday($end)
+                    AND julianday(COALESCE(end_time, $end)) > julianday($start)
+                ORDER BY start_time
+                """;
+            cmd.Parameters.AddWithValue("$start", rangeStart.ToString("o"));
+            cmd.Parameters.AddWithValue("$end", rangeEnd.ToString("o"));
 
             using var r = await cmd.ExecuteReaderAsync();
             if (format == "json")

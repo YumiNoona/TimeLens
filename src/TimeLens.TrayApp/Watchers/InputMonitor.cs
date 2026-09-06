@@ -58,7 +58,9 @@ public sealed class InputMonitor : IDisposable
         _flushTimer = new Timer(FlushCounters, null, 60_000, 60_000);
     }
 
-    private void FlushCounters(object? state)
+    private void FlushCounters(object? state) => RuntimeDiagnostics.TryRun("Input timer", Flush);
+
+    private void Flush()
     {
         var k = Interlocked.Exchange(ref _keyCount, 0);
         var c = Interlocked.Exchange(ref _clickCount, 0);
@@ -66,13 +68,16 @@ public sealed class InputMonitor : IDisposable
         if (k > 0 || c > 0)
         {
             var (exe, _, pid) = Win32.GetForegroundWindowInfo();
-            InputActivityTick?.Invoke(k, c, pid, exe);
+            PublishInput(k, c, pid, exe);
         }
     }
 
+    internal bool PublishInput(int keys, int clicks, int? pid, string? exe) =>
+        RuntimeDiagnostics.TryRun("Input subscriber", () => InputActivityTick?.Invoke(keys, clicks, pid, exe));
+
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && _instance is { } inst)
+        if (nCode >= 0 && (wParam.ToInt32() == 0x0100 || wParam.ToInt32() == 0x0104) && _instance is { } inst)
             Interlocked.Increment(ref inst._keyCount);
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }

@@ -26,64 +26,62 @@ public sealed class IdleMonitor
 
     private string _lastState = "active";
 
+    private bool _locked;
+    private bool _suspended;
+
+    public void SetSessionState(string state)
+    {
+        if (state == "locked") _locked = true;
+        if (state == "unlocked") _locked = false;
+        if (state == "sleep") _suspended = true;
+        if (state == "wake") _suspended = false;
+    }
+
     private bool IsAudioActive()
     {
-        if (AudioMonitorRef is not null && AudioMonitorRef.AnyAudioPlaying) return true;
-        if (!string.IsNullOrEmpty(TimeLens.Api.LiveStatusStore.AudibleTab)) return true;
+        // Background music must not turn hours away from a silent editor into work.
+        if (AudioMonitorRef is not null && AudioMonitorRef.IsPlayingFor(TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
+        if (TimeLens.Api.LiveStatusStore.Settings.TrackBrowser &&
+            (DateTime.UtcNow - TimeLens.Api.LiveStatusStore.LastExtensionHeartbeat).TotalSeconds < 30 &&
+            !string.IsNullOrEmpty(TimeLens.Api.LiveStatusStore.AudibleTab) &&
+            IsBrowser(TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
         return false;
     }
 
-    private static long ElapsedSince(uint dwTime)
+    private static bool IsBrowser(string exe) => exe.ToLowerInvariant() is
+        "chrome.exe" or "msedge.exe" or "firefox.exe" or "zen.exe" or "brave.exe" or
+        "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe";
+
+    private readonly Func<long> _idleMilliseconds;
+
+    public IdleMonitor(Func<long>? idleMilliseconds = null)
     {
-        long now = Environment.TickCount64;
-        long then = (now & ~0xFFFFFFFFL) | dwTime;
-        if (then > now) then -= 0x100000000L;
-        return now - then;
+        _idleMilliseconds = idleMilliseconds ?? ReadIdleMilliseconds;
+    }
+
+    private static long ReadIdleMilliseconds()
+    {
+        var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref lii)) return 0;
+        // Unsigned subtraction handles the 32-bit tick wrap. A slightly future
+        // input timestamp must not turn into 49 days of inactivity.
+        var elapsed = unchecked((uint)Environment.TickCount64 - lii.dwTime);
+        return elapsed > int.MaxValue ? 0 : elapsed;
     }
 
     public bool IsIdle()
     {
-        var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
-        if (!GetLastInputInfo(ref lii)) return false;
-        var elapsedMs = ElapsedSince(lii.dwTime);
-
-        if (IsAudioActive())
-        {
-            // Audio keeps us "active" but only up to the sustained max.
-            // After 2h of no input, even audio playing is idle.
-            return elapsedMs >= AudioSustainedMaxSeconds * 1000;
-        }
-
-        return elapsedMs >= IdleThresholdSeconds * 1000;
+        var threshold = IsAudioActive() ? AudioSustainedMaxSeconds : IdleThresholdSeconds;
+        return _idleMilliseconds() >= Math.Max(1L, threshold) * 1000;
     }
 
-    public int IdleSeconds()
-    {
-        var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
-        if (!GetLastInputInfo(ref lii)) return 0;
-
-        var elapsed = (int)(ElapsedSince(lii.dwTime) / 1000);
-
-        if (IsAudioActive())
-        {
-            // Audio masks idle below AudioSustainedMaxSeconds; bail at zero
-            // so consumers don't see accumulating idle seconds while audio plays.
-            return elapsed >= AudioSustainedMaxSeconds ? elapsed : 0;
-        }
-
-        return elapsed;
-    }
-
-    internal void ResetLastState()
-    {
-        _lastState = "active";
-    }
+    // Report real time since input even when foreground playback sustains activity.
+    public int IdleSeconds() => (int)Math.Clamp(_idleMilliseconds() / 1000, 0, int.MaxValue);
 
     public string GetState()
     {
-        var sysState = TimeLens.Api.LiveStatusStore.SystemState;
         string newState;
-        if (sysState == "away")
+        if (_locked || _suspended)
             newState = "away";
         else if (IsIdle())
             newState = "idle";

@@ -47,7 +47,13 @@ public sealed class WinEventWatcher : IDisposable
     private void OnWinEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
-        if (hwnd == IntPtr.Zero) return;
+        RuntimeDiagnostics.TryRun("Foreground callback", () =>
+            HandleWinEvent(eventType, hwnd, idObject));
+    }
+
+    private void HandleWinEvent(uint eventType, IntPtr hwnd, int idObject)
+    {
+        if (hwnd == IntPtr.Zero || hwnd != Win32.GetForegroundWindow()) return;
 
         var sb = new System.Text.StringBuilder(256);
         Win32.GetWindowText(hwnd, sb, sb.Capacity);
@@ -102,8 +108,11 @@ public sealed class WinEventWatcher : IDisposable
         _lastExe = exeName;
         _lastTitle = title;
 
-        ForegroundChanged?.Invoke(exeName, title, (int)pid);
+        PublishForeground(exeName, title, (int)pid);
     }
+
+    internal bool PublishForeground(string exe, string title, int pid) =>
+        RuntimeDiagnostics.TryRun("Foreground subscriber", () => ForegroundChanged?.Invoke(exe, title, pid));
 
     private string ResolveExeName(int pid)
     {

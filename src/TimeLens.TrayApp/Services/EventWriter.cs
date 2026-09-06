@@ -2,86 +2,87 @@ using Microsoft.Data.Sqlite;
 
 namespace TimeLens.TrayApp.Services;
 
-public sealed class EventWriter
+public sealed class EventWriter : IDisposable
 {
     private readonly WriterQueue _queue;
     private long? _lastOpenEventId;
     private readonly object _openEventLock = new();
 
-    public EventWriter(string dbPath)
+    public EventWriter(string dbPath, TimeProvider? clock = null)
     {
         _queue = new WriterQueue(dbPath);
+        _clock = clock ?? TimeProvider.System;
     }
+
+    private readonly TimeProvider _clock;
+    private (string Exe, string Title, int Pid, string State, string? Category, string? Project)? _identity;
+    private DateTime _lastObservation;
+    private static readonly TimeSpan MaximumGap = TimeSpan.FromSeconds(30);
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
         lock (_openEventLock)
         {
-            _lastOpenEventId = _queue.ExecuteSyncWithRowId(conn =>
+            var now = _clock.GetUtcNow().UtcDateTime;
+            var identity = (exeName, windowTitle, pid, sessionState, category, project);
+            var continuous = now >= _lastObservation && now - _lastObservation <= MaximumGap;
+            if (_lastOpenEventId is long current && _identity == identity && continuous)
             {
-            var now = DateTime.UtcNow.ToString("o");
-            var since = DateTime.UtcNow.AddHours(-48).ToString("o");
-
-            if (_lastOpenEventId is not (long prevId))
-            {
-                // First call after startup — clean up any orphans from a previous crash
-                using var closeAll = conn.CreateCommand();
-                closeAll.CommandText = "UPDATE app_events SET end_time = $now WHERE end_time IS NULL AND start_time >= $since";
-                closeAll.Parameters.AddWithValue("$now", now);
-                closeAll.Parameters.AddWithValue("$since", since);
-                closeAll.ExecuteNonQuery();
+                SaveEnd(current, now);
+                _lastObservation = now;
+                return;
             }
-            else
+            // Never bridge an unobserved suspend, stalled timer, or clock jump.
+            if (_lastOpenEventId is long previous && continuous) SaveEnd(previous, now);
+            var newId = _queue.ExecuteSyncWithRowId(conn =>
             {
-                // Close only the previous row we created — avoids race killing
-                // freshly-inserted rows during rapid foreground switches.
-                using var closePrev = conn.CreateCommand();
-                closePrev.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
-                closePrev.Parameters.AddWithValue("$now", now);
-                closePrev.Parameters.AddWithValue("$id", prevId);
-                closePrev.ExecuteNonQuery();
-            }
-
-            // Insert new row
-            using var insert = conn.CreateCommand();
-            insert.CommandText = """
-                INSERT INTO app_events (exe_name, window_title, pid, category, start_time, session_state, was_idle, local_date, project)
-                VALUES ($exe, $title, $pid, $cat, $start, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END, $localDate, $project);
-                """;
-            insert.Parameters.AddWithValue("$exe", exeName);
-            insert.Parameters.AddWithValue("$title", windowTitle);
-            insert.Parameters.AddWithValue("$pid", pid);
-            insert.Parameters.AddWithValue("$cat", category ?? (object)DBNull.Value);
-            insert.Parameters.AddWithValue("$start", now);
-            insert.Parameters.AddWithValue("$state", sessionState);
-            insert.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
-            insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
-            insert.ExecuteNonQuery();
-        });
+                using var insert = conn.CreateCommand();
+                insert.CommandText = """
+                    INSERT INTO app_events (exe_name, window_title, pid, category, start_time, end_time, session_state, was_idle, local_date, project)
+                    VALUES ($exe, $title, $pid, $cat, $now, $now, $state, CASE WHEN $state = 'active' THEN 0 ELSE 1 END, $date, $project)
+                    """;
+                insert.Parameters.AddWithValue("$exe", exeName);
+                insert.Parameters.AddWithValue("$title", windowTitle);
+                insert.Parameters.AddWithValue("$pid", pid);
+                insert.Parameters.AddWithValue("$cat", category ?? (object)DBNull.Value);
+                insert.Parameters.AddWithValue("$now", now.ToString("o"));
+                insert.Parameters.AddWithValue("$state", sessionState);
+                insert.Parameters.AddWithValue("$date", now.ToLocalTime().ToString("yyyy-MM-dd"));
+                insert.Parameters.AddWithValue("$project", project ?? (object)DBNull.Value);
+                insert.ExecuteNonQuery();
+            });
+            _lastOpenEventId = newId;
+            _identity = identity;
+            _lastObservation = now;
         }
     }
 
-    /// <summary>
-    /// Ends the foreground activity segment without creating a replacement row.
-    /// This is used when focus moves to a browser tracked by the extension, a Windows
-    /// shell surface, or an idle/away span. Leaving the preceding app open here makes
-    /// it incorrectly inherit that time.
-    /// </summary>
+    private void SaveEnd(long id, DateTime now) => _queue.ExecuteSync(conn =>
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id";
+        cmd.Parameters.AddWithValue("$now", now.ToString("o"));
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    });
+
     public void CloseCurrentAppEvent()
     {
         lock (_openEventLock)
         {
-            if (_lastOpenEventId is not (long id)) return;
-            _queue.ExecuteSync(conn =>
-            {
-                using var close = conn.CreateCommand();
-                close.CommandText = "UPDATE app_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
-                close.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                close.Parameters.AddWithValue("$id", id);
-                close.ExecuteNonQuery();
-            });
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (_lastOpenEventId is long id && now >= _lastObservation && now - _lastObservation <= MaximumGap)
+                SaveEnd(id, now);
             _lastOpenEventId = null;
+            _identity = null;
         }
+    }
+
+    public void Dispose()
+    {
+        CloseCurrentAppEvent();
+        EndIdleSpan();
+        _queue.Dispose();
     }
 
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)
@@ -147,43 +148,62 @@ public sealed class EventWriter
     }
 
     private long? _idleSpanId;
+    private DateTime _lastIdleObservation;
+    private string? _idleReason;
     private readonly object _idleSpanLock = new();
 
     public bool StartIdleSpan(string exeName, string reason)
     {
         lock (_idleSpanLock)
         {
-            if (_idleSpanId is not null) return false;
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (_idleSpanId is not null)
+            {
+                var continuous = now >= _lastIdleObservation && now - _lastIdleObservation <= MaximumGap;
+                if (continuous && reason == _idleReason)
+                {
+                    SaveIdleEnd(now);
+                    _lastIdleObservation = now;
+                    return false;
+                }
+                if (continuous) SaveIdleEnd(now);
+                _idleSpanId = null;
+            }
             _idleSpanId = _queue.ExecuteSyncWithRowId(conn =>
             {
                 using var insert = conn.CreateCommand();
                 insert.CommandText = """
-                    INSERT INTO idle_spans (start_time, exe_at_start, idle_reason)
-                    VALUES ($start, $exe, $reason)
+                    INSERT INTO idle_spans (start_time, end_time, exe_at_start, idle_reason)
+                    VALUES ($start, $start, $exe, $reason)
                     """;
-                insert.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
+                insert.Parameters.AddWithValue("$start", now.ToString("o"));
                 insert.Parameters.AddWithValue("$exe", exeName);
                 insert.Parameters.AddWithValue("$reason", reason);
                 insert.ExecuteNonQuery();
             });
+            _lastIdleObservation = now;
+            _idleReason = reason;
             return true;
         }
     }
+
+    private void SaveIdleEnd(DateTime now) => _queue.ExecuteSync(conn =>
+    {
+        using var update = conn.CreateCommand();
+        update.CommandText = "UPDATE idle_spans SET end_time = $now WHERE id = $id";
+        update.Parameters.AddWithValue("$now", now.ToString("o"));
+        update.Parameters.AddWithValue("$id", _idleSpanId!.Value);
+        update.ExecuteNonQuery();
+    });
 
     public bool EndIdleSpan()
     {
         lock (_idleSpanLock)
         {
-            if (_idleSpanId is not (long id)) return false;
+            if (_idleSpanId is null) return false;
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (now >= _lastIdleObservation && now - _lastIdleObservation <= MaximumGap) SaveIdleEnd(now);
             _idleSpanId = null;
-            _queue.ExecuteSync(conn =>
-            {
-                using var update = conn.CreateCommand();
-                update.CommandText = "UPDATE idle_spans SET end_time = $now WHERE id = $id";
-                update.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                update.Parameters.AddWithValue("$id", id);
-                update.ExecuteNonQuery();
-            });
             return true;
         }
     }

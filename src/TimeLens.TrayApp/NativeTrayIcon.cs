@@ -336,6 +336,10 @@ public sealed class NativeTrayIcon : IDisposable
         }
         catch (Exception ex)
         {
+            RuntimeDiagnostics.Write($"Tray callback 0x{msg:x}: {ex}");
+            // Menu/browser-launch and shell notification failures must not stop tracking.
+            // Startup failures still exit with a diagnostic instead of a nonfunctional tray.
+            if (msg != WM_STARTUP) return IntPtr.Zero;
             // Managed exceptions must not unwind through the native callback. Rethrow
             // after the loop so Program can write the crash log and show an error.
             _callbackError ??= ExceptionDispatchInfo.Capture(ex);
@@ -400,6 +404,7 @@ public sealed class NativeTrayIcon : IDisposable
                 return IntPtr.Zero;
 
             case WM_CLOSE:
+                RuntimeDiagnostics.Write("Tray received WM_CLOSE.");
                 RemoveTrayIcon();
                 DestroyWindow(hWnd);
                 _hWnd = IntPtr.Zero;

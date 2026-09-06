@@ -199,28 +199,21 @@ public static class DatabaseInitializer
         using var fixNeg = conn.CreateCommand();
         fixNeg.CommandText = """
             UPDATE app_events SET end_time = start_time
-            WHERE end_time IS NOT NULL AND end_time < start_time
+            WHERE end_time IS NOT NULL AND julianday(end_time) < julianday(start_time)
             """;
         fixNeg.ExecuteNonQuery();
 
-        // Patch orphaned rows from previous sessions (race left end_time=NULL)
-        // Use the next event's start_time as end boundary for best accuracy;
-        // fall back to start_time + 30 minutes if no next event exists.
-        // NOTE: All comparisons use ISO 8601 strings to match stored format (e.g. "2026-06-25T10:36:15.6682266Z")
-        //       SQLite's datetime() can't parse ISO 8601 directly, so REPLACE T→space and strip Z first.
-        var orphanCutoff = DateTime.UtcNow.AddMinutes(-10).ToString("o");
+        // New writers persist a bounded end on every heartbeat. Legacy open rows
+        // have no durable last-seen timestamp: retain a following boundary when
+        // available, but do not invent a fixed 30-minute session on restart.
         using var patchOrphans = conn.CreateCommand();
         patchOrphans.CommandText = """
             UPDATE app_events SET end_time = COALESCE(
                 (SELECT MIN(next.start_time) FROM app_events next
-                 WHERE next.start_time > app_events.start_time
-                   AND next.start_time < $fortyeight),
-                datetime(REPLACE(REPLACE(start_time, 'T', ' '), 'Z', ''), '+30 minutes')
-            )
-            WHERE end_time IS NULL AND start_time < $cutoff
+                 WHERE next.start_time > app_events.start_time), start_time)
+            WHERE end_time IS NULL;
+            UPDATE idle_spans SET end_time = start_time WHERE end_time IS NULL;
             """;
-        patchOrphans.Parameters.AddWithValue("$cutoff", orphanCutoff);
-        patchOrphans.Parameters.AddWithValue("$fortyeight", DateTime.UtcNow.AddHours(48).ToString("o"));
         patchOrphans.ExecuteNonQuery();
 
         // Browser tab IDs are held in memory by the extension bridge. After a desktop

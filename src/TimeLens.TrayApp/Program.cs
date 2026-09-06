@@ -13,7 +13,7 @@ internal static class Program
     private const int MB_YESNO = 0x04;
     private const int MB_ICONQUESTION = 0x20;
     private const int IDYES = 6;
-    private const string BuiltInCategoryRefreshRevision = "2";
+    private const string BuiltInCategoryRefreshRevision = "3";
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
@@ -43,6 +43,7 @@ internal static class Program
                 if (Directory.Exists(dataDir) || File.Exists(dataDir))
                     throw new InvalidOperationException("Smoke tests require a new, empty data directory.");
             }
+            RuntimeDiagnostics.Initialize(dataDir);
             // Native AOT cannot load SQLite directly from an assembly resource. Extract the
             // embedded runtime payload on first launch so TimeLens.exe remains copy-and-run.
             var sqlitePath = EnsureRuntimeFile(dataDir, "runtime/e_sqlite3.dll", "e_sqlite3.dll");
@@ -139,7 +140,8 @@ internal static class Program
         RuntimeConfig.Settings = settings;
         LiveStatusStore.Settings = settings;
 
-        var writer = new EventWriter(dbPath);
+        using var writer = new EventWriter(dbPath);
+        var trackingLock = new object();
         var classifier = new CategoryClassifier();
 
         // Load community built-in rules first (lowest priority, overridden by user rules)
@@ -167,36 +169,28 @@ internal static class Program
         if (settings.TrackAudio)
             idleMonitor.AudioMonitorRef = audioMonitor;
 
-        bool IsExtensionTrackedBrowser(string exe)
+        void WriteAppEvent()
         {
-            var normalized = Path.GetFileName(exe).ToLowerInvariant();
-            return normalized is "chrome.exe" or "msedge.exe" or "microsoftedge.exe" or "firefox.exe" or
-                "zen.exe" or "brave.exe" or "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe"
-                && (DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalMinutes < 2;
-        }
-
-        void WriteAppEvent(string? foregroundExe = null, string? foregroundTitle = null, int? foregroundPid = null, string? forcedState = null)
-        {
-            var (detectedExe, detectedTitle, detectedPid) = Win32.GetForegroundWindowInfo();
-            var exe = foregroundExe ?? detectedExe;
-            var title = foregroundTitle ?? detectedTitle;
-            var pid = foregroundPid ?? detectedPid;
-            if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
-                exe = ResolveConsoleExe(title) ?? exe;
-            var cat = classifier.Classify(exe, title);
-            var state = forcedState ?? idleMonitor.GetState();
-            LiveStatusStore.CurrentApp = exe;
-            LiveStatusStore.IsIdle = state != "active";
-            LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
-            LiveStatusStore.SystemState = state;
-            if (state != "active" || IsExtensionTrackedBrowser(exe) || cat == "system")
+            lock (trackingLock)
             {
-                writer.CloseCurrentAppEvent();
-                return;
+                var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+                if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
+                    exe = ResolveConsoleExe(title) ?? exe;
+                var cat = classifier.Classify(exe, title);
+                LiveStatusStore.CurrentApp = exe;
+                var state = idleMonitor.GetState();
+                LiveStatusStore.IsIdle = state != "active";
+                LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
+                LiveStatusStore.SystemState = state;
+                if (state != "active" || cat == "system")
+                {
+                    writer.CloseCurrentAppEvent();
+                    return;
+                }
+                var project = CategoryClassifier.ExtractProject(exe, title);
+                writer.OpenAppEvent(exe, title, pid, state, cat, project);
             }
-            var project = CategoryClassifier.ExtractProject(exe, title);
-            writer.OpenAppEvent(exe, title, pid, state, cat, project);
         }
 
         // Blocklist enforcement — entries: {i: identifier, m: 'u'|'t', e?: expiresAt}
@@ -512,7 +506,7 @@ internal static class Program
 
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
-            WriteAppEvent(exe, title, pid);
+            WriteAppEvent();
 
             // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && !LiveStatusStore.IsIdle)
@@ -525,21 +519,24 @@ internal static class Program
 
         sessionWatcher.StateChanged += state =>
         {
-            writer.InsertSessionEvent(state);
-
-            switch (state)
+            lock (trackingLock)
             {
-                case "locked":
-                case "sleep":
-                    LiveStatusStore.SystemState = "away";
-                    WriteAppEvent();
-                    break;
-                case "unlocked":
-                case "wake":
-                    LiveStatusStore.SystemState = "active";
-                    idleMonitor.ResetLastState();
-                    WriteAppEvent();
-                    break;
+                writer.InsertSessionEvent(state);
+                idleMonitor.SetSessionState(state);
+
+                switch (state)
+                {
+                    case "locked":
+                    case "sleep":
+                        LiveStatusStore.SystemState = "away";
+                        WriteAppEvent();
+                        break;
+                    case "unlocked":
+                    case "wake":
+                        LiveStatusStore.SystemState = "active";
+                        WriteAppEvent();
+                        break;
+                }
             }
         };
 
@@ -572,32 +569,31 @@ internal static class Program
 
         using var idleTimer = new Timer(_ =>
         {
-            // Focus mode — browser domain block check
-            var blocked = LiveStatusStore.PendingBrowserBlock;
-            if (blocked is not null && LiveStatusStore.Settings.FocusMode)
+            if (!Monitor.TryEnter(trackingLock)) return;
+            try
             {
-                LiveStatusStore.PendingBrowserBlock = null;
-                writer.InsertBlockLog(blocked.Target, blocked.Action);
-            }
+                idleMonitor.IdleThresholdSeconds = LiveStatusStore.Settings.IdleThresholdSeconds;
+                // Focus mode — browser domain block check
+                var blocked = LiveStatusStore.PendingBrowserBlock;
+                if (blocked is not null && LiveStatusStore.Settings.FocusMode)
+                {
+                    LiveStatusStore.PendingBrowserBlock = null;
+                    writer.InsertBlockLog(blocked.Target, blocked.Action);
+                }
 
-            var curState = idleMonitor.GetState();
-            var idleSecs = idleMonitor.IdleSeconds();
-            LiveStatusStore.IsIdle = curState != "active";
-            LiveStatusStore.IdleSeconds = idleSecs;
-            LiveStatusStore.SystemState = curState;
-
-            var changed = curState != lastSystemState;
-
-            if (changed)
-            {
+                // Read the actual foreground before deciding whether its audio sustains
+                // activity. Persist even when no Windows event or state change occurs.
+                WriteAppEvent();
+                var curState = LiveStatusStore.SystemState;
                 if (lastSystemState != "active" && curState == "active")
                     LiveStatusStore.PendingIdleReturn = true;
-
                 lastSystemState = curState;
-                if (curState == "active") WriteAppEvent(forcedState: curState);
-                else writer.CloseCurrentAppEvent();
+                if (curState != "active") writer.StartIdleSpan(LiveStatusStore.CurrentApp, curState == "away" ? "away" : "input_idle");
+                else writer.EndIdleSpan();
             }
-        }, null, 10_000, 10_000);
+            catch (Exception ex) { LogCrash($"tracking heartbeat: {ex}"); }
+            finally { Monitor.Exit(trackingLock); }
+        }, null, 5_000, 5_000);
 
         // First-run: ask about auto-start, then wire settings save
         var firstRunDone = false;
@@ -646,10 +642,11 @@ internal static class Program
         using var updateService = new UpdateService();
         void RequestShutdown()
         {
+            RuntimeDiagnostics.Write("Shutdown requested through tray exit or updater.");
             apiCts.Cancel();
             tray?.Close();
         }
-        _ = ApiHost.StartAsync(dbPath, apiCts.Token,
+        var apiTask = ApiHost.StartAsync(dbPath, apiCts.Token,
             saveSetting: (k, v) =>
             {
                 if (k == "auto_start")
@@ -686,6 +683,8 @@ internal static class Program
             recordBlockAttempt: writer.InsertBlockLog,
             updateService: updateService,
             requestShutdown: RequestShutdown);
+        _ = apiTask.ContinueWith(task => RuntimeDiagnostics.Write($"Local API failed: {task.Exception}"),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {
@@ -830,7 +829,15 @@ internal static class Program
             RequestShutdown();
         };
 
-        tray.Run();
+        try { tray.Run(); RuntimeDiagnostics.Write("Tray message loop exited."); }
+        finally
+        {
+            idleTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            winWatcher.Dispose();
+            sessionWatcher.Dispose();
+            inputMonitor.Dispose();
+            audioMonitor.Dispose();
+        }
     }
 
     private static void RefreshDefaultCategories(string dbPath, CategoryClassifier classifier)

@@ -2,8 +2,7 @@
   import { onMount } from 'svelte';
   import {
     heatmapDays as heatmapDaysStore,
-    timeFormat as timeFormatStore,
-    timelineMinSegmentSeconds as timelineMinSegmentSecondsStore
+    timeFormat as timeFormatStore
   } from '../stores/settings';
 
   let {
@@ -40,7 +39,6 @@
   let defaultView = $state('today');
   let density = $state('comfortable');
   let motionEnabled = $state(true);
-  let timelineMinSegmentSeconds = $state(60);
   let heatmapDays = $state(273);
   let blockProtectionEnabled = $state(false);
   let blockProtectionScope = $state<'strict' | 'all'>('strict');
@@ -126,13 +124,11 @@
       defaultView = s.defaultView ?? 'today';
       density = s.density ?? 'comfortable';
       motionEnabled = s.motionEnabled ?? true;
-      timelineMinSegmentSeconds = s.timelineMinSegmentSeconds ?? 60;
       heatmapDays = s.heatmapDays ?? 273;
       blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       blockProtectionScope = s.blockProtectionScope === 'all' ? 'all' : 'strict';
       blockExitProtection = s.blockExitProtection ?? true;
       timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
-      timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds);
       heatmapDaysStore.set(heatmapDays);
       apiReachable = true;
     } catch {
@@ -455,12 +451,6 @@
         <div class="setting-info"><span class="setting-label">Window titles</span><span class="setting-desc">Include titles in expanded timeline rows</span></div>
         <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => { showTitles = value; onshowtitles?.(value); })} />
       </label>
-      <div class="setting-row">
-        <div class="setting-info"><span class="setting-label">Hide quick switches</span><span class="setting-desc">Omit segments shorter than this duration</span></div>
-        <select class="select wide" bind:value={timelineMinSegmentSeconds} onchange={() => { save('timelineMinSegmentSeconds', timelineMinSegmentSeconds); timelineMinSegmentSecondsStore.set(timelineMinSegmentSeconds); }}>
-          <option value={30}>30 seconds</option><option value={60}>1 minute</option><option value={120}>2 minutes</option><option value={300}>5 minutes</option>
-        </select>
-      </div>
       <div class="setting-row">
         <div class="setting-info"><span class="setting-label">Activity heatmap</span><span class="setting-desc">Range shown in History</span></div>
         <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>

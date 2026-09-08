@@ -1,7 +1,7 @@
 import type { TimelineBlock } from './types';
 
 export function fmtDuration(secs: number): string {
-  if (secs < 60) return '<1m';
+  if (secs < 60) return Math.max(0, Math.round(secs)) + 's';
   const m = Math.floor(secs / 60);
   if (m < 60) return m + 'm';
   const h = Math.floor(m / 60);
@@ -10,10 +10,9 @@ export function fmtDuration(secs: number): string {
 
 /**
  * Produces a human-readable activity timeline without mutating the recorded data.
- * Adjacent samples from the same app/category are joined, then sub-minute window
- * switches are omitted so they do not render as duplicate timestamps or 0m rows.
+ * Only contiguous identical contexts are joined. Gaps never become recorded time.
  */
-export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 60): TimelineBlock[] {
+export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 0): TimelineBlock[] {
   const ordered = blocks
     .filter(block => block.endHour > block.startHour && block.durationSeconds > 0)
     .toSorted((a, b) => a.startHour - b.startHour);
@@ -22,16 +21,14 @@ export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 60):
   for (const block of ordered) {
     const current = { ...block };
     const previous = merged.at(-1);
-    const gapSeconds = previous
-      ? Math.max(0, Math.round((current.startHour - previous.endHour) * 3600))
-      : Number.POSITIVE_INFINITY;
     const sameContext = previous &&
       previous.type.toLowerCase() === current.type.toLowerCase() &&
-      previous.exeName.toLowerCase() === current.exeName.toLowerCase();
+      previous.exeName.toLowerCase() === current.exeName.toLowerCase() &&
+      previous.windowTitle === current.windowTitle && previous.project === current.project;
 
-    if (previous && sameContext && gapSeconds <= 20) {
+    if (previous && sameContext && Math.abs(current.startHour - previous.endHour) * 3600 < 0.001) {
       previous.endHour = Math.max(previous.endHour, current.endHour);
-      previous.durationSeconds += current.durationSeconds + gapSeconds;
+      previous.durationSeconds += current.durationSeconds;
       previous.windowTitle = current.windowTitle || previous.windowTitle;
       previous.project = current.project || previous.project;
       continue;
@@ -43,9 +40,7 @@ export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 60):
 }
 
 export function fmtTime(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return (h > 0 ? h + 'h ' : '') + m + 'm';
+  return fmtDuration(mins * 60);
 }
 
 export function fmtHourShort(h: number, fmt?: '12h' | '24h'): string {
@@ -66,4 +61,10 @@ export function fmtHourFull(n: number, fmt?: '12h' | '24h'): string {
   if (h < 12) return `${h}:${mm}am`;
   if (h === 12) return `12:${mm}pm`;
   return `${h - 12}:${mm}pm`;
+}
+
+export function fmtPrecise(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
+  return `${h ? h + 'h ' : ''}${h || m ? m + 'm ' : ''}${s}s`;
 }

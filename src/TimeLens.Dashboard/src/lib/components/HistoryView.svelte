@@ -11,7 +11,7 @@
   import MediaCard from './MediaCard.svelte';
   import TimelineView from './TimelineView.svelte';
   import { normalizeTimeline } from '../utils';
-  import { timelineMinSegmentSeconds } from '../stores/settings';
+  import UsageDetails from './UsageDetails.svelte';
   import { reorderable } from '../actions/reorderable';
 
   let {
@@ -50,8 +50,8 @@
   });
 
   const fullHourly = $derived.by(() => {
-    const values = new Map(hourly.map(entry => [entry.hour, entry.visits]));
-    return Array.from({ length: 24 }, (_, hour) => ({ hour, visits: values.get(hour) ?? 0 }));
+    const values = new Map(hourly.map(entry => [entry.hour, entry.totalSeconds]));
+    return Array.from({ length: 24 }, (_, hour) => ({ hour, totalSeconds: values.get(hour) ?? 0 }));
   });
 
   const hasActivity = $derived(
@@ -66,7 +66,7 @@
 
   const totalBlockedOpenings = $derived(blockAttempts.reduce((total, attempt) => total + attempt.count, 0));
 
-  const visibleTimeline = $derived(historyData ? normalizeTimeline(historyData.timeline, $timelineMinSegmentSeconds) : []);
+  const visibleTimeline = $derived(historyData ? normalizeTimeline(historyData.timeline) : []);
 
   async function loadDate(date: string): Promise<void> {
     const currentRequest = ++requestId;
@@ -228,7 +228,7 @@
               <strong class="capitalize">{historyData.summary.topCategory}</strong>
             </div>
             <div class="detail-row">
-              <span>Browser visits</span>
+              <span>Recorded website sessions</span>
               <strong>{historyData.browserSites.reduce((total, site) => total + site.visits, 0).toLocaleString()}</strong>
             </div>
             <div class="detail-row">
@@ -283,6 +283,7 @@
           </div>
         </div>
       {:else}
+        <UsageDetails data={historyData} date={selectedDate} />
         <div class="history-grid" use:reorderable={{ key: 'history:apps-categories' }}>
           <TopApps apps={historyData.topApps} />
           <CategoryBreakdown categories={historyData.categories} periodLabel="this day" />
@@ -305,7 +306,7 @@
               <i class="ti ti-timeline" aria-hidden="true"></i>
               <div>
                 <h2>Day timeline</h2>
-                <p>{visibleTimeline.length} activity segment{visibleTimeline.length === 1 ? '' : 's'} · switches under 1 minute hidden</p>
+                <p>{visibleTimeline.length} activity segment{visibleTimeline.length === 1 ? '' : 's'} · all recorded switches included</p>
               </div>
             </div>
             <TimelineView data={historyData} {timelineGrouped} {showTitles} />

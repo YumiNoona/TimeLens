@@ -20,7 +20,7 @@
   </div>
 
   <div class="app-list">
-    {#each apps as app, i}
+    {#each apps.slice(0, 8) as app, i}
       {@const icon = appIcon(app.name)}
       {@const passive = isPassive(app)}
       <div class="app-row" class:app-passive={passive}>

@@ -33,8 +33,15 @@ public sealed record InputSummaryDto(
 public sealed record BrowserEntryDto(
     string Domain,
     int Visits,
-    string LastVisit
+    string LastVisit,
+    double TotalSeconds = 0,
+    int? Keystrokes = null,
+    int? Clicks = null,
+    BrowserPageDto[]? Pages = null
 );
+
+public sealed record BrowserPageDto(string Url, string Title, string Browser, double TotalSeconds,
+    int Sessions, string LastSeen, int? Keystrokes, int? Clicks);
 
 public sealed record AudioSessionDto(
     string ExeName,
@@ -54,7 +61,7 @@ public sealed record TimelineBlockDto(
 
 public sealed record TopAppDto(
     string Name,
-    int Minutes,
+    double Minutes,
     int Keystrokes = 0,
     int Clicks = 0
 );
@@ -67,7 +74,7 @@ public sealed record HeatmapEntryDto(
 public sealed record CategoryEntryDto(
     string Name,
     double Percentage,
-    int Minutes
+    double Minutes
 );
 
 public sealed record LiveStatusDto(

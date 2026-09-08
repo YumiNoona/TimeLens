@@ -13,8 +13,8 @@ public sealed class InputMonitor : IDisposable
     private static readonly LowLevelKeyboardProc KeyboardProc = KeyboardHookCallback;
     private static readonly LowLevelMouseProc MouseProc = MouseHookCallback;
 
-    private int _keyCount;
-    private int _clickCount;
+    private readonly object _countsLock = new();
+    private readonly Dictionary<(int Pid, string Exe), (int Keys, int Clicks)> _counts = new();
     private static InputMonitor? _instance;
 
     private IntPtr _keyboardHook;
@@ -55,21 +55,33 @@ public sealed class InputMonitor : IDisposable
         _mouseHook = SetWindowsHookEx(WH_MOUSE_LL,
             Marshal.GetFunctionPointerForDelegate(MouseProc), moduleHandle, 0);
 
-        _flushTimer = new Timer(FlushCounters, null, 60_000, 60_000);
+        _flushTimer = new Timer(FlushCounters, null, 5_000, 5_000);
     }
 
     private void FlushCounters(object? state) => RuntimeDiagnostics.TryRun("Input timer", Flush);
 
-    private void Flush()
+    internal void RecordInput(int pid, string exe, int keys, int clicks)
     {
-        var k = Interlocked.Exchange(ref _keyCount, 0);
-        var c = Interlocked.Exchange(ref _clickCount, 0);
-
-        if (k > 0 || c > 0)
+        lock (_countsLock)
         {
-            var (exe, _, pid) = Win32.GetForegroundWindowInfo();
-            PublishInput(k, c, pid, exe);
+            var current = _counts.GetValueOrDefault((pid, exe));
+            _counts[(pid, exe)] = (current.Keys + keys, current.Clicks + clicks);
         }
+    }
+
+    private void CaptureInput(int keys, int clicks) => RuntimeDiagnostics.TryRun("Input capture", () =>
+    {
+        var (exe, _, pid) = Win32.GetForegroundWindowInfo();
+        RecordInput(pid, exe, keys, clicks);
+    });
+
+    internal void Flush()
+    {
+        KeyValuePair<(int Pid, string Exe), (int Keys, int Clicks)>[] batch;
+        lock (_countsLock) { batch = _counts.ToArray(); _counts.Clear(); }
+        foreach (var entry in batch)
+            if (!PublishInput(entry.Value.Keys, entry.Value.Clicks, entry.Key.Pid, entry.Key.Exe))
+                RecordInput(entry.Key.Pid, entry.Key.Exe, entry.Value.Keys, entry.Value.Clicks);
     }
 
     internal bool PublishInput(int keys, int clicks, int? pid, string? exe) =>
@@ -78,7 +90,7 @@ public sealed class InputMonitor : IDisposable
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && (wParam.ToInt32() == 0x0100 || wParam.ToInt32() == 0x0104) && _instance is { } inst)
-            Interlocked.Increment(ref inst._keyCount);
+            inst.CaptureInput(1, 0);
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
@@ -88,7 +100,7 @@ public sealed class InputMonitor : IDisposable
         {
             var msg = wParam.ToInt32();
             if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
-                Interlocked.Increment(ref inst._clickCount);
+                inst.CaptureInput(0, 1);
         }
         return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
@@ -99,16 +111,9 @@ public sealed class InputMonitor : IDisposable
         _flushTimer = null;
         if (_keyboardHook != IntPtr.Zero) { UnhookWindowsHookEx(_keyboardHook); _keyboardHook = IntPtr.Zero; }
         if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
-        _keyCount = 0;
-        _clickCount = 0;
+        Flush();
         _instance = null;
     }
 
-    public void Dispose()
-    {
-        _flushTimer?.Dispose();
-        if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
-        if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
-        _instance = null;
-    }
+    public void Dispose() => Stop();
 }

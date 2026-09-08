@@ -6,5 +6,6 @@ public sealed record BrowserEventDto(
     string Title,
     string Browser,
     bool Audible,
-    int TabId = 0
+    int TabId = 0,
+    DateTimeOffset? ObservedAt = null
 );

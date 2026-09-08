@@ -1,5 +1,6 @@
 // Shared background script for Chrome MV3 and Firefox MV2.
-const BROWSER = typeof browser !== 'undefined' && browser.runtime && browser.runtime.id ? 'firefox' : 'chrome';
+const BROWSER = typeof browser !== 'undefined' && browser.runtime && browser.runtime.id ? 'firefox'
+  : /Edg\//.test(navigator.userAgent) ? 'edge' : /OPR\//.test(navigator.userAgent) ? 'opera' : 'chrome';
 const api = BROWSER === 'firefox' ? browser : chrome;
 const actionApi = api.action || api.browserAction;
 const ROOT = 'http://127.0.0.1:47821';
@@ -12,18 +13,14 @@ const LEAVE_API = ROOT + '/api/browser-leave';
 const AUDIBLE_API = ROOT + '/api/audible-status';
 const DASHBOARD = ROOT + '/';
 const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
-const QUEUE_KEY = 'timelens_queue';
-const MAX_QUEUE_SIZE = 500;
 const EXTENSION_VERSION = api.runtime.getManifest().version;
 
 let trackingEnabled = true;
 let blockingEnabled = false;
-const lastUrl = {};
-const debounceTimers = {};
 const imageDataCache = {};
 
 function checkedFetch(url, options) {
-  return fetch(url, options).then(function(response) {
+  return fetch(url, { ...options, signal: AbortSignal.timeout(3000) }).then(function(response) {
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return response;
   });
@@ -229,7 +226,7 @@ function clearNotifyToast() {
 }
 
 function executeInTab(tabId, fn, args) {
-  if (BROWSER === 'chrome' && api.scripting) {
+  if (BROWSER !== 'firefox' && api.scripting) {
     return api.scripting.executeScript({ target: { tabId: tabId }, func: fn, args: args || [] }).catch(function() {});
   }
   const code = '(' + fn.toString() + ').apply(null,' + JSON.stringify(args || []) + ');';
@@ -250,71 +247,74 @@ function applyBlockResponse(tabId, originalUrl, response) {
 }
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || message.type !== 'timelens-input') return false;
+  if (!sender.tab || sender.tab.incognito || !trackingEnabled) { sendResponse({ accepted: false }); return false; }
+  const batch = message.batch;
+  try {
+    const topUrl = new URL(sender.tab.url);
+    if (!['http:', 'https:'].includes(topUrl.protocol)) throw new Error('Unsupported tab');
+    // Inputs in embedded frames belong to the selected top-level website.
+    const pageUrl = sender.frameId === 0 ? new URL(batch.url) : topUrl;
+    if (sender.frameId === 0 && pageUrl.origin !== topUrl.origin) throw new Error('Navigation changed origin');
+    const body = { ...batch, url: pageUrl.href, browser: BROWSER };
+    checkedFetch(ROOT + '/api/browser-input', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(response => response.json()).then(sendResponse)
+      .catch(() => sendResponse({ retry: true }));
+  } catch (_) { sendResponse({ accepted: false }); }
+  return true;
+});
+
+api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-check-block') return false;
   stateFor(message.domain).then(hydrateNotifyMedia).then(sendResponse).catch(function() { sendResponse({ action: 'none' }); });
   return true;
 });
 
-function enqueue(event) {
-  api.storage.local.get(QUEUE_KEY, function(result) {
-    let queue = result[QUEUE_KEY] || [];
-    queue.push(event);
-    if (queue.length > MAX_QUEUE_SIZE) queue = queue.slice(queue.length - MAX_QUEUE_SIZE);
-    const next = {}; next[QUEUE_KEY] = queue;
-    api.storage.local.set(next);
-  });
+// Serialize focus snapshots and delivery. Offline observations are never replayed as
+// current tabs; desktop app tracking remains independent of the extension.
+let sampling = false;
+let sampleAgain = false;
+async function focusedTab() {
+  const win = await api.windows.getLastFocused({});
+  if (!win || !win.focused || win.type !== 'normal') return null;
+  const tabs = await api.tabs.query({ active: true, windowId: win.id });
+  const tab = tabs && tabs[0];
+  if (!tab || tab.incognito || !/^https?:\/\//.test(tab.url || '')) return null;
+  return tab;
 }
 
-let flushing = false;
-function flushQueue() {
-  if (flushing) return;
-  flushing = true;
-  api.storage.local.get(QUEUE_KEY, function(result) {
-    const queue = result[QUEUE_KEY] || [];
-    if (!queue.length) { flushing = false; return; }
-    api.storage.local.remove(QUEUE_KEY);
-    Promise.all(queue.map(function(evt) {
-      return checkedFetch(evt._leave ? LEAVE_API : EVENT_API, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(evt)
-      }).catch(function() { enqueue(evt); });
-    })).finally(function() { flushing = false; });
-  });
-}
-
-function doSendTab(tabId, url, title, audible) {
-  if (!trackingEnabled && !blockingEnabled) return;
+async function sampleFocusedTab() {
+  if (sampling) { sampleAgain = true; return; }
+  sampling = true;
   try {
-    const parsed = new URL(url);
-    const body = { tabId: tabId, domain: parsed.hostname, url: url, title: title || '', browser: BROWSER, audible: !!audible };
-    checkedFetch(EVENT_API, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    }).then(function(response) { return response.json(); })
-      .then(hydrateNotifyMedia)
-      .then(function(response) { applyBlockResponse(tabId, url, response); flushQueue(); })
-      .catch(function() { enqueue(body); });
-  } catch (_) {}
-}
-
-function sendTab(tabId, url, title, audible) {
-  if (debounceTimers[tabId]) clearTimeout(debounceTimers[tabId]);
-  debounceTimers[tabId] = setTimeout(function() {
-    delete debounceTimers[tabId];
-    doSendTab(tabId, url, title, audible);
-  }, 500);
-}
-
-function sendTabHeartbeat() {
-  if (!trackingEnabled) return;
-  api.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-    if (!tabs || !tabs.length || !tabs[0].url || tabs[0].url.indexOf('http') !== 0) return;
-    const tab = tabs[0];
-    let domain = '';
-    try { domain = new URL(tab.url).hostname; } catch (_) { return; }
-    checkedFetch(TAB_HEARTBEAT_API, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tabId: tab.id, domain: domain, url: tab.url, title: tab.title || '', browser: BROWSER })
-    }).catch(function() {});
-  });
+    const tab = await focusedTab();
+    if (!tab || !trackingEnabled) {
+      await checkedFetch(LEAVE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ browser: BROWSER, tabId: 0 }) });
+    }
+    if (!tab) {
+      reportAudible(false);
+      return;
+    }
+    if (trackingEnabled || blockingEnabled) {
+      const body = { tabId: tab.id, domain: new URL(tab.url).hostname, url: tab.url,
+        title: tab.title || '', browser: BROWSER, audible: !!tab.audible, observedAt: new Date().toISOString() };
+      const response = await checkedFetch(EVENT_API, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const block = await hydrateNotifyMedia(await response.json());
+      // Do not inject or redirect after the tab has navigated during the request.
+      const current = await focusedTab();
+      if (current && current.id === tab.id && current.url === tab.url)
+        await applyBlockResponse(tab.id, tab.url, block);
+    }
+    reportAudible(!!tab.audible);
+  } catch (_) {
+    // Retry a fresh snapshot on the next event/heartbeat.
+  } finally {
+    sampling = false;
+    if (sampleAgain) { sampleAgain = false; sampleFocusedTab(); }
+  }
 }
 
 function reportAudible(audible) {
@@ -324,44 +324,29 @@ function reportAudible(audible) {
 }
 
 actionApi.onClicked.addListener(function() { api.tabs.create({ url: DASHBOARD }); });
-api.tabs.onActivated.addListener(function(info) {
-  api.tabs.get(info.tabId, function(tab) {
-    if (tab && tab.url && tab.url.indexOf('http') === 0) {
-      lastUrl[info.tabId] = tab.url;
-      sendTab(info.tabId, tab.url, tab.title, tab.audible);
-    }
-  });
-});
+api.tabs.onActivated.addListener(sampleFocusedTab);
 api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
-  if (changeInfo.audible !== undefined) reportAudible(!!changeInfo.audible);
-  if (changeInfo.status === 'complete' && tab && tab.active && tab.url && tab.url.indexOf('http') === 0) {
-    lastUrl[tabId] = tab.url;
-    sendTab(tabId, tab.url, tab.title, tab.audible);
-  }
+  if (tab.active && (changeInfo.url || changeInfo.title || changeInfo.status === 'complete' || changeInfo.audible !== undefined))
+    sampleFocusedTab();
 });
-api.tabs.onRemoved.addListener(function(tabId) {
-  if (lastUrl[tabId]) {
-    const body = { tabId: tabId, browser: BROWSER, _leave: true };
-    checkedFetch(LEAVE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .catch(function() { enqueue(body); });
-  }
-  delete lastUrl[tabId];
-  if (debounceTimers[tabId]) clearTimeout(debounceTimers[tabId]);
-  delete debounceTimers[tabId];
-});
+api.tabs.onRemoved.addListener(sampleFocusedTab);
+api.windows.onFocusChanged.addListener(sampleFocusedTab);
+api.runtime.onStartup.addListener(function() { fetchSettings().then(sampleFocusedTab); });
+api.runtime.onInstalled.addListener(function() { fetchSettings().then(sampleFocusedTab); });
 
+// Remove v6's undated replay queue: it cannot establish historical intervals.
+api.storage.local.remove('timelens_queue');
 sendHeartbeat();
-fetchSettings();
-flushQueue();
+fetchSettings().then(sampleFocusedTab);
+// Best-effort five-second samples while the worker lives; alarms recover after
+// suspension/restart. Chrome 120+ supports a 30-second minimum alarm period.
+setInterval(sampleFocusedTab, 5000);
 if (api.alarms) {
   api.alarms.create('timelens-heartbeat', { periodInMinutes: 0.5 });
-  api.alarms.create('timelens-tab-heartbeat', { periodInMinutes: 0.75 });
-  api.alarms.create('timelens-settings', { periodInMinutes: 0.5 });
-  api.alarms.create('timelens-flush', { periodInMinutes: 1 });
   api.alarms.onAlarm.addListener(function(alarm) {
-    if (alarm.name === 'timelens-heartbeat') sendHeartbeat();
-    else if (alarm.name === 'timelens-tab-heartbeat') sendTabHeartbeat();
-    else if (alarm.name === 'timelens-settings') fetchSettings();
-    else if (alarm.name === 'timelens-flush') flushQueue();
+    if (alarm.name === 'timelens-heartbeat') {
+      sendHeartbeat();
+      fetchSettings().then(sampleFocusedTab);
+    }
   });
 }

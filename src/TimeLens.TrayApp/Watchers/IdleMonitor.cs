@@ -40,17 +40,18 @@ public sealed class IdleMonitor
     private bool IsAudioActive()
     {
         // Background music must not turn hours away from a silent editor into work.
-        if (AudioMonitorRef is not null && AudioMonitorRef.IsPlayingFor(TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
+        if (!IsBrowser(TimeLens.Api.LiveStatusStore.CurrentApp) && AudioMonitorRef is not null &&
+            AudioMonitorRef.IsPlayingFor(TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
         if (TimeLens.Api.LiveStatusStore.Settings.TrackBrowser &&
             (DateTime.UtcNow - TimeLens.Api.LiveStatusStore.LastExtensionHeartbeat).TotalSeconds < 30 &&
             !string.IsNullOrEmpty(TimeLens.Api.LiveStatusStore.AudibleTab) &&
-            IsBrowser(TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
+            TimeLens.Api.Services.BrowserTrackingService.MatchesForeground(TimeLens.Api.LiveStatusStore.AudibleTab!, TimeLens.Api.LiveStatusStore.CurrentApp)) return true;
         return false;
     }
 
     private static bool IsBrowser(string exe) => exe.ToLowerInvariant() is
         "chrome.exe" or "msedge.exe" or "firefox.exe" or "zen.exe" or "brave.exe" or
-        "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe";
+        "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe" or "floorp.exe" or "waterfox.exe" or "librewolf.exe";
 
     private readonly Func<long> _idleMilliseconds;
 

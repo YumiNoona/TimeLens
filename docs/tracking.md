@@ -6,7 +6,7 @@ Apps merely left running in the background are not counted as active work.
 
 ## Reliability
 
-- Foreground hooks provide immediate updates, with a five-second poll as a fallback.
+- Foreground hooks provide immediate updates, with a one-second poll as a fallback.
 - Repeated observations extend one persisted event. Its end is saved on every
   observation, so a crash cannot reduce a three-hour session to a 30-minute guess.
 - A gap longer than 30 seconds starts a new event rather than crediting unobserved
@@ -27,8 +27,7 @@ known lock. Unlock emits a transition, allowing the idle span to close properly.
 
 Audio from the foreground app, or a fresh browser audio signal while a browser
 is foreground, may sustain activity without input for up to two hours. Background
-music does not keep a silent desktop editor active. Browser audio is currently
-browser-wide, not a guarantee that the audible tab itself is selected. Time since
+music does not keep a silent desktop editor active. The extension reports audio from the selected tab of its focused window. Time since
 last input remains visible even when playback sustains activity.
 
 Rendering with no input eventually becomes idle. Background rendering is not
@@ -63,7 +62,7 @@ Both the publish script and release workflow run tracking regressions.
 - [ActivityWatch idle detection](https://docs.activitywatch.net/en/latest/faq.html): separate foreground and input-idle observations, with playback as an exception.
 - [Windows GetLastInputInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo): session-specific input timestamps and tick-count caveats.
 
-## Runtime resilience in 6.2.0
+## Runtime resilience in 7.0.0
 
 Foreground, input timer, session and tray callbacks contain recoverable subscriber
 exceptions so a database or dashboard-launch failure does not escape a native
@@ -71,3 +70,68 @@ callback and stop the tracker. `%LOCALAPPDATA%\TimeLens\runtime.log` records
 startup version/path, shutdown requests, callback errors and unhandled failures.
 The log rotates at 1 MiB. Forced process termination and power loss may not leave
 an exit record; durable activity checkpoints remain the recovery boundary.
+
+## Browser intervals in 7.0
+
+A single visible tab is checkpointed alongside desktop foreground state. Switching
+away or entering idle ends that interval. Five-second extension samples are backed
+by 30-second alarms for Chrome worker recovery; after 65 seconds without an extension
+observation the cached tab is discarded. Desktop sampling gaps over 30 seconds are
+never bridged. A crashed extension can therefore leave up to 65 seconds of uncertain
+website attribution while its browser remains foreground. Normal desktop crash loss
+is bounded by the last successful checkpoint, usually about one second; scheduling
+or disk failures can increase that bound. Windows event callbacks remain best effort.
+
+Website time is a breakdown of browser app time, not an additional active total.
+The selected tab must be a normal HTTP(S) page in a focused, non-private window.
+Undated legacy orphan browser rows have no reliable last observation and close at
+their start rather than being extended through downtime. Historical missing data
+cannot be reconstructed. Existing overlapping legacy website rows are not rewritten.
+
+The default three-minute idle grace is retained as active time, without retroactively
+removing reading time. This differs from ActivityWatch's retrospective AFK boundary.
+Clock corrections split observations rather than guessing what occurred during a jump.
+Multiple profiles of the same browser family cannot be identified by executable alone;
+the extension's focused-window signal supplies that distinction during normal operation.
+
+Additional reference implementations consulted (design inspiration; no source copied):
+- [ActivityWatch window heartbeat loop](https://github.com/ActivityWatch/aw-watcher-window/blob/master/aw_watcher_window/main.py)
+- [ActivityWatch AFK watcher](https://github.com/ActivityWatch/aw-watcher-afk/blob/master/aw_watcher_afk/afk.py)
+- [ActivityWatch web watcher](https://github.com/ActivityWatch/aw-watcher-web)
+- [Chrome service worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
+
+## Manual release acceptance
+
+On a Windows desktop, compare a stopwatch with app switches, two same-app windows,
+reading past the idle threshold, selected video playback, locking/unlocking and sleep.
+Load the Chrome ZIP unpacked, switch tabs/windows, navigate a single-page application,
+open an internal page and restart the extension worker. Confirm site time stops when
+switching to an editor and resumes on browser focus. Repeat across local midnight.
+Test packaged Windows apps and any elevated apps used in your workflow; Windows access
+restrictions may leave a process unidentified. Store review and clean-VM installer
+acceptance remain separate from automated regression tests.
+
+## Website input and detailed reports
+
+The extension counts trusted keydown and pointerdown events only while its document
+is focused and visible. It never reads typed characters, event key/code values or
+form contents. Each batch has a unique ID; retrying it does not duplicate counts.
+Retries are memory-only and expire after two minutes. A closing page can lose its
+last undelivered batch. Browser-restricted pages and private windows are excluded.
+Browser and input settings control storage. Frame input is attributed to the top-level
+website. Browser counts are reported separately from native app input, not added twice.
+
+Historical website input is unknown and displayed as —. A known zero requires an
+actual observation; partial coverage remains partial. Session counts describe persisted
+focused visits rather than page loads. Heartbeats and title refreshes no longer create
+extra sessions; older session counts may still reflect legacy heartbeat segmentation.
+
+Website totals intersect browser rows with matching active desktop intervals and
+subtract the union of idle spans. The next observed tab selection clips overlapping
+legacy rows without rewriting stored history. Daily and hourly website reports use
+this same calculation. History offers page/executable details, sorting, search and CSV.
+
+Additional design references (no source copied):
+- [ActivityWatch watcher separation](https://docs.activitywatch.net/en/latest/watchers.html)
+- [ActivityWatch aggregate input watcher](https://github.com/ActivityWatch/aw-watcher-input)
+- [ulogme local window and input-frequency tracking](https://github.com/karpathy/ulogme)

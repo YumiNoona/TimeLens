@@ -1,14 +1,10 @@
 <script lang="ts">
-  let { browserTime }: { browserTime: { domain: string; totalMinutes: number }[] } = $props();
+  import { fmtPrecise } from '../utils';
+  let { browserTime }: { browserTime: { domain: string; totalMinutes: number; totalSeconds?: number }[] } = $props();
 
   const filtered = $derived(
-    browserTime.filter(bt => bt.totalMinutes > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com')
+    browserTime.filter(bt => (bt.totalSeconds ?? bt.totalMinutes * 60) > 0 && bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com')
   );
-
-  function formatDuration(minutes: number): string {
-    if (minutes < 60) return `${minutes}m`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-  }
 
   function activityKind(domain: string): string {
     const value = domain.toLowerCase();
@@ -29,7 +25,7 @@
       {#each filtered as bt}
         <div class="bt-row">
           <span class="bt-domain"><strong>{bt.domain.replace(/^www\./, '')}</strong><small>{activityKind(bt.domain)}</small></span>
-          <span class="bt-time">{formatDuration(bt.totalMinutes)}</span>
+          <span class="bt-time">{fmtPrecise(bt.totalSeconds ?? bt.totalMinutes * 60)}</span>
         </div>
       {/each}
     </div>

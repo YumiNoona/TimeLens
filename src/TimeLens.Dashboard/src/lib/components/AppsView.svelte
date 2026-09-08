@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fmtTime } from '../utils';
   import type { DashboardData, InputEntry } from '../types';
   import { appIcon } from '../appIcons';
   let { data }: { data: DashboardData } = $props();
@@ -68,14 +69,8 @@
       .toSorted((a, b) => sortKey === 'time' ? b.minutes - a.minutes : a.name.localeCompare(b.name))
   );
 
-  function formatAppTime(minutes: number): string {
-    const total = Math.max(0, Math.round(minutes));
-    if (total < 1) return '<1m';
-    const hours = Math.floor(total / 60);
-    const mins = total % 60;
-    if (hours === 0) return `${mins}m`;
-    return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
-  }
+  const formatAppTime = fmtTime;
+
 </script>
 
 <div class="apps">

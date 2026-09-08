@@ -183,7 +183,8 @@ internal static class Program
                 LiveStatusStore.IsIdle = state != "active";
                 LiveStatusStore.IdleSeconds = idleMonitor.IdleSeconds();
                 LiveStatusStore.SystemState = state;
-                if (state != "active" || cat == "system")
+                ApiHost.UpdateBrowserTracking();
+                if (state != "active" || exe == "unknown")
                 {
                     writer.CloseCurrentAppEvent();
                     return;
@@ -593,7 +594,7 @@ internal static class Program
             }
             catch (Exception ex) { LogCrash($"tracking heartbeat: {ex}"); }
             finally { Monitor.Exit(trackingLock); }
-        }, null, 5_000, 5_000);
+        }, null, 1_000, 1_000);
 
         // First-run: ask about auto-start, then wire settings save
         var firstRunDone = false;

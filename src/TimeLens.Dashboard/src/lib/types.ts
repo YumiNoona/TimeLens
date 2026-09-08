@@ -38,6 +38,21 @@ export interface BrowserEntry {
   domain: string;
   visits: number;
   lastVisit: string;
+  totalSeconds: number;
+  keystrokes: number | null;
+  clicks: number | null;
+  pages: BrowserPage[];
+}
+
+export interface BrowserPage {
+  url: string;
+  title: string;
+  browser: string;
+  totalSeconds: number;
+  sessions: number;
+  lastSeen: string;
+  keystrokes: number | null;
+  clicks: number | null;
 }
 
 export interface AudioEntry {
@@ -69,7 +84,7 @@ export interface LiveStatus {
 
 export interface BrowserHourEntry {
   hour: number;
-  visits: number;
+  totalSeconds: number;
 }
 
 export interface BlockAttemptEntry {

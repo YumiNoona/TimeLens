@@ -3,6 +3,7 @@
   import NavRail from './lib/components/NavRail.svelte';
   import StatCard from './lib/components/StatCard.svelte';
 
+  import { fmtPrecise } from './lib/utils';
   import TopApps from './lib/components/TopApps.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
 
@@ -25,10 +26,10 @@
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
-  let browserHourlyRaw = $state<{hour: number; visits: number}[]>([]);
+  let browserHourlyRaw = $state<{hour: number; totalSeconds: number}[]>([]);
   let browserHourly = $derived.by(() => {
-    const map = new Map(browserHourlyRaw.map(h => [h.hour, h.visits]));
-    return Array.from({ length: 24 }, (_, i) => ({ hour: i, visits: map.get(i) ?? 0 }));
+    const map = new Map(browserHourlyRaw.map(h => [h.hour, h.totalSeconds]));
+    return Array.from({ length: 24 }, (_, i) => ({ hour: i, totalSeconds: map.get(i) ?? 0 }));
   });
   let timelineGrouped = $state(true);
   let showTitles = $state(false);
@@ -66,8 +67,7 @@
   }
 
   function compactDuration(minutes: number): string {
-    if (minutes < 60) return `${minutes}m`;
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    return fmtPrecise(minutes * 60);
   }
 
   function applyTheme(t: string) {
@@ -276,7 +276,7 @@
                 {#each browserSites.slice(0, 3) as site}
                   <div class="teaser-row">
                     <span class="teaser-domain">{site.domain.replace(/^www\./, '')}</span>
-                    <span class="teaser-count">{compactDuration(siteMinutes(site.domain))} · {site.visits} visit{site.visits !== 1 ? 's' : ''}</span>
+                    <span class="teaser-count">{compactDuration(siteMinutes(site.domain))} · {site.visits} session{site.visits !== 1 ? 's' : ''}</span>
                   </div>
                 {/each}
               </div>
@@ -315,7 +315,7 @@
       <div class="content">
         <div class="stat-row">
           <StatCard label="Unique sites" value={browserSites.length} />
-          <StatCard label="Total visits" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
+          <StatCard label="Recorded sessions" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
           <StatCard label="Browse time" value={`${browserTime.filter(bt => bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com').reduce((a, b) => a + b.totalMinutes, 0)}m`} />
         </div>
         {#if browserSites.length === 0 && browserTime.length === 0}

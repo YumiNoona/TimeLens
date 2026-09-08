@@ -87,6 +87,9 @@ if (-not $SkipDashboard) {
     Write-Host "  Skipping dashboard build (--SkipDashboard)" -ForegroundColor DarkGray
 }
 
+node --test "$root\tests\browser-extension.test.mjs" "$root\tests\timeline.test.mjs"
+if ($LASTEXITCODE -ne 0) { throw "Browser extension regression checks failed" }
+
 # --- Publish .NET ---
 & $header "=== Checking database startup regressions ==="
 dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release --self-contained true

@@ -21,19 +21,9 @@ public static class ApiHost
     public const int DefaultPort = 47821;
     private const int MaxBlockImageBytes = 4 * 1024 * 1024;
     private const int MaxBlockVideoBytes = 8 * 1024 * 1024;
-    private static readonly ConcurrentDictionary<string, long> OpenBrowserEvents = new(StringComparer.OrdinalIgnoreCase);
-
-    private static string TabKey(string browser, int tabId) => $"{browser}:{tabId}";
+    private static BrowserTrackingService? _browserTracker;
+    public static void UpdateBrowserTracking() => _browserTracker?.Tick();
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
-
-    private static bool IsTrackedBrowserForeground(string? browser)
-    {
-        var exe = Path.GetFileName(LiveStatusStore.CurrentApp ?? string.Empty).ToLowerInvariant();
-        if (string.Equals(browser, "firefox", StringComparison.OrdinalIgnoreCase))
-            return exe is "firefox.exe" or "zen.exe" or "floorp.exe" or "waterfox.exe" or "librewolf.exe";
-        return exe is "chrome.exe" or "msedge.exe" or "microsoftedge.exe" or "brave.exe" or
-            "opera.exe" or "vivaldi.exe" or "arc.exe" or "thorium.exe";
-    }
 
     private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -153,7 +143,8 @@ public static class ApiHost
         Action<string>? showBlockPreview = null,
         Action<string, string>? recordBlockAttempt = null,
         UpdateService? updateService = null,
-        Action? requestShutdown = null)
+        Action? requestShutdown = null,
+        int port = DefaultPort)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -165,7 +156,7 @@ public static class ApiHost
             // Shortcuts and Windows startup need not use the installation folder as CWD.
             ContentRootPath = AppContext.BaseDirectory
         });
-        builder.WebHost.UseUrls($"http://127.0.0.1:{DefaultPort}");
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
         builder.Services.ConfigureHttpJsonOptions(o =>
         {
@@ -987,6 +978,8 @@ public static class ApiHost
             ctx.Response.ContentType = "application/json";
         });
 
+        _browserTracker = new BrowserTrackingService(dbPath);
+
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
         {
             var evt = await ctx.Request.ReadFromJsonAsync<BrowserEventDto>(AppJsonContext.Default.BrowserEventDto);
@@ -1015,51 +1008,7 @@ public static class ApiHost
                 return;
             }
 
-            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-            await conn.OpenAsync();
-
-            // Close previous event for this tab (if any)
-            if (evt.TabId > 0 && OpenBrowserEvents.TryRemove(TabKey(evt.Browser, evt.TabId), out var prevEventId))
-            {
-                using var closeCmd = conn.CreateCommand();
-                closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
-                closeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                closeCmd.Parameters.AddWithValue("$id", prevEventId);
-                await closeCmd.ExecuteNonQueryAsync();
-            }
-
-            // Extensions can keep an active tab alive while their browser is behind
-            // another app. Record only when that browser owns the foreground window.
-            if (!IsTrackedBrowserForeground(evt.Browser))
-            {
-                ctx.Response.StatusCode = 200;
-                ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsJsonAsync(browserBlock, AppJsonContext.Default.BrowserBlockResponseDto);
-                return;
-            }
-
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id, local_date)
-                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId, $localDate)
-                """;
-            cmd.Parameters.AddWithValue("$domain", evt.Domain);
-            cmd.Parameters.AddWithValue("$url", evt.Url);
-            cmd.Parameters.AddWithValue("$title", evt.Title);
-            cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
-            cmd.Parameters.AddWithValue("$browser", evt.Browser);
-            cmd.Parameters.AddWithValue("$tabId", evt.TabId);
-            cmd.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
-            await cmd.ExecuteNonQueryAsync();
-
-            // Track the new event ID for this tab for duration tracking
-            if (evt.TabId > 0)
-            {
-                using var getIdCmd = conn.CreateCommand();
-                getIdCmd.CommandText = "SELECT last_insert_rowid()";
-                var newEventId = (long)(await getIdCmd.ExecuteScalarAsync())!;
-                OpenBrowserEvents[TabKey(evt.Browser, evt.TabId)] = newEventId;
-            }
+            _browserTracker.Observe(evt);
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
@@ -1098,86 +1047,29 @@ public static class ApiHost
             await ctx.Response.WriteAsJsonAsync(BrowserBlockResponse(domain), AppJsonContext.Default.BrowserBlockResponseDto);
         });
 
+        app.MapPost("/api/browser-input", async (HttpContext ctx) =>
+        {
+            var input = await ctx.Request.ReadFromJsonAsync<BrowserInputDto>(AppJsonContext.Default.BrowserInputDto);
+            var accepted = input is not null && _browserTracker.RecordInput(input);
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(accepted ? "{\"accepted\":true}" : "{\"accepted\":false}");
+        });
+
         app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
         {
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
             var root = doc.RootElement;
-            if (root.TryGetProperty("tabId", out var tabProp) && tabProp.TryGetInt32(out var tabId) && tabId > 0)
-            {
-                var browser = root.TryGetProperty("browser", out var b) ? b.GetString() ?? "browser" : "browser";
-                if (OpenBrowserEvents.TryRemove(TabKey(browser, tabId), out var eventId))
-                {
-                    using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-                    await conn.OpenAsync();
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
-                    cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                    cmd.Parameters.AddWithValue("$id", eventId);
-                    await cmd.ExecuteNonQueryAsync();
-                }
-            }
-            ctx.Response.StatusCode = 200;
-            ctx.Response.ContentType = "application/json";
+            var tabId = root.TryGetProperty("tabId", out var tab) && tab.TryGetInt32(out var id) ? id : 0;
+            var browser = root.TryGetProperty("browser", out var b) ? b.GetString() ?? "" : "";
+            _browserTracker.Leave(browser, tabId);
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
         app.MapPost("/api/browser-heartbeat", async (HttpContext ctx) =>
         {
-            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("tabId", out var tabProp) || !tabProp.TryGetInt32(out var tabId) || tabId <= 0)
-            {
-                ctx.Response.StatusCode = 400;
-                return;
-            }
-
-            var domain = root.TryGetProperty("domain", out var d) ? d.GetString() ?? "" : "";
-            var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
-            var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
-            var browser = root.TryGetProperty("browser", out var b) ? b.GetString() ?? "browser" : "browser";
-
-            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-            await conn.OpenAsync();
-
-            // Close the current open row for this tab
-            if (OpenBrowserEvents.TryRemove(TabKey(browser, tabId), out var prevEventId))
-            {
-                using var closeCmd = conn.CreateCommand();
-                closeCmd.CommandText = "UPDATE browser_events SET end_time = $now WHERE id = $id AND end_time IS NULL";
-                closeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                closeCmd.Parameters.AddWithValue("$id", prevEventId);
-                await closeCmd.ExecuteNonQueryAsync();
-            }
-
-            if (!IsTrackedBrowserForeground(browser))
-            {
-                ctx.Response.StatusCode = 200;
-                ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync("{\"ok\":true}");
-                return;
-            }
-
-            // Open a new row — bounds max miscalculation to heartbeat interval
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO browser_events (domain, url, title, start_time, end_time, browser, tab_id, local_date)
-                VALUES ($domain, $url, $title, $start, NULL, $browser, $tabId, $localDate)
-                """;
-            cmd.Parameters.AddWithValue("$domain", domain);
-            cmd.Parameters.AddWithValue("$url", url ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("$title", title ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("$start", DateTime.UtcNow.ToString("o"));
-            cmd.Parameters.AddWithValue("$browser", browser);
-            cmd.Parameters.AddWithValue("$tabId", tabId);
-            cmd.Parameters.AddWithValue("$localDate", DateTime.Now.ToString("yyyy-MM-dd"));
-            await cmd.ExecuteNonQueryAsync();
-
-            using var getIdCmd = conn.CreateCommand();
-            getIdCmd.CommandText = "SELECT last_insert_rowid()";
-            OpenBrowserEvents[TabKey(browser, tabId)] = (long)(await getIdCmd.ExecuteScalarAsync())!;
-
-            ctx.Response.StatusCode = 200;
-            ctx.Response.ContentType = "application/json";
+            var evt = await ctx.Request.ReadFromJsonAsync<BrowserEventDto>(AppJsonContext.Default.BrowserEventDto);
+            if (evt is null) { ctx.Response.StatusCode = 400; return; }
+            _browserTracker.Observe(evt);
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
@@ -1188,7 +1080,8 @@ public static class ApiHost
             var doc = System.Text.Json.JsonDocument.Parse(body);
             var audible = doc.RootElement.GetProperty("audible").GetBoolean();
             var browser = doc.RootElement.GetProperty("browser").GetString() ?? "browser";
-            LiveStatusStore.AudibleTab = audible ? browser : null;
+            if (BrowserTrackingService.MatchesForeground(browser, LiveStatusStore.CurrentApp))
+                LiveStatusStore.AudibleTab = audible ? browser : null;
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -1269,147 +1162,64 @@ public static class ApiHost
 
         app.MapGet("/api/browser-summary", async (HttpContext ctx) =>
         {
-            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
-            DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
-            var localDate = queryDate.Date;
-            var dateStr = localDate.ToString("yyyy-MM-dd");
+            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
+            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT domain, COUNT(*), MAX(start_time) FROM browser_events WHERE local_date = $date GROUP BY domain ORDER BY 2 DESC LIMIT 20";
-            cmd.Parameters.AddWithValue("$date", dateStr);
-            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
-            arr.WriteStartArray();
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync()) { arr.WriteStartObject(); arr.WriteString("domain", r.IsDBNull(0) ? "" : r.GetString(0)); arr.WriteNumber("visits", r.IsDBNull(1) ? 0 : r.GetInt32(1)); arr.WriteString("lastVisit", r.IsDBNull(2) ? "" : r.GetString(2)); arr.WriteEndObject(); }
-            arr.WriteEndArray();
-            await arr.FlushAsync();
-            ctx.Response.StatusCode = 200;
-            ctx.Response.ContentType = "application/json";
+            using var snapshot = conn.BeginTransaction(deferred: true);
+            var sites = await BrowserAnalyticsService.ReadAsync(conn, local.ToUniversalTime(), local.AddDays(1).ToUniversalTime());
+            await ctx.Response.WriteAsJsonAsync(sites, AppJsonContext.Default.BrowserEntryDtoArray);
         });
 
         app.MapGet("/api/browser-time-summary", async (HttpContext ctx) =>
         {
-            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
-            DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
-            var localDate = queryDate.Date;
-            var dateStr = localDate.ToString("yyyy-MM-dd");
+            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
+            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-
-            // Browser heartbeats identify the visible tab, but they keep arriving while
-            // the PC is unattended. Subtract OS idle spans so a background YouTube,
-            // WhatsApp, or dashboard tab does not turn into hours of claimed use.
-            var idleRanges = new List<(DateTime Start, DateTime End)>();
-            using (var idleCmd = conn.CreateCommand())
-            {
-                idleCmd.CommandText = """
-                    SELECT start_time, COALESCE(end_time, $now)
-                    FROM idle_spans
-                    WHERE start_time < $now AND COALESCE(end_time, $now) > $dayStart
-                    ORDER BY start_time
-                    """;
-                idleCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                idleCmd.Parameters.AddWithValue("$dayStart", TimeZoneInfo.ConvertTimeToUtc(localDate).ToString("o"));
-                using var idleReader = await idleCmd.ExecuteReaderAsync();
-                while (await idleReader.ReadAsync())
-                {
-                    idleRanges.Add((
-                        DateTime.Parse(idleReader.GetString(0), null, DateTimeStyles.RoundtripKind),
-                        DateTime.Parse(idleReader.GetString(1), null, DateTimeStyles.RoundtripKind)));
-                }
-            }
-
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT domain, start_time, COALESCE(end_time, $now) AS end_time
-                FROM browser_events
-                WHERE local_date = $date
-                ORDER BY start_time
-                """;
-            cmd.Parameters.AddWithValue("$date", dateStr);
-            cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-
-            var domainSecs = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-            {
-                var domain = r.GetString(0);
-                var start = DateTime.Parse(r.GetString(1), null, DateTimeStyles.RoundtripKind);
-                var next = DateTime.Parse(r.GetString(2), null, DateTimeStyles.RoundtripKind);
-                var secs = (next - start).TotalSeconds;
-                foreach (var idle in idleRanges)
-                {
-                    var overlapStart = start > idle.Start ? start : idle.Start;
-                    var overlapEnd = next < idle.End ? next : idle.End;
-                    if (overlapEnd > overlapStart)
-                        secs -= (overlapEnd - overlapStart).TotalSeconds;
-                }
-                if (secs > 0)
-                {
-                    // The extension rotates the visible-tab event every 45 seconds.
-                    // A 2-minute ceiling still tolerates delayed service workers while
-                    // preventing a crashed or sleeping tab from becoming a multi-hour visit.
-                    var capped = Math.Min(secs, 120);
-                    domainSecs.TryGetValue(domain, out var cur);
-                    domainSecs[domain] = cur + capped;
-                }
-            }
-
-            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
-            arr.WriteStartArray();
-            foreach (var kv in domainSecs.OrderByDescending(kv => kv.Value).Take(20))
-            {
-                arr.WriteStartObject();
-                arr.WriteString("domain", kv.Key);
-                arr.WriteNumber("totalSeconds", (int)kv.Value);
-                arr.WriteNumber("totalMinutes", (int)Math.Round(kv.Value / 60));
-                arr.WriteEndObject();
-            }
-            arr.WriteEndArray();
-            await arr.FlushAsync();
-            ctx.Response.StatusCode = 200;
+            using var snapshot = conn.BeginTransaction(deferred: true);
+            var sites = await BrowserAnalyticsService.ReadAsync(conn, local.ToUniversalTime(), local.AddDays(1).ToUniversalTime());
             ctx.Response.ContentType = "application/json";
+            using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartArray();
+            foreach (var site in sites)
+            {
+                json.WriteStartObject(); json.WriteString("domain", site.Domain);
+                json.WriteNumber("totalSeconds", Math.Round(site.TotalSeconds));
+                json.WriteNumber("totalMinutes", site.TotalSeconds / 60);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray(); await json.FlushAsync();
         });
 
         app.MapGet("/api/browser-hourly", async (HttpContext ctx) =>
         {
-            var dateParam = ctx.Request.Query["date"].FirstOrDefault();
-            DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
-                queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
-            var localDate = queryDate.Date;
+            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
+            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT CAST(strftime('%H', start_time, 'localtime') AS INTEGER) AS h, COUNT(*) AS cnt
-                FROM browser_events
-                WHERE local_date = $date
-                GROUP BY h ORDER BY h
-                """;
-            cmd.Parameters.AddWithValue("$date", localDate.ToString("yyyy-MM-dd"));
-            var counts = new int[24];
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
+            using var snapshot = conn.BeginTransaction(deferred: true);
+            var seconds = new double[24];
+            await BrowserAnalyticsService.ReadAsync(conn, local.ToUniversalTime(), local.AddDays(1).ToUniversalTime(), (start, end) =>
             {
-                counts[r.GetInt32(0)] += r.GetInt32(1);
-            }
-            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
-            arr.WriteStartArray();
-            for (int i = 0; i < 24; i++)
-            {
-                arr.WriteStartObject();
-                arr.WriteNumber("hour", i);
-                arr.WriteNumber("visits", counts[i]);
-                arr.WriteEndObject();
-            }
-            arr.WriteEndArray();
-            await arr.FlushAsync();
-            ctx.Response.StatusCode = 200;
+                while (start < end)
+                {
+                    var wall = start.ToLocalTime();
+                    var next = start.AddSeconds(3600 - wall.TimeOfDay.TotalSeconds % 3600);
+                    if (next > end) next = end;
+                    seconds[wall.Hour] += (next - start).TotalSeconds;
+                    start = next;
+                }
+            });
             ctx.Response.ContentType = "application/json";
+            using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartArray();
+            for (var h = 0; h < 24; h++)
+            {
+                json.WriteStartObject(); json.WriteNumber("hour", h);
+                json.WriteNumber("totalSeconds", seconds[h]); json.WriteEndObject();
+            }
+            json.WriteEndArray(); await json.FlushAsync();
         });
 
         app.MapGet("/api/app-icon", async (HttpContext ctx) =>
@@ -2008,6 +1818,7 @@ public static class ApiHost
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(BrowserEventDto))]
+[JsonSerializable(typeof(BrowserInputDto))]
 [JsonSerializable(typeof(DashboardResponse))]
 [JsonSerializable(typeof(SummaryDto))]
 [JsonSerializable(typeof(TimelineBlockDto))]
@@ -2017,6 +1828,7 @@ public static class ApiHost
 [JsonSerializable(typeof(LiveStatusDto))]
 [JsonSerializable(typeof(InputSummaryDto))]
 [JsonSerializable(typeof(BrowserEntryDto))]
+[JsonSerializable(typeof(BrowserEntryDto[]))]
 [JsonSerializable(typeof(AudioSessionDto))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(string[]))]

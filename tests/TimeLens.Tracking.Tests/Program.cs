@@ -88,7 +88,7 @@ try
     inputAge = 180000;
     Check(idle.GetState() == "idle", "Idle begins at the configured threshold");
     TimeLens.Api.LiveStatusStore.CurrentApp = "Twinmotion.exe";
-    TimeLens.Api.LiveStatusStore.AudibleTab = "video";
+    TimeLens.Api.LiveStatusStore.AudibleTab = "firefox";
     TimeLens.Api.LiveStatusStore.LastExtensionHeartbeat = DateTime.UtcNow;
     Check(idle.GetState() == "idle", "Background browser audio cannot keep Twinmotion active");
     TimeLens.Api.LiveStatusStore.CurrentApp = "firefox.exe";
@@ -100,6 +100,172 @@ try
     Check(idle.GetState() == "idle", "Unattended playback is bounded");
     inputAge = 0;
     Check(idle.GetState() == "active", "New input resumes activity");
+
+    // Preserve all applications and seconds, including short shell interactions.
+    var shortPath = Path.Combine(root, "short.db");
+    DatabaseInitializer.Initialize(shortPath);
+    clock.Now = start;
+    using (var writer = new EventWriter(shortPath, clock))
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            writer.OpenAppEvent($"app{i}.exe", $"title{i}", i + 1, "active", i == 0 ? "system" : "work");
+            clock.Now = clock.Now.AddSeconds(2);
+        }
+    }
+    var shortData = await new AnalyticsService(shortPath).GetDashboardAsync(start.ToLocalTime().Date);
+    Check(shortData.TopApps.Length == 12, "Apps page must not be limited to eight apps");
+    Check(shortData.Summary.ActiveSeconds == 24 && shortData.Timeline.Length == 12, "Short switches and foreground shell time must survive");
+    Check(Math.Abs(shortData.TopApps.Sum(x => x.Minutes) * 60 - 24) < .001, "Per-app minutes must retain seconds");
+    using (var input = new InputMonitor())
+    {
+        var counts = new Dictionary<string, int>();
+        input.InputActivityTick += (keys, clicks, pid, exe) => counts[exe!] = keys;
+        input.RecordInput(1, "editor.exe", 10, 0);
+        input.RecordInput(2, "browser.exe", 3, 1);
+        input.Flush();
+        Check(counts["editor.exe"] == 10 && counts["browser.exe"] == 3, "Input belongs to the app at capture time");
+    }
+    var browserPath = Path.Combine(root, "browser.db");
+    DatabaseInitializer.Initialize(browserPath);
+    clock.Now = start;
+    TimeLens.Api.LiveStatusStore.CurrentApp = "chrome.exe";
+    TimeLens.Api.LiveStatusStore.SystemState = "active";
+    TimeLens.Api.LiveStatusStore.IsIdle = false;
+    var tracker = new BrowserTrackingService(browserPath, clock);
+    var tabA = new TimeLens.Api.Dtos.BrowserEventDto("wrong.example", "https://example.com/a", "A", "chrome", false, 1);
+    for (var i = 0; i <= 3600; i++)
+    {
+        clock.Now = start.AddSeconds(i);
+        if (i % 5 == 0) tracker.Observe(tabA);
+        tracker.Tick();
+    }
+    tracker.Observe(tabA with { Title = "Updated page title" });
+    Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events") == 1, "Heartbeats and title refreshes must not inflate visits");
+    Check(Math.Abs(Scalar(browserPath, "SELECT (julianday(end_time)-julianday(start_time))*86400 FROM browser_events") - 3600) < .01, "Long website visits must remain durable without a two-minute cap");
+    clock.Now = clock.Now.AddSeconds(1);
+    tracker.Observe(tabA with { TabId = 2, Url = "https://second.example/", Title = "B" });
+    clock.Now = clock.Now.AddSeconds(2);
+    tracker.Leave("chrome", 1); // Closing a background tab must not close B.
+    tracker.Tick();
+    TimeLens.Api.LiveStatusStore.CurrentApp = "editor.exe";
+    clock.Now = clock.Now.AddSeconds(1);
+    tracker.Tick();
+    var duration = Scalar(browserPath, "SELECT SUM((julianday(end_time)-julianday(start_time))*86400) FROM browser_events");
+    Check(Math.Abs(duration - 3604) < .01, "Tab switches must partition, not overlap, website time");
+    clock.Now = clock.Now.AddMinutes(10);
+    tracker.Tick();
+    tracker.Observe(tabA);
+    Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events") == 2, "Background browser must not create activity");
+    TimeLens.Api.LiveStatusStore.CurrentApp = "chrome.exe";
+    tracker.Observe(tabA with { ObservedAt = new DateTimeOffset(start) });
+    Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events") == 2, "Stale delivery cannot become current activity");
+    TimeLens.Api.LiveStatusStore.IsIdle = true;
+    tracker.Observe(tabA);
+    Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events") == 2, "Idle browser cannot open activity");
+    TimeLens.Api.LiveStatusStore.IsIdle = false;
+    tracker.Observe(tabA);
+    clock.Now = clock.Now.AddHours(2);
+    tracker.Tick();
+    DatabaseInitializer.Initialize(browserPath);
+    Check(Math.Abs(Scalar(browserPath, "SELECT SUM((julianday(end_time)-julianday(start_time))*86400) FROM browser_events") - duration) < .01, "Suspend and restart cannot invent browser time");
+    Check(!BrowserTrackingService.MatchesForeground("chrome", "msedge.exe"), "Chrome cannot claim Edge activity");
+
+
+    // Website durations must be corroborated by foreground desktop intervals.
+    using (var conn = new SqliteConnection($"Data Source={browserPath}"))
+    {
+        conn.Open(); using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO app_events(exe_name,start_time,end_time,category) VALUES('chrome.exe',$start,$end,'browsing')";
+        cmd.Parameters.AddWithValue("$start", start.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", start.AddSeconds(3604).ToString("o"));
+        cmd.ExecuteNonQuery();
+    }
+    var accuracyPath = Path.Combine(root, "accuracy.db");
+    DatabaseInitializer.Initialize(accuracyPath);
+    using (var conn = new SqliteConnection($"Data Source={accuracyPath}"))
+    {
+        conn.Open();
+        void Insert(string sql, int from, int to)
+        {
+            using var cmd = conn.CreateCommand(); cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$start", start.AddSeconds(from).ToString("o"));
+            cmd.Parameters.AddWithValue("$end", start.AddSeconds(to).ToString("o")); cmd.ExecuteNonQuery();
+        }
+        Insert("INSERT INTO app_events(exe_name,start_time,end_time) VALUES('chrome.exe',$start,$end)", 0, 60);
+        Insert("INSERT INTO app_events(exe_name,start_time,end_time) VALUES('editor.exe',$start,$end)", 60, 100);
+        Insert("INSERT INTO browser_events(domain,url,title,browser,start_time,end_time) VALUES('a.example','https://a.example/','A','chrome',$start,$end)", 0, 80);
+        Insert("INSERT INTO browser_events(domain,url,title,browser,start_time,end_time) VALUES('b.example','https://b.example/','B','chrome',$start,$end)", 50, 100);
+        Insert("INSERT INTO idle_spans(start_time,end_time) VALUES($start,$end)", 20, 30);
+        Insert("INSERT INTO idle_spans(start_time,end_time) VALUES($start,$end)", 25, 35);
+        var corrected = await BrowserAnalyticsService.ReadAsync(conn, start, start.AddSeconds(100));
+        Check(corrected.Single(x => x.Domain == "a.example").TotalSeconds == 35 && corrected.Single(x => x.Domain == "b.example").TotalSeconds == 10,
+            "Legacy overlapping tabs, overlapping idle spans and background app intervals must not inflate website time");
+        Check(corrected.All(x => x.Keystrokes is null && x.Clicks is null), "Missing historical website input must remain unknown");
+    }
+    clock.Now = start.AddSeconds(55);
+    var inputTracker = new BrowserTrackingService(accuracyPath, clock);
+    var inputBatch = new TimeLens.Api.Dtos.BrowserInputDto(Guid.NewGuid().ToString(), "https://b.example/", "B", "chrome", new DateTimeOffset(clock.Now), 7, 3);
+    Check(inputTracker.RecordInput(inputBatch) && inputTracker.RecordInput(inputBatch), "Input delivery retries must be accepted idempotently");
+    Check(Scalar(accuracyPath, "SELECT SUM(keystrokes) FROM browser_input_batches") == 7, "A retry must not double input counts");
+    TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { TrackInput = false };
+    Check(!inputTracker.RecordInput(inputBatch with { BatchId = Guid.NewGuid().ToString() }), "Disabled input must not be stored");
+    TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { TrackInput = true };
+    using (var conn = new SqliteConnection($"Data Source={accuracyPath}"))
+    {
+        conn.Open();
+        var detail = await BrowserAnalyticsService.ReadAsync(conn, start, start.AddSeconds(100));
+        Check(detail.Single(x => x.Domain == "b.example").Pages!.Single().Keystrokes == 7, "Website page details must expose recorded input");
+    }
+    Console.WriteLine("PASS: corroborated website time, legacy overlap repair at query time, idle union, input deduplication and missing-data semantics.");
+    // Run real HTTP routes on a free loopback port, without touching an installed tracker.
+    var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+    listener.Start();
+    var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+    listener.Stop();
+    using var stopApi = new CancellationTokenSource();
+    var host = TimeLens.Api.ApiHost.StartAsync(browserPath, stopApi.Token, port: port);
+    using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}"), Timeout = TimeSpan.FromSeconds(5) };
+    try
+    {
+        for (var i = 0; ; i++)
+        {
+            try { (await client.GetAsync("/api/settings")).EnsureSuccessStatusCode(); break; }
+            catch when (i < 30) { await Task.Delay(100); }
+        }
+        async Task<int> SiteSeconds(DateTime date)
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync($"/api/browser-time-summary?date={date:yyyy-MM-dd}"));
+            return json.RootElement.EnumerateArray().Sum(x => x.GetProperty("totalSeconds").GetInt32());
+        }
+        Check(await SiteSeconds(start.ToLocalTime().Date) == 3600, "HTTP site summary must not cap a durable one-hour visit");
+        Check(await SiteSeconds(start.ToLocalTime().Date.AddDays(1)) == 4, "HTTP site summary must split visits at local midnight");
+        using (var hourly = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync($"/api/browser-hourly?date={start.ToLocalTime():yyyy-MM-dd}")))
+            Check(Math.Abs(hourly.RootElement.EnumerateArray().Sum(x => x.GetProperty("totalSeconds").GetDouble()) - 3600) < .01,
+                "Hourly website time must match corroborated daily time");
+        var batchJson = System.Text.Json.JsonSerializer.Serialize(new {
+            batchId = Guid.NewGuid().ToString(), url = "https://example.com/", title = "Input test", browser = "chrome",
+            observedAt = DateTimeOffset.UtcNow, keystrokes = 4, clicks = 2 });
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var inputBody = new StringContent(batchJson, System.Text.Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync("/api/browser-input", inputBody);
+            response.EnsureSuccessStatusCode();
+            Check((await response.Content.ReadAsStringAsync()).Contains("true"), "HTTP input accepts a valid batch");
+        }
+        Check(Scalar(browserPath, "SELECT SUM(keystrokes) FROM browser_input_batches") == 4, "HTTP retries must not double input");
+        using var observation = new StringContent("{\"domain\":\"example.com\",\"url\":\"https://example.com/\",\"title\":\"live\",\"browser\":\"chrome\",\"audible\":false,\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
+        (await client.PostAsync("/api/browser-event", observation)).EnsureSuccessStatusCode();
+        await Task.Delay(100);
+        using var pulse = new StringContent("{\"domain\":\"example.com\",\"url\":\"https://example.com/\",\"title\":\"live\",\"browser\":\"chrome\",\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
+        (await client.PostAsync("/api/browser-heartbeat", pulse)).EnsureSuccessStatusCode();
+        using var leave = new StringContent("{\"browser\":\"chrome\",\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
+        (await client.PostAsync("/api/browser-leave", leave)).EnsureSuccessStatusCode();
+        Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events WHERE tab_id=20") == 1, "HTTP heartbeat shares the event writer and does not inflate visits");
+    }
+    finally { stopApi.Cancel(); await host; }
+    Console.WriteLine("PASS: isolated HTTP browser ingestion, heartbeat, leave, long-visit totals and midnight boundaries.");
+    Console.WriteLine("PASS: 12 short apps, precise totals, input attribution, one-hour browser visit, tab partition, focus, idle, stale requests, suspend and restart.");
     Console.WriteLine("PASS: durable 3-hour session, restart, observation gap, midnight summary/apps/categories/heatmap/timeline, lock/sleep/wake/unlock.");
 }
 finally { SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }

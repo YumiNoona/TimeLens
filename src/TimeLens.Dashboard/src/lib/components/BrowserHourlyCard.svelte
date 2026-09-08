@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { fmtPrecise } from '../utils';
   import { timeFormat as timeFormatStore } from '../stores/settings';
 
-  let { browserHourly }: { browserHourly: { hour: number; visits: number }[] } = $props();
+  let { browserHourly }: { browserHourly: { hour: number; totalSeconds: number }[] } = $props();
 
-  const maxVisits = $derived(Math.max(...browserHourly.map(entry => entry.visits), 1));
-  const totalVisits = $derived(browserHourly.reduce((sum, entry) => sum + entry.visits, 0));
-  const peak = $derived([...browserHourly].sort((a, b) => b.visits - a.visits)[0] ?? { hour: 0, visits: 0 });
+  const maxSeconds = $derived(Math.max(...browserHourly.map(entry => entry.totalSeconds), 1));
+  const totalSeconds = $derived(browserHourly.reduce((sum, entry) => sum + entry.totalSeconds, 0));
+  const peak = $derived([...browserHourly].sort((a, b) => b.totalSeconds - a.totalSeconds)[0] ?? { hour: 0, totalSeconds: 0 });
 
   function hourLabel(hour: number, compact = false): string {
     if ($timeFormatStore === '24h') return `${String(hour).padStart(2, '0')}${compact ? '' : ':00'}`;
@@ -16,14 +17,14 @@
 </script>
 
 {#if browserHourly.length > 0}
-  <section class="card hourly-card" aria-label="Browser visits by hour">
+  <section class="card hourly-card" aria-label="Website time by hour">
     <div class="card-header hourly-header">
       <div class="title-wrap">
         <i class="ti ti-chart-bar" aria-hidden="true"></i>
-        <div><div class="card-title">Browser visits by hour</div><span>When browsing was most active</span></div>
+        <div><div class="card-title">Website time by hour</div><span>When browsing was most active</span></div>
       </div>
       <div class="hourly-summary">
-        <span><strong>{totalVisits.toLocaleString()}</strong> visits</span>
+        <span><strong>{fmtPrecise(totalSeconds)}</strong> active</span>
         <span><strong>{hourLabel(peak.hour)}</strong> peak</span>
       </div>
     </div>
@@ -37,12 +38,12 @@
               <button
                 type="button"
                 class="bh-bar"
-                class:zero={entry.visits === 0}
-                class:peak={entry.visits === peak.visits && peak.visits > 0}
-                style="height:{entry.visits > 0 ? Math.max(6, entry.visits / maxVisits * 100) : 2}%"
-                aria-label={`${hourLabel(entry.hour)}: ${entry.visits} visits`}
+                class:zero={entry.totalSeconds === 0}
+                class:peak={entry.totalSeconds === peak.totalSeconds && peak.totalSeconds > 0}
+                style="height:{entry.totalSeconds > 0 ? Math.max(6, entry.totalSeconds / maxSeconds * 100) : 2}%"
+                aria-label={`${hourLabel(entry.hour)}: ${fmtPrecise(entry.totalSeconds)} active`}
               >
-                <span>{entry.visits}<small>{hourLabel(entry.hour)}</small></span>
+                <span>{fmtPrecise(entry.totalSeconds)}<small>{hourLabel(entry.hour)}</small></span>
               </button>
             </div>
           {/each}

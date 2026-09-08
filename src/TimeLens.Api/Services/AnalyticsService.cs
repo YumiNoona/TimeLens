@@ -18,7 +18,7 @@ public sealed class AnalyticsService
     private const int MaxCacheEntries = 7;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
-    private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan LockPruneAge = TimeSpan.FromDays(2);
 
     public AnalyticsService(string dbPath)
@@ -50,6 +50,7 @@ public sealed class AnalyticsService
 
             using var conn = new SqliteConnection(_connString);
             await conn.OpenAsync();
+            using var snapshot = conn.BeginTransaction(deferred: true);
 
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -76,7 +77,7 @@ public sealed class AnalyticsService
                 LiveStatusStore.PendingIdleReturn
             );
 
-            var browserSites = await GetBrowserSummaryAsync(conn, localDate.ToString("yyyy-MM-dd"));
+            var browserSites = await BrowserAnalyticsService.ReadAsync(conn, today, rangeEnd);
             var audioSessions = await GetAudioSummaryAsync(conn, today, tomorrow);
 
             var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live, browserSites, audioSessions);
@@ -117,7 +118,7 @@ public sealed class AnalyticsService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT
-                COALESCE(SUM(CASE WHEN session_state = 'active' AND COALESCE(category, '') != 'system' THEN
+                COALESCE(SUM(CASE WHEN session_state = 'active' THEN
                     MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
                 ELSE 0 END), 0) AS active_secs,
                 0 AS idle_secs
@@ -179,7 +180,7 @@ public sealed class AnalyticsService
         cmd.CommandText = """
             SELECT COUNT(*) FROM app_events
             WHERE julianday(start_time) < julianday($previousEnd) AND julianday(COALESCE(end_time, $previousEnd)) > julianday($previousStart) AND session_state = 'active'
-              AND COALESCE(category, '') != 'system'
+
             """;
         cmd.Parameters.AddWithValue("$yday", yesterdayDate);
         var hadYesterdayData = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
@@ -191,7 +192,7 @@ public sealed class AnalyticsService
                     MAX(0, MIN(julianday(COALESCE(end_time, $previousEnd)), julianday($previousEnd)) - MAX(julianday(start_time), julianday($previousStart))) * 86400
                 ), 0) FROM app_events
                 WHERE julianday(start_time) < julianday($previousEnd) AND julianday(COALESCE(end_time, $previousEnd)) > julianday($previousStart) AND session_state = 'active'
-                  AND COALESCE(category, '') != 'system'
+
                 """;
         }
         var yesterdaySecs = hadYesterdayData ? Convert.ToInt32(await cmd.ExecuteScalarAsync()) : -1;
@@ -200,7 +201,7 @@ public sealed class AnalyticsService
             SELECT category, COALESCE(SUM(
                 MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
             ), 0) AS secs FROM app_events
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today) AND session_state = 'active' AND category != 'system'
+            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today) AND session_state = 'active'
             GROUP BY category ORDER BY secs DESC LIMIT 1
             """;
         string topCat = "—";
@@ -272,7 +273,7 @@ public sealed class AnalyticsService
             SELECT exe_name, window_title, category, start_time, end_time, was_idle, session_state, COALESCE(project,'')
             FROM app_events
             WHERE julianday(start_time) < julianday($end) AND julianday(COALESCE(end_time, $end)) > julianday($start)
-              AND COALESCE(category, '') != 'system'
+
             ORDER BY start_time
             """;
         cmd.Parameters.AddWithValue("$start", localStartOfDayUtc.ToString("o"));
@@ -310,7 +311,8 @@ public sealed class AnalyticsService
 
             if (!isOngoing && blocks.Count > 0 && blocks[^1].Type == type &&
                 string.Equals(blocks[^1].ExeName, exeName, StringComparison.OrdinalIgnoreCase) &&
-                Math.Abs(blocks[^1].EndHour - startHour) < 20.0 / 3600.0)
+                blocks[^1].WindowTitle == windowTitle && blocks[^1].Project == project &&
+                Math.Abs(blocks[^1].EndHour - startHour) < 0.001 / 3600.0)
             {
                 blocks[^1] = blocks[^1] with { EndHour = endHour, DurationSeconds = blocks[^1].DurationSeconds + durationSecs };
             }
@@ -355,23 +357,6 @@ public sealed class AnalyticsService
         // Sort merged app-event and idle-span blocks by start time
         blocks.Sort((a, b) => a.StartHour.CompareTo(b.StartHour));
 
-        // Merge consecutive same-category blocks separated by <30s gaps.
-        // Collapses the Browsing ↔ Development ping-pong from rapid alt-tabbing.
-        for (int i = blocks.Count - 1; i >= 1; i--)
-        {
-            if (blocks[i].Type == blocks[i - 1].Type &&
-                blocks[i].ExeName == blocks[i - 1].ExeName &&
-                blocks[i].StartHour - blocks[i - 1].EndHour < 30.0 / 3600)
-            {
-                blocks[i - 1] = blocks[i - 1] with
-                {
-                    EndHour = blocks[i].EndHour,
-                    DurationSeconds = blocks[i - 1].DurationSeconds + blocks[i].DurationSeconds
-                };
-                blocks.RemoveAt(i);
-            }
-        }
-
         return blocks.ToArray();
     }
 
@@ -395,8 +380,8 @@ public sealed class AnalyticsService
                 GROUP BY exe_name
             ) ia ON ia.exe_name = ae.exe_name
             WHERE julianday(ae.start_time) < julianday($now) AND julianday(COALESCE(ae.end_time, $now)) > julianday($t0)
-              AND ae.session_state = 'active' AND COALESCE(ae.category, '') != 'system'
-            GROUP BY ae.exe_name ORDER BY secs DESC LIMIT 8
+              AND ae.session_state = 'active'
+            GROUP BY ae.exe_name ORDER BY secs DESC
             """;
         cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$now", rangeEnd.ToString("o"));
@@ -410,7 +395,7 @@ public sealed class AnalyticsService
             var secs = Convert.ToInt32(r["secs"]);
             var keys = Convert.ToInt32(r["keys"]);
             var clicks = Convert.ToInt32(r["clicks"]);
-            apps.Add(new TopAppDto(r.GetString(0), secs / 60, keys, clicks));
+            apps.Add(new TopAppDto(r.GetString(0), secs / 60.0, keys, clicks));
         }
         return apps.ToArray();
     }
@@ -422,7 +407,7 @@ public sealed class AnalyticsService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT start_time, COALESCE(end_time, $end) FROM app_events
-            WHERE session_state = 'active' AND COALESCE(category, '') != 'system'
+            WHERE session_state = 'active'
               AND julianday(start_time) < julianday($end)
               AND julianday(COALESCE(end_time, $end)) > julianday($start)
             """;
@@ -467,7 +452,7 @@ public sealed class AnalyticsService
                 MAX(0, MIN(julianday(COALESCE(end_time, $now)), julianday($now)) - MAX(julianday(start_time), julianday($today))) * 86400
             ), 0) AS secs FROM app_events
             WHERE julianday(start_time) < julianday($now) AND julianday(COALESCE(end_time, $now)) > julianday($today)
-              AND session_state = 'active' AND COALESCE(category, '') != 'system'
+              AND session_state = 'active'
             GROUP BY cat ORDER BY secs DESC
             """;
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
@@ -480,7 +465,7 @@ public sealed class AnalyticsService
         while (await r.ReadAsync())
         {
             var secs = Convert.ToInt32(r["secs"]);
-            cats.Add(new CategoryEntryDto(r.GetString(0), 0, secs / 60));
+            cats.Add(new CategoryEntryDto(r.GetString(0), 0, secs / 60.0));
             totalSecs += secs;
         }
 

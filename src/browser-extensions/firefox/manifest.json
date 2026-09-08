@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "TimeLens Tracker",
-  "version": "6.2.0",
+  "version": "7.0.0",
   "description": "Tracks activity and provides Notify or Strict website focus modes for TimeLens",
   "permissions": [
     "tabs",
@@ -16,11 +16,36 @@
     "persistent": true
   },
   "browser_action": {
-    "default_title": "Open TimeLens Dashboard"
+    "default_title": "Open TimeLens Dashboard",
+    "default_popup": "popup.html"
   },
   "icons": {
     "16": "icon-16.png",
     "48": "icon-48.png",
     "128": "icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "browsingActivity",
+          "websiteActivity"
+        ]
+      }
+    }
   }
 }

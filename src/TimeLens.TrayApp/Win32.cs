@@ -54,13 +54,16 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumWindowDelegate callback, IntPtr param);
+
     public static (string exe, string title, int pid) GetForegroundWindowInfo()
     {
         var hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero)
             return ("unknown", "", 0);
 
-        var sb = new System.Text.StringBuilder(256);
+        var sb = new System.Text.StringBuilder(4096);
         GetWindowText(hwnd, sb, sb.Capacity);
         var title = sb.ToString();
 
@@ -69,7 +72,28 @@ internal static class Win32
         try
         {
             using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-            return (proc.ProcessName + ".exe", title, (int)pid);
+            var name = proc.ProcessName + ".exe";
+            if (name.Equals("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                // Packaged Windows apps may render inside a shell-owned frame.
+                string? childName = null;
+                var childPid = 0;
+                EnumChildWindows(hwnd, (child, _) =>
+                {
+                    GetWindowThreadProcessId(child, out var candidate);
+                    if (candidate == 0 || candidate == pid) return true;
+                    try
+                    {
+                        using var childProcess = System.Diagnostics.Process.GetProcessById((int)candidate);
+                        childName = childProcess.ProcessName + ".exe";
+                        childPid = (int)candidate;
+                        return false;
+                    }
+                    catch { return true; }
+                }, IntPtr.Zero);
+                if (childName is not null) return (childName, title, childPid);
+            }
+            return (name, title, (int)pid);
         }
         catch
         {
@@ -93,7 +117,7 @@ internal static class Win32
                 using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
                 if (string.Equals(proc.ProcessName, target, StringComparison.OrdinalIgnoreCase))
                 {
-                    var sb = new System.Text.StringBuilder(256);
+                    var sb = new System.Text.StringBuilder(4096);
                     GetWindowText(hwnd, sb, sb.Capacity);
                     if (sb.Length > 0)
                         windows.Add(hwnd);

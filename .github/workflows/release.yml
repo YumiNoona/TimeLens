@@ -53,6 +53,9 @@ jobs:
             throw "Browser extension background scripts are out of sync"
           }
 
+      - name: Check browser extension behavior
+        run: node --test tests/browser-extension.test.mjs tests/timeline.test.mjs
+
       - name: Check fresh-install and database migration regressions
         run: dotnet run --project tests/TimeLens.Startup.Tests -c Release
 

@@ -40,6 +40,18 @@ public static class DatabaseInitializer
                 browser TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS browser_input_batches (
+                batch_id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                browser TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                keystrokes INTEGER NOT NULL,
+                clicks INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_browser_input_timestamp ON browser_input_batches(timestamp);
+
             CREATE TABLE IF NOT EXISTS session_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_type TEXT NOT NULL,
@@ -220,7 +232,7 @@ public static class DatabaseInitializer
         // restart that map is empty, so any previously open browser rows must end here
         // rather than being counted as an uninterrupted visit for hours or days.
         using var closeBrowserOrphans = conn.CreateCommand();
-        closeBrowserOrphans.CommandText = "UPDATE browser_events SET end_time = $now WHERE end_time IS NULL";
+        closeBrowserOrphans.CommandText = "UPDATE browser_events SET end_time = start_time WHERE end_time IS NULL";
         closeBrowserOrphans.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
         closeBrowserOrphans.ExecuteNonQuery();
 
@@ -260,6 +272,7 @@ public static class DatabaseInitializer
         purge.CommandText = $"""
             DELETE FROM app_events WHERE start_time < $cutoff;
             DELETE FROM browser_events WHERE start_time < $cutoff;
+            DELETE FROM browser_input_batches WHERE timestamp < $cutoff;
             DELETE FROM idle_spans WHERE start_time < $cutoff;
             DELETE FROM session_events WHERE timestamp < $cutoff;
             DELETE FROM input_activity WHERE timestamp < $cutoff;

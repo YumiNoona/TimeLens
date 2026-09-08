@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { BrowserEntry } from '../types';
   import { colorForApp } from '../colors';
+  import { fmtPrecise } from '../utils';
   import { appIcon } from '../appIcons';
 
   let { sites, emptyLabel = 'No browsing activity today.' }: { sites: BrowserEntry[]; emptyLabel?: string } = $props();
@@ -8,13 +9,13 @@
   const strippedDomains = $derived(
     sites.map(s => ({ ...s, displayDomain: s.domain.replace(/^www\./, '') }))
   );
-  const maxVisits = $derived(sites.length > 0 ? sites[0].visits : 1);
+  const maxSeconds = $derived(Math.max(1, ...sites.map(site => site.totalSeconds || 0)));
 </script>
 
 <div class="card">
   <div class="card-header">
     <i class="ti ti-world" aria-hidden="true"></i>
-    <div class="card-title">Top sites</div>
+    <div class="card-title">Top sites · active time</div>
   </div>
 
   {#if sites.length === 0}
@@ -31,9 +32,9 @@
           {/if}
           <span class="site-name" title={site.domain}>{site.displayDomain}</span>
           <div class="site-bar-track">
-            <div class="site-bar-fill" style="width: {Math.round(site.visits / maxVisits * 100)}%"></div>
+            <div class="site-bar-fill" style="width: {Math.round((site.totalSeconds || 0) / maxSeconds * 100)}%"></div>
           </div>
-          <span class="site-count">{site.visits}</span>
+          <span class="site-count" title="Foreground website time; sessions are recorded visits, not minutes"><strong>{fmtPrecise(site.totalSeconds || 0)}</strong><small>{site.visits} sessions</small></span>
         </div>
       {/each}
     </div>
@@ -41,6 +42,9 @@
 </div>
 
 <style>
+  .site-count { display: grid; gap: 3px; text-align: right; min-width: 90px; }
+  .site-count strong { font-weight: 500; color: var(--clr-text-pri); }
+  .site-count small { font-size: 10px; color: var(--clr-text-ter); }
   .site-list {
     display: flex;
     flex-direction: column;

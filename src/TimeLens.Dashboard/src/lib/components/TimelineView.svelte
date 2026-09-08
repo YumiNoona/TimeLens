@@ -4,7 +4,7 @@
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
   import { fmtHourFull, fmtDuration, normalizeTimeline } from '../utils';
-  import { timeFormat, timelineMinSegmentSeconds } from '../stores/settings';
+  import { timeFormat } from '../stores/settings';
 
   let { data, timelineGrouped = true, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
 
@@ -16,7 +16,7 @@
     groupedMode = timelineGrouped;
   });
 
-  let timeline = $derived(normalizeTimeline(data.timeline, $timelineMinSegmentSeconds));
+  let timeline = $derived(normalizeTimeline(data.timeline));
   let types = $derived([...new Set(timeline.map(b => b.type.toLowerCase()))]);
 
   let filtered = $derived(
@@ -64,7 +64,6 @@
       // Level 1: group ALL blocks for the same exe into one parent (not split by time)
       const appMap = new Map<string, { exe: string; startHour: number; endHour: number; blocks: TimelineBlock[] }>();
       for (const b of cat.blocks) {
-        if (b.durationSeconds < 5) continue; // skip sub-5s noise inside groups
         if (!appMap.has(b.exeName)) {
           appMap.set(b.exeName, { exe: b.exeName, startHour: b.startHour, endHour: b.endHour, blocks: [] });
         }

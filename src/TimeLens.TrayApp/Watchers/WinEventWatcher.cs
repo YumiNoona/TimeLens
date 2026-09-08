@@ -10,15 +10,7 @@ public sealed class WinEventWatcher : IDisposable
     private readonly Win32.WinEventDelegate _hookDelegate;
     private IntPtr _fgHook;
     private IntPtr _nameHook;
-    private readonly Dictionary<int, string> _pidCache = new(200);
-    private readonly Queue<int> _pidCacheOrder = new();
-    private const int MaxCacheSize = 200;
-
     public event Action<string, string, int>? ForegroundChanged;
-
-    private string _lastExe = "";
-    private string _lastTitle = "";
-    private long _lastFireTicks;
 
     public WinEventWatcher()
     {
@@ -55,102 +47,15 @@ public sealed class WinEventWatcher : IDisposable
     {
         if (hwnd == IntPtr.Zero || hwnd != Win32.GetForegroundWindow()) return;
 
-        var sb = new System.Text.StringBuilder(256);
-        Win32.GetWindowText(hwnd, sb, sb.Capacity);
-        var title = sb.ToString();
-
-        // Sanitize noise titles before firing
-        if (title.StartsWith("About:Blank", StringComparison.OrdinalIgnoreCase) ||
-            (title.Contains("?CreateFlags=", StringComparison.OrdinalIgnoreCase) && title.Contains("&Pid=", StringComparison.OrdinalIgnoreCase)))
-        {
-            title = "";
-        }
-        else if (title.StartsWith("Address: ", StringComparison.OrdinalIgnoreCase))
-        {
-            title = title["Address: ".Length..];
-        }
-
-        Win32.GetWindowThreadProcessId(hwnd, out var pid);
-
-        var exeName = ResolveExeName((int)pid);
-
-        // Debounce name-change events — VS Code fires hundreds per minute
-        // when switching files. Skip writes when title hasn't changed and
-        // less than 5 seconds have passed since the last write for this exe.
-        if (eventType == EVENT_OBJECT_NAMECHANGE)
-        {
-            if (idObject != OBJID_WINDOW) return;
-            var fgHwnd = Win32.GetForegroundWindow();
-            Win32.GetWindowThreadProcessId(fgHwnd, out var fgPid);
-            Win32.GetWindowThreadProcessId(hwnd, out var changedPid);
-            if (fgPid != changedPid) return;
-
-            if (string.Equals(exeName, _lastExe, StringComparison.OrdinalIgnoreCase))
-            {
-                if (string.Equals(title, _lastTitle, StringComparison.Ordinal)) return;
-                var nowTicks = Environment.TickCount64;
-                if (nowTicks - _lastFireTicks < 5_000) return;
-                _lastFireTicks = nowTicks;
-            }
-        }
-
-        // Debounce rapid same-exe foreground switches (e.g. alt-tab browser ↔ editor).
-        // Each switch fires ForegroundChanged → OpenAppEvent, creating alternating
-        // sub-second rows. 2s floor prevents this flash noise.
-        if (eventType == EVENT_SYSTEM_FOREGROUND &&
-            string.Equals(exeName, _lastExe, StringComparison.OrdinalIgnoreCase))
-        {
-            var nowTicks = Environment.TickCount64;
-            if (nowTicks - _lastFireTicks < 2_000) return;
-            _lastFireTicks = nowTicks;
-        }
-
-        _lastExe = exeName;
-        _lastTitle = title;
-
-        PublishForeground(exeName, title, (int)pid);
+        if (eventType == EVENT_OBJECT_NAMECHANGE && idObject != OBJID_WINDOW) return;
+        // Persist every real switch; identical observations are coalesced by the writer.
+        // Resolve the live process each time because Windows reuses process IDs.
+        var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+        PublishForeground(exe, title, pid);
     }
 
     internal bool PublishForeground(string exe, string title, int pid) =>
         RuntimeDiagnostics.TryRun("Foreground subscriber", () => ForegroundChanged?.Invoke(exe, title, pid));
-
-    private string ResolveExeName(int pid)
-    {
-        if (_pidCache.TryGetValue(pid, out var cached))
-        {
-            // PID reuse: cached "unknown" means the old process exited
-            // and a new process is now using this PID. Evict and retry.
-            if (cached == "unknown")
-            {
-                _pidCache.Remove(pid);
-            }
-            else
-            {
-                return cached;
-            }
-        }
-
-        string name;
-        try
-        {
-            using var proc = System.Diagnostics.Process.GetProcessById(pid);
-            name = proc.ProcessName + ".exe";
-        }
-        catch
-        {
-            name = "unknown";
-        }
-
-        if (_pidCache.Count >= MaxCacheSize)
-        {
-            var oldest = _pidCacheOrder.Dequeue();
-            _pidCache.Remove(oldest);
-        }
-
-        _pidCache[pid] = name;
-        _pidCacheOrder.Enqueue(pid);
-        return name;
-    }
 
     public void Dispose()
     {

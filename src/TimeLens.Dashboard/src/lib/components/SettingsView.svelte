@@ -24,6 +24,11 @@
   let trackAudio = $state(true);
   let trackBrowser = $state(true);
   let trackInput = $state(true);
+  let browserUrlMode = $state<'domain' | 'path' | 'full'>('full');
+  let browserStoreTitles = $state(true);
+  let pairCode = $state('');
+  let pairMessage = $state('');
+  let privacyBusy = $state(false);
   let idleMinutes = $state(3);
   let theme = $state('default');
   let timelineGrouped = $state(true);
@@ -110,6 +115,8 @@
       trackAudio = s.trackAudio ?? true;
       trackBrowser = s.trackBrowser ?? true;
       trackInput = s.trackInput ?? true;
+      browserUrlMode = s.browserUrlMode === 'domain' || s.browserUrlMode === 'path' ? s.browserUrlMode : 'full';
+      browserStoreTitles = s.browserStoreTitles ?? true;
       idleMinutes = Math.round((s.idleThresholdSeconds ?? 180) / 60);
       theme = s.theme ?? 'default';
       timelineGrouped = s.timelineGrouped ?? true;
@@ -174,6 +181,42 @@
 
   function exportCsv(range: string) {
     window.open(`/api/export?format=csv&range=${range}`, '_blank');
+  }
+
+  async function createPairCode() {
+    privacyBusy = true;
+    pairMessage = '';
+    try {
+      const response = await fetch('/api/pair/code', { method: 'POST' });
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      pairCode = result.code;
+      pairMessage = 'Enter this code in Firefox within two minutes.';
+    } catch { pairMessage = 'Could not create a pairing code.'; }
+    finally { privacyBusy = false; }
+  }
+
+  async function revokeFirefox() {
+    privacyBusy = true;
+    try {
+      const response = await fetch('/api/pair/revoke', { method: 'POST' });
+      if (!response.ok) throw new Error();
+      pairCode = '';
+      pairMessage = 'Firefox access revoked. Pair again to resume browser tracking.';
+    } catch { pairMessage = 'Could not revoke Firefox access.'; }
+    finally { privacyBusy = false; }
+  }
+
+  async function deleteAllActivity() {
+    if (!confirm('Permanently delete all recorded activity? Settings and focus rules will be kept.')) return;
+    privacyBusy = true;
+    try {
+      const response = await fetch('/api/privacy/delete-all', { method: 'POST' });
+      if (!response.ok) throw new Error();
+      pairMessage = 'Recorded activity deleted. Tracking continues with a fresh session.';
+      await load();
+    } catch { pairMessage = 'Could not delete activity.'; }
+    finally { privacyBusy = false; }
   }
 
   async function checkUpdates() {
@@ -419,6 +462,38 @@
     </div>
   </section>
 
+  <section class="card card-wide privacy-card">
+    <div class="card-header">
+      <span class="section-icon"><i class="ti ti-shield-lock" aria-hidden="true"></i></span>
+      <div><h2>Privacy center</h2><p>Control collection, Firefox access, and deletion.</p></div>
+    </div>
+    <div class="settings-columns">
+      <div class="setting-row">
+        <div class="setting-info"><span class="setting-label">Stored browser address</span><span class="setting-desc">Reduce URL detail before it reaches the database</span></div>
+        <select class="select wide" bind:value={browserUrlMode} onchange={() => save('browserUrlMode', browserUrlMode)}>
+          <option value="domain">Domain only</option><option value="path">Domain + path</option><option value="full">Full URL</option>
+        </select>
+      </div>
+      <label class="setting-row">
+        <div class="setting-info"><span class="setting-label">Store page titles</span><span class="setting-desc">Disable to save browser records without page titles</span></div>
+        <input type="checkbox" class="toggle" checked={browserStoreTitles} onchange={(e) => setToggle('browserStoreTitles', e, value => browserStoreTitles = value)} />
+      </label>
+      <div class="setting-row pair-row">
+        <div class="setting-info"><span class="setting-label">Firefox pairing</span><span class="setting-desc">A short-lived code grants this local Firefox extension access</span></div>
+        <div class="button-group">
+          {#if pairCode}<code class="pair-code">{pairCode}</code>{/if}
+          <button class="secondary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>New code</button>
+          <button class="secondary-btn" type="button" onclick={revokeFirefox} disabled={privacyBusy}>Revoke</button>
+        </div>
+      </div>
+      <div class="setting-row delete-row">
+        <div class="setting-info"><span class="setting-label">Delete activity</span><span class="setting-desc">Permanently erase activity while keeping settings and rules</span></div>
+        <button class="danger-btn" type="button" onclick={deleteAllActivity} disabled={privacyBusy}>Delete all activity</button>
+      </div>
+    </div>
+    {#if pairMessage}<div class="privacy-message" role="status">{pairMessage}</div>{/if}
+  </section>
+
   <section class="card card-wide">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-palette" aria-hidden="true"></i></span>
@@ -531,7 +606,7 @@
       </select>
     </div>
     <div class="setting-row">
-      <div class="setting-info"><span class="setting-label">Database size</span><span class="setting-desc">%LOCALAPPDATA%\TimeLens\activity.db</span></div>
+      <div class="setting-info"><span class="setting-label">Local storage used</span><span class="setting-desc">Database, write-ahead log, reminder media, and diagnostics</span></div>
       <code class="path">{fmtSize(dbSizeBytes)}</code>
     </div>
     <div class="setting-row export-row">
@@ -604,6 +679,8 @@
   .secondary-btn:hover { border-color: var(--md-primary); color: var(--md-primary); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   .path { color: var(--clr-text-sec); font: 11px var(--font-mono); white-space: nowrap; }
+  .pair-code { padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-sm); font: 700 16px var(--font-mono); letter-spacing: .12em; }
+  .privacy-message { padding: 9px 16px 13px; border-top: 1px solid var(--clr-border); color: var(--clr-text-sec); font-size: 11px; }
   .icon-btn { width: 30px; height: 30px; border: 0; color: var(--clr-text-sec); background: transparent; }
   .protection-header { border-bottom: 1px solid var(--clr-border); }
   .protection-header > div { flex: 1; }

@@ -116,7 +116,7 @@ public sealed class UpdateService : IDisposable
 
             await using (var executable = File.OpenRead(temporaryPath))
             {
-                if (executable.ReadByte() != 'M' || executable.ReadByte() != 'Z')
+                if (!HasValidPeHeader(executable))
                     throw new InvalidDataException("The update is not a Windows executable.");
                 executable.Position = 0;
                 var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(executable, cancellationToken));
@@ -212,16 +212,29 @@ public sealed class UpdateService : IDisposable
         }
     }
 
+    private static bool HasValidPeHeader(Stream executable)
+    {
+        Span<byte> header = stackalloc byte[64];
+        if (executable.Read(header) != header.Length || header[0] != 'M' || header[1] != 'Z') return false;
+        var peOffset = BitConverter.ToInt32(header[0x3c..0x40]);
+        if (peOffset < 64 || peOffset > executable.Length - 4) return false;
+        executable.Position = peOffset;
+        Span<byte> signature = stackalloc byte[4];
+        return executable.Read(signature) == 4 && signature.SequenceEqual("PE\0\0"u8);
+    }
+
     private static string PowerShellLiteral(string value) => $"'{value.Replace("'", "''")}'";
 
     private static void StartReplacementProcess(string stagedPath, string executablePath)
     {
         var updateDirectory = Path.GetDirectoryName(stagedPath)!;
         var scriptPath = Path.Combine(updateDirectory, $"apply-{Guid.NewGuid():N}.ps1");
+        var backupPath = executablePath + ".previous";
         var processId = Environment.ProcessId;
         var staged = PowerShellLiteral(stagedPath);
         var target = PowerShellLiteral(executablePath);
         var script = PowerShellLiteral(scriptPath);
+        var backup = PowerShellLiteral(backupPath);
         var content = $$"""
             $ErrorActionPreference = 'Stop'
             for ($i = 0; $i -lt 120; $i++) {
@@ -229,6 +242,7 @@ public sealed class UpdateService : IDisposable
               Start-Sleep -Milliseconds 250
             }
             if (Get-Process -Id {{processId}} -ErrorAction SilentlyContinue) { exit 2 }
+            Copy-Item -LiteralPath {{target}} -Destination {{backup}} -Force
             $copied = $false
             for ($i = 0; $i -lt 40; $i++) {
               try {
@@ -244,8 +258,17 @@ public sealed class UpdateService : IDisposable
               exit 3
             }
             "$(Get-Date -Format o) Replacement complete" | Set-Content -LiteralPath (Join-Path {{PowerShellLiteral(updateDirectory)}} 'last-update.log') -Encoding utf8
-            Start-Process -FilePath {{target}} -ArgumentList '--updated' -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}}
-            Start-Sleep -Milliseconds 500
+            try {
+              $updatedProcess = Start-Process -FilePath {{target}} -ArgumentList '--updated' -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}} -PassThru
+              Start-Sleep -Seconds 5
+              if ($updatedProcess.HasExited) { throw 'Updated process exited during startup' }
+            } catch {
+              Copy-Item -LiteralPath {{backup}} -Destination {{target}} -Force
+              Start-Process -FilePath {{target}} -ArgumentList '--updated' -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}}
+              "$(Get-Date -Format o) Update rolled back after failed startup" | Set-Content -LiteralPath (Join-Path {{PowerShellLiteral(updateDirectory)}} 'last-update.log') -Encoding utf8
+              exit 4
+            }
+            Remove-Item -LiteralPath {{backup}} -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath {{staged}} -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath {{script}} -Force -ErrorAction SilentlyContinue
             """;

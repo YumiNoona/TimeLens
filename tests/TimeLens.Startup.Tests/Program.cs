@@ -89,7 +89,7 @@ internal static class Program
                 DatabaseInitializer.Initialize(path);
                 var service = new SettingsService(path);
                 service.Save("retention_days", "365");
-                service.Save("theme", "dark");
+                service.Save("theme", "terminal");
                 service.Save("block_notify_interval_seconds", "1800");
                 service.Save("block_notify_position", "top-right");
                 service.Save("block_media_layout", "banner");
@@ -104,7 +104,7 @@ internal static class Program
                     insert.ExecuteNonQuery();
                 }
                 var settings = DatabaseInitializer.Initialize(path);
-                Check(settings.RetentionDays == 365 && settings.Theme == "dark" &&
+                Check(settings.RetentionDays == 365 && settings.Theme == "terminal" &&
                       settings.BlockNotifyIntervalSeconds == 1800 && settings.BlockNotifyPosition == "top-right" &&
                       settings.BlockMediaLayout == "banner",
                       "Saved preferences changed.");

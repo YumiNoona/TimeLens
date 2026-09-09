@@ -60,6 +60,8 @@ internal static class Program
             try
             {
                 Directory.CreateDirectory(dataDir);
+                if (File.Exists(logPath) && new FileInfo(logPath).Length > 1024 * 1024)
+                    File.Move(logPath, logPath + ".previous", true);
                 File.AppendAllText(logPath,
                     $"{DateTime.UtcNow:o} Fatal: {ex}{Environment.NewLine}");
                 logWritten = true;
@@ -286,13 +288,7 @@ internal static class Program
 
         void LogCrash(string message)
         {
-            try
-            {
-                System.IO.File.AppendAllText(
-                    Path.Combine(dataDir, "crash.log"),
-                    $"{DateTime.UtcNow:o} {message}{Environment.NewLine}");
-            }
-            catch { }
+            RuntimeDiagnostics.Write(message);
         }
 
         // Resolve conhost/OpenConsole to the actual console process (cmd/powershell/pwsh).
@@ -505,6 +501,12 @@ internal static class Program
             catch { }
         }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
 
+        using var retentionTimer = new Timer(_ =>
+        {
+            try { DataRetentionService.Purge(dbPath, LiveStatusStore.Settings.RetentionDays); }
+            catch (Exception ex) { LogCrash($"retention: {ex}"); }
+        }, null, TimeSpan.FromHours(1), TimeSpan.FromDays(1));
+
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
             WriteAppEvent();
@@ -559,8 +561,7 @@ internal static class Program
         // audible-status endpoint, so skip Core Audio logging to avoid duplicate entries.
         var browserAudioExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "chrome.exe", "msedge.exe", "microsoftedge.exe", "firefox.exe",
-            "zen.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe", "thorium.exe"
+            "firefox.exe", "zen.exe", "floorp.exe", "waterfox.exe", "librewolf.exe"
         };
 
         // Watchers will be started inside the message loop via StartupRequested
@@ -641,6 +642,8 @@ internal static class Program
 
         using var apiCts = new CancellationTokenSource();
         using var updateService = new UpdateService();
+        using var trayDispose = tray = new NativeTrayIcon(iconPath);
+        audioMonitor.MessageLoopDispatcher = tray.Post;
         void RequestShutdown()
         {
             RuntimeDiagnostics.Write("Shutdown requested through tray exit or updater.");
@@ -656,6 +659,8 @@ internal static class Program
                         throw new InvalidOperationException($"Windows could not update the startup setting: {error}");
                 }
                 settingsSvc.Save(k, v);
+                if (k == "retention_days" && int.TryParse(v, out var retentionDays))
+                    DataRetentionService.Purge(dbPath, retentionDays);
                 if (k == "focus_blocklist")
                 {
                     LiveStatusStore.Settings = LiveStatusStore.Settings with { FocusBlocklist = v };
@@ -683,7 +688,17 @@ internal static class Program
             showBlockPreview: target => ShowBlockToast(target, force: true),
             recordBlockAttempt: writer.InsertBlockLog,
             updateService: updateService,
-            requestShutdown: RequestShutdown);
+            requestShutdown: RequestShutdown,
+            clearActivityData: () =>
+            {
+                lock (trackingLock)
+                {
+                    writer.ClearAllActivity();
+                    LiveStatusStore.PendingBrowserBlock = null;
+                    LiveStatusStore.AudibleTab = null;
+                    WriteAppEvent();
+                }
+            });
         _ = apiTask.ContinueWith(task => RuntimeDiagnostics.Write($"Local API failed: {task.Exception}"),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
@@ -702,36 +717,46 @@ internal static class Program
 
         void ApplyTrackAudio(bool on)
         {
-            LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackAudio = on };
-            RuntimeConfig.Settings = LiveStatusStore.Settings;
-            audioMonitor.SessionAudioChanged -= OnAudioChanged;
-            if (on)
+            tray!.Invoke(() =>
             {
-                idleMonitor.AudioMonitorRef = audioMonitor;
-                audioMonitor.SessionAudioChanged += OnAudioChanged;
-                audioMonitor.Start();
-            }
-            else
-            {
-                audioMonitor.Stop();
-                idleMonitor.AudioMonitorRef = null;
-            }
+                if (LiveStatusStore.Settings.TrackAudio == on) return;
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackAudio = on };
+                RuntimeConfig.Settings = LiveStatusStore.Settings;
+                audioMonitor.SessionAudioChanged -= OnAudioChanged;
+                if (on)
+                {
+                    idleMonitor.AudioMonitorRef = audioMonitor;
+                    audioMonitor.SessionAudioChanged += OnAudioChanged;
+                    audioMonitor.Start();
+                }
+                else
+                {
+                    audioMonitor.Stop();
+                    idleMonitor.AudioMonitorRef = null;
+                    LiveStatusStore.AudioActive = false;
+                }
+            });
         }
 
         void ApplyTrackInput(bool on)
         {
-            LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackInput = on };
-            RuntimeConfig.Settings = LiveStatusStore.Settings;
-            inputMonitor.InputActivityTick -= OnInputTick;
-            if (on)
+            tray!.Invoke(() =>
             {
-                inputMonitor.InputActivityTick += OnInputTick;
-                inputMonitor.Start();
-            }
-            else
-            {
-                inputMonitor.Stop();
-            }
+                if (LiveStatusStore.Settings.TrackInput == on) return;
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { TrackInput = on };
+                RuntimeConfig.Settings = LiveStatusStore.Settings;
+                if (on)
+                {
+                    inputMonitor.InputActivityTick -= OnInputTick;
+                    inputMonitor.InputActivityTick += OnInputTick;
+                    inputMonitor.Start();
+                }
+                else
+                {
+                    inputMonitor.Stop();
+                    inputMonitor.InputActivityTick -= OnInputTick;
+                }
+            });
         }
 
         void UpsertRule(string pattern, string category, string ruleType, string target, int priority) => classifier.AddCustomRule(pattern, category, ruleType, target, priority);
@@ -739,7 +764,6 @@ internal static class Program
 
         int consecutiveActiveMinutes = 0;
 
-        using var trayDispose = tray = new NativeTrayIcon(iconPath);
         tray.ToastFailed += ex => LogCrash($"Toast: {ex}");
         var executablePath = Environment.ProcessPath;
         var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)

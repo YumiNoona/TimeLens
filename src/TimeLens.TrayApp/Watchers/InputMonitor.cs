@@ -45,6 +45,7 @@ public sealed class InputMonitor : IDisposable
 
     public void Start()
     {
+        if (_keyboardHook != IntPtr.Zero || _mouseHook != IntPtr.Zero || _flushTimer is not null) return;
         _instance = this;
         using var curProc = System.Diagnostics.Process.GetCurrentProcess();
         using var mainModule = curProc.MainModule!;
@@ -54,6 +55,15 @@ public sealed class InputMonitor : IDisposable
             Marshal.GetFunctionPointerForDelegate(KeyboardProc), moduleHandle, 0);
         _mouseHook = SetWindowsHookEx(WH_MOUSE_LL,
             Marshal.GetFunctionPointerForDelegate(MouseProc), moduleHandle, 0);
+
+        if (_keyboardHook == IntPtr.Zero || _mouseHook == IntPtr.Zero)
+        {
+            if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
+            if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
+            _keyboardHook = _mouseHook = IntPtr.Zero;
+            _instance = null;
+            throw new InvalidOperationException("TimeLens could not install the input activity hooks.");
+        }
 
         _flushTimer = new Timer(FlushCounters, null, 5_000, 5_000);
     }

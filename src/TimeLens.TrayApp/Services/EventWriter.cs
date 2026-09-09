@@ -78,6 +78,24 @@ public sealed class EventWriter : IDisposable
         }
     }
 
+    public void ClearAllActivity()
+    {
+        CloseCurrentAppEvent();
+        EndIdleSpan();
+        _queue.ExecuteSync(conn =>
+        {
+            using var tx = conn.BeginTransaction();
+            foreach (var table in new[] { "browser_input_batches", "browser_events", "app_events", "session_events", "input_activity", "audio_activity", "block_log", "idle_spans" })
+            {
+                using var delete = conn.CreateCommand();
+                delete.Transaction = tx;
+                delete.CommandText = $"DELETE FROM {table}";
+                delete.ExecuteNonQuery();
+            }
+            tx.Commit();
+        });
+    }
+
     public void Dispose()
     {
         CloseCurrentAppEvent();

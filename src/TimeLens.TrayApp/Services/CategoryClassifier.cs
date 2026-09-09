@@ -104,24 +104,33 @@ public sealed class CategoryClassifier : ICategoryClassifier
         ["facebook.com"] = "social",
     };
 
-    public List<CustomRule> CustomRules { get; } = new();
+    private readonly object _rulesGate = new();
+    private readonly List<CustomRule> _customRules = new();
+    public IReadOnlyList<CustomRule> CustomRules
+    {
+        get { lock (_rulesGate) return _customRules.ToArray(); }
+    }
 
     public void AddCustomRule(string pattern, string category, string ruleType = "substring", string target = "exe", int priority = 0)
     {
-        var existing = CustomRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
-        var rule = new CustomRule(pattern, category, ruleType, target, priority);
-        if (existing >= 0)
-            CustomRules[existing] = rule;
-        else
-            CustomRules.Add(rule);
+        lock (_rulesGate)
+        {
+            var existing = _customRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
+            var rule = new CustomRule(pattern, category, ruleType, target, priority);
+            if (existing >= 0) _customRules[existing] = rule;
+            else _customRules.Add(rule);
+        }
     }
 
     public bool RemoveCustomRule(string pattern)
     {
-        var idx = CustomRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
-        if (idx < 0) return false;
-        CustomRules.RemoveAt(idx);
-        return true;
+        lock (_rulesGate)
+        {
+            var idx = _customRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
+            if (idx < 0) return false;
+            _customRules.RemoveAt(idx);
+            return true;
+        }
     }
 
     public void LoadBuiltins(string csvPath)
@@ -143,10 +152,11 @@ public sealed class CategoryClassifier : ICategoryClassifier
 
             if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(category)) continue;
 
-            if (!CustomRules.Any(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)
-                                      && string.Equals(r.Target, target, StringComparison.OrdinalIgnoreCase)))
+            lock (_rulesGate)
             {
-                CustomRules.Add(new CustomRule(pattern, category, ruleType, target, Priority: 100));
+                if (!_customRules.Any(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)
+                                           && string.Equals(r.Target, target, StringComparison.OrdinalIgnoreCase)))
+                    _customRules.Add(new CustomRule(pattern, category, ruleType, target, Priority: 100));
             }
         }
     }
@@ -157,7 +167,9 @@ public sealed class CategoryClassifier : ICategoryClassifier
             return "system";
 
         // Custom rules first, ordered by priority (lower = higher priority)
-        foreach (var rule in CustomRules.OrderBy(r => r.Priority))
+        CustomRule[] rules;
+        lock (_rulesGate) rules = _customRules.OrderBy(r => r.Priority).ToArray();
+        foreach (var rule in rules)
         {
             var text = rule.Target switch
             {
@@ -196,8 +208,9 @@ public sealed class CategoryClassifier : ICategoryClassifier
 
     private static bool RegexMatch(string pattern, string text)
     {
-        try { return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase); }
-        catch { return false; }
+        try { return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)); }
+        catch (ArgumentException) { return false; }
+        catch (RegexMatchTimeoutException) { return false; }
     }
 
     public static string? ExtractProject(string exeName, string? windowTitle)

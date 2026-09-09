@@ -13,6 +13,7 @@ public static class DatabaseInitializer
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             PRAGMA journal_mode = WAL;
+            PRAGMA auto_vacuum = INCREMENTAL;
 
             CREATE TABLE IF NOT EXISTS app_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,32 +268,7 @@ public static class DatabaseInitializer
         // Create/migrate the schema before reading settings. A fresh installation has
         // no settings table yet. Load the saved retention before deleting any history.
         var settings = new SettingsService(dbPath).Load();
-        var cutoff = DateTime.UtcNow.AddDays(-settings.RetentionDays).ToString("o");
-        using var purge = conn.CreateCommand();
-        purge.CommandText = $"""
-            DELETE FROM app_events WHERE start_time < $cutoff;
-            DELETE FROM browser_events WHERE start_time < $cutoff;
-            DELETE FROM browser_input_batches WHERE timestamp < $cutoff;
-            DELETE FROM idle_spans WHERE start_time < $cutoff;
-            DELETE FROM session_events WHERE timestamp < $cutoff;
-            DELETE FROM input_activity WHERE timestamp < $cutoff;
-            DELETE FROM audio_activity WHERE timestamp < $cutoff;
-            """;
-        purge.Parameters.AddWithValue("$cutoff", cutoff);
-        var deleted = purge.ExecuteNonQuery();
-
-        // Enable incremental auto_vacuum so free pages are reused
-        using var av = conn.CreateCommand();
-        av.CommandText = "PRAGMA auto_vacuum = INCREMENTAL;";
-        av.ExecuteNonQuery();
-
-        // Vacuum if we deleted anything meaningful
-        if (deleted > 100)
-        {
-            using var v1 = conn.CreateCommand();
-            v1.CommandText = "PRAGMA incremental_vacuum;";
-            v1.ExecuteNonQuery();
-        }
+        DataRetentionService.Purge(dbPath, settings.RetentionDays);
 
         return settings;
     }

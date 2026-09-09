@@ -77,6 +77,9 @@ function Close-Probe($probe) {
 $timeLensProcess = $null
 $timeLensWindow = [IntPtr]::Zero
 $activeProbe = $null
+$webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$PSDefaultParameterValues['Invoke-RestMethod:WebSession'] = $webSession
+$PSDefaultParameterValues['Invoke-WebRequest:WebSession'] = $webSession
 try {
     $timeLensProcess = Start-Process -FilePath $exe -ArgumentList ('--startup --smoke-test "{0}"' -f $dataDir) `
         -WorkingDirectory "$env:WINDIR\System32" -WindowStyle Hidden -PassThru `
@@ -92,7 +95,11 @@ try {
         [uint32]$owner = 0
         if ($timeLensWindow -ne [IntPtr]::Zero) { [void][TimeLensBlockModeProbe]::GetWindowThreadProcessId($timeLensWindow, [ref]$owner) }
         if ($owner -eq $timeLensProcess.Id) {
-            try { $null = Invoke-RestMethod "$api/api/settings" -TimeoutSec 1; $ready = $true } catch { }
+            try {
+                $null = Invoke-WebRequest "$api/" -UseBasicParsing -TimeoutSec 1
+                $null = Invoke-RestMethod "$api/api/settings" -TimeoutSec 1
+                $ready = $true
+            } catch { }
         }
     } until ($ready -or [DateTime]::UtcNow -ge $deadline)
     if (-not $ready) { throw 'The packaged app did not start its tray window and settings API.' }
@@ -150,4 +157,6 @@ finally {
         if (-not $timeLensProcess.WaitForExit(5000)) { $timeLensProcess.Kill(); $timeLensProcess.WaitForExit() }
     }
     if ($timeLensProcess) { $timeLensProcess.Dispose() }
+    $PSDefaultParameterValues.Remove('Invoke-RestMethod:WebSession')
+    $PSDefaultParameterValues.Remove('Invoke-WebRequest:WebSession')
 }

@@ -46,6 +46,7 @@ public sealed class NativeTrayIcon : IDisposable
 
     private const uint WM_STARTUP = WM_APP + 100;
     private const uint WM_SHOW_TOAST = WM_APP + 101;
+    private const uint WM_DISPATCH = WM_APP + 102;
 
     private IntPtr _hWnd;
     private IntPtr _hMenu;
@@ -57,9 +58,12 @@ public sealed class NativeTrayIcon : IDisposable
     private ExceptionDispatchInfo? _callbackError;
     private readonly string _iconPath;
     private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<DispatchRequest> _dispatchQueue = new();
     private readonly List<(ToastWindow Window, string Position)> _activeToasts = [];
+    private int _messageLoopThreadId;
 
     private sealed record ToastRequest(string Title, string Text, string? ImagePath, string Position, string MediaLayout);
+    private sealed record DispatchRequest(Action Action, TaskCompletionSource<bool>? Completion);
 
     public NativeTrayIcon(string? iconPath = null)
     {
@@ -210,6 +214,7 @@ public sealed class NativeTrayIcon : IDisposable
 
     public void Run()
     {
+        _messageLoopThreadId = Environment.CurrentManagedThreadId;
         var hInstance = GetModuleHandleW(null);
 
         _wndProc = new WndProc(WindowProcedure);
@@ -233,6 +238,9 @@ public sealed class NativeTrayIcon : IDisposable
             0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");
+
+        if (!_dispatchQueue.IsEmpty)
+            PostMessageW(_hWnd, WM_DISPATCH, IntPtr.Zero, IntPtr.Zero);
 
         _hIcon = LoadImageFromFile(IntPtr.Zero, _iconPath, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_LOADFROMFILE);
         if (_hIcon == IntPtr.Zero)
@@ -269,6 +277,36 @@ public sealed class NativeTrayIcon : IDisposable
         _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, NormalizePosition(position), NormalizeMediaLayout(mediaLayout)));
         var window = _hWnd;
         if (window != IntPtr.Zero) PostMessageW(window, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>Runs work on the tray message-loop thread and propagates failures to the caller.</summary>
+    public void Invoke(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (_disposed) throw new ObjectDisposedException(nameof(NativeTrayIcon));
+        if (_messageLoopThreadId == Environment.CurrentManagedThreadId)
+        {
+            action();
+            return;
+        }
+
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dispatchQueue.Enqueue(new DispatchRequest(action, completion));
+        var window = _hWnd;
+        if (window != IntPtr.Zero)
+            PostMessageW(window, WM_DISPATCH, IntPtr.Zero, IntPtr.Zero);
+        completion.Task.GetAwaiter().GetResult();
+    }
+
+    /// <summary>Queues work on the tray message-loop thread without blocking a native callback.</summary>
+    public void Post(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (_disposed) return;
+        _dispatchQueue.Enqueue(new DispatchRequest(action, null));
+        var window = _hWnd;
+        if (window != IntPtr.Zero)
+            PostMessageW(window, WM_DISPATCH, IntPtr.Zero, IntPtr.Zero);
     }
 
     private void OnToastClosed(ToastWindow closed)
@@ -428,6 +466,22 @@ public sealed class NativeTrayIcon : IDisposable
                     catch (Exception ex) { ToastFailed?.Invoke(ex); }
                 }
                 return IntPtr.Zero;
+
+            case WM_DISPATCH:
+                while (_dispatchQueue.TryDequeue(out var request))
+                {
+                    try
+                    {
+                        request.Action();
+                        request.Completion?.TrySetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (request.Completion is not null) request.Completion.TrySetException(ex);
+                        else RuntimeDiagnostics.Write($"Tray dispatch: {ex}");
+                    }
+                }
+                return IntPtr.Zero;
         }
 
         return DefWindowProc(hWnd, msg, wParam, lParam);
@@ -468,6 +522,9 @@ public sealed class NativeTrayIcon : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        while (_dispatchQueue.TryDequeue(out var request))
+            request.Completion?.TrySetException(new ObjectDisposedException(nameof(NativeTrayIcon)));
 
         if (_hWnd != IntPtr.Zero)
         {

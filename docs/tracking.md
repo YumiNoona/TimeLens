@@ -73,9 +73,9 @@ an exit record; durable activity checkpoints remain the recovery boundary.
 
 ## Browser intervals in 7.0
 
-A single visible tab is checkpointed alongside desktop foreground state. Switching
+A single visible Firefox tab is checkpointed alongside desktop foreground state. Switching
 away or entering idle ends that interval. Five-second extension samples are backed
-by 30-second alarms for Chrome worker recovery; after 65 seconds without an extension
+by a 30-second Firefox alarm; after 65 seconds without an extension
 observation the cached tab is discarded. Desktop sampling gaps over 30 seconds are
 never bridged. A crashed extension can therefore leave up to 65 seconds of uncertain
 website attribution while its browser remains foreground. Normal desktop crash loss
@@ -98,14 +98,14 @@ Additional reference implementations consulted (design inspiration; no source co
 - [ActivityWatch window heartbeat loop](https://github.com/ActivityWatch/aw-watcher-window/blob/master/aw_watcher_window/main.py)
 - [ActivityWatch AFK watcher](https://github.com/ActivityWatch/aw-watcher-afk/blob/master/aw_watcher_afk/afk.py)
 - [ActivityWatch web watcher](https://github.com/ActivityWatch/aw-watcher-web)
-- [Chrome service worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)
+- [Firefox WebExtensions background scripts](https://developer.mozilla.org/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background)
 
 ## Manual release acceptance
 
 On a Windows desktop, compare a stopwatch with app switches, two same-app windows,
 reading past the idle threshold, selected video playback, locking/unlocking and sleep.
-Load the Chrome ZIP unpacked, switch tabs/windows, navigate a single-page application,
-open an internal page and restart the extension worker. Confirm site time stops when
+Load the Firefox ZIP temporarily, pair it from the Privacy center, switch tabs/windows,
+navigate a single-page application, open an internal page and restart Firefox. Confirm site time stops when
 switching to an editor and resumes on browser focus. Repeat across local midnight.
 Test packaged Windows apps and any elevated apps used in your workflow; Windows access
 restrictions may leave a process unidentified. Store review and clean-VM installer

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using TimeLens.Api.Dtos;
 using TimeLens.Api.Services;
@@ -24,6 +25,16 @@ public static class ApiHost
     private static BrowserTrackingService? _browserTracker;
     public static void UpdateBrowserTracking() => _browserTracker?.Tick();
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> PublicSettingNames = new(StringComparer.Ordinal)
+    {
+        "trackAudio", "trackBrowser", "trackInput", "idleThresholdSeconds", "theme",
+        "browserUrlMode", "browserStoreTitles",
+        "timelineGrouped", "autoStart", "retentionDays", "showTitles", "breakReminder",
+        "breakIntervalMinutes", "focusMode", "focusBlocklist", "blockAction", "blockTitle",
+        "blockMessage", "blockNotifyIntervalSeconds", "blockNotifyPosition", "blockMediaLayout",
+        "pollIntervalSeconds", "timeFormat", "defaultView", "density", "motionEnabled",
+        "timelineMinSegmentSeconds", "heatmapDays"
+    };
 
     private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
     {
@@ -144,7 +155,9 @@ public static class ApiHost
         Action<string, string>? recordBlockAttempt = null,
         UpdateService? updateService = null,
         Action? requestShutdown = null,
-        int port = DefaultPort)
+        Action? clearActivityData = null,
+        int port = DefaultPort,
+        bool requireAuthentication = true)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
@@ -157,6 +170,8 @@ public static class ApiHost
             ContentRootPath = AppContext.BaseDirectory
         });
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        builder.WebHost.ConfigureKestrel(options =>
+            options.Limits.MaxRequestBodySize = MaxBlockVideoBytes * 3L);
 
         builder.Services.ConfigureHttpJsonOptions(o =>
         {
@@ -164,6 +179,126 @@ public static class ApiHost
         });
 
         var app = builder.Build();
+        var apiSecurity = new LocalApiSecurity(dbPath);
+        var extensionReadPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "/api/extension/settings", "/api/browser-block-state", "/api/block/media", "/api/block/image"
+        };
+        var extensionPostPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "/api/extension-heartbeat", "/api/browser-event", "/api/browser-input",
+            "/api/browser-leave", "/api/browser-heartbeat", "/api/audible-status"
+        };
+
+        app.Use(async (ctx, next) =>
+        {
+            ctx.Response.Headers.XContentTypeOptions = "nosniff";
+            ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
+            ctx.Response.Headers["X-Frame-Options"] = "DENY";
+            ctx.Response.Headers.ContentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'";
+
+            var isMediaUpload = HttpMethods.IsPost(ctx.Request.Method) &&
+                (ctx.Request.Path.Equals("/api/block/media", StringComparison.OrdinalIgnoreCase) ||
+                 ctx.Request.Path.Equals("/api/block/image", StringComparison.OrdinalIgnoreCase));
+            if (ctx.Request.Path.StartsWithSegments("/api"))
+                ctx.Response.Headers.CacheControl = "no-store";
+            var requestLimit = isMediaUpload ? MaxBlockVideoBytes * 3L : 128L * 1024;
+            var bodyFeature = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if (bodyFeature is { IsReadOnly: false }) bodyFeature.MaxRequestBodySize = requestLimit;
+            if (ctx.Request.ContentLength > requestLimit)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
+
+            if (!requireAuthentication)
+            {
+                await next();
+                return;
+            }
+
+            var host = ctx.Request.Host.Host;
+            if (!host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            var origin = ctx.Request.Headers.Origin.ToString();
+            var localOrigin = $"http://127.0.0.1:{port}";
+            var localHostOrigin = $"http://localhost:{port}";
+            var isFirefoxOrigin = origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(origin) && origin != localOrigin && origin != localHostOrigin && !isFirefoxOrigin)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+
+            if (isFirefoxOrigin)
+            {
+                ctx.Response.Headers.AccessControlAllowOrigin = origin;
+                ctx.Response.Headers.Vary = "Origin";
+                ctx.Response.Headers.AccessControlAllowHeaders = $"Content-Type, {LocalApiSecurity.ExtensionHeaderName}";
+                ctx.Response.Headers.AccessControlAllowMethods = "GET, POST, OPTIONS";
+            }
+
+            if (HttpMethods.IsOptions(ctx.Request.Method))
+            {
+                if (!isFirefoxOrigin)
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+                ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+                return;
+            }
+
+            if ((HttpMethods.IsPost(ctx.Request.Method) || HttpMethods.IsPut(ctx.Request.Method) ||
+                 HttpMethods.IsPatch(ctx.Request.Method)) && ctx.Request.ContentLength is > 0 &&
+                ctx.Request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) != true)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status415UnsupportedMediaType;
+                return;
+            }
+
+            var path = ctx.Request.Path.Value ?? "";
+            if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+            {
+                if (HttpMethods.IsGet(ctx.Request.Method)) apiSecurity.IssueDashboardCookie(ctx);
+                await next();
+                return;
+            }
+
+            if (path.Equals("/api/pair/exchange", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!isFirefoxOrigin)
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+                await next();
+                return;
+            }
+
+            var isExtensionRoute = (HttpMethods.IsGet(ctx.Request.Method) && extensionReadPaths.Contains(path)) ||
+                (HttpMethods.IsPost(ctx.Request.Method) && extensionPostPaths.Contains(path));
+            if (isExtensionRoute && apiSecurity.IsExtension(ctx))
+            {
+                await next();
+                return;
+            }
+
+            if (!apiSecurity.IsDashboard(ctx))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"error\":\"TimeLens authorization required\"}");
+                return;
+            }
+
+            await next();
+        });
 
         // The SPA entry point must never be reused across application upgrades. Embedded
         // files otherwise share a stable timestamp, so a browser can receive a 304 for an
@@ -200,29 +335,18 @@ public static class ApiHost
             try
             {
                 LastActivityUtc = DateTime.UtcNow;
-                var origin = ctx.Request.Headers.Origin.ToString();
-                if (origin.StartsWith("chrome-extension://") ||
-                    origin.StartsWith("moz-extension://"))
-                {
-                    ctx.Response.Headers.Append("Access-Control-Allow-Origin", origin);
-                    ctx.Response.Headers.Append("Access-Control-Allow-Headers", "Content-Type");
-                    ctx.Response.Headers.Append("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                }
-                if (ctx.Request.Method == "OPTIONS")
-                {
-                    ctx.Response.StatusCode = 204;
-                    return;
-                }
                 await next();
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(
-                    Path.Combine(Path.GetDirectoryName(dbPath)!, "api_error.log"),
+                WriteBoundedLog(Path.Combine(Path.GetDirectoryName(dbPath)!, "api_error.log"),
                     $"{DateTime.UtcNow:o} {ctx.Request.Method} {ctx.Request.Path}: {ex}{Environment.NewLine}");
-                ctx.Response.StatusCode = 500;
+                if (ctx.Response.HasStarted) throw;
+                ctx.Response.StatusCode = ex is System.Text.Json.JsonException or BadHttpRequestException ? 400 : 500;
                 ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync($"{{\"error\":\"{ex.Message.Replace("\"", "'")}\"}}");
+                await ctx.Response.WriteAsync(ctx.Response.StatusCode == 400
+                    ? "{\"error\":\"Invalid request\"}"
+                    : "{\"error\":\"The local service could not complete the request\"}");
             }
         });
 
@@ -264,6 +388,42 @@ public static class ApiHost
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsJsonAsync(
                 LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
+        });
+
+        app.MapGet("/api/extension/settings", async (HttpContext ctx) =>
+        {
+            var settings = LiveStatusStore.Settings;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync($$"""{"trackBrowser":{{settings.TrackBrowser.ToString().ToLowerInvariant()}},"trackInput":{{settings.TrackInput.ToString().ToLowerInvariant()}},"focusMode":{{settings.FocusMode.ToString().ToLowerInvariant()}},"browserUrlMode":"{{settings.BrowserUrlMode}}","browserStoreTitles":{{settings.BrowserStoreTitles.ToString().ToLowerInvariant()}}}""");
+        });
+
+        app.MapPost("/api/pair/code", async (HttpContext ctx) =>
+        {
+            var code = apiSecurity.CreatePairCode();
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync($$"""{"code":"{{code}}","expiresInSeconds":120}""");
+        });
+
+        app.MapPost("/api/pair/exchange", async (HttpContext ctx) =>
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
+            var code = doc.RootElement.TryGetProperty("code", out var codeProperty) ? codeProperty.GetString() ?? "" : "";
+            var token = apiSecurity.ExchangePairCode(code);
+            if (token is null)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsync("{\"error\":\"Pairing code is invalid or expired\"}");
+                return;
+            }
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync($$"""{"token":"{{token}}"}""");
+        });
+
+        app.MapPost("/api/pair/revoke", async (HttpContext ctx) =>
+        {
+            apiSecurity.RevokeExtension();
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
         app.MapGet("/api/update/status", async (HttpContext ctx) =>
@@ -416,12 +576,52 @@ public static class ApiHost
 
         app.MapPost("/api/settings", async (HttpContext ctx) =>
         {
+            if (ctx.Request.ContentLength is > 64 * 1024)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
-
-            foreach (var prop in doc.RootElement.EnumerateObject())
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
             {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Settings must be a non-empty object\"}");
+                return;
+            }
+            var properties = doc.RootElement.EnumerateObject().ToArray();
+            if (properties.Length == 0 || properties.Select(prop => prop.Name).Distinct(StringComparer.Ordinal).Count() != properties.Length)
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Settings must contain unique property names\"}");
+                return;
+            }
+
+            // Reject protected/unknown names before applying any item in a batch.
+            if (properties.Any(prop => !PublicSettingNames.Contains(prop.Name)))
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Unknown or protected setting\"}");
+                return;
+            }
+            if (properties.Any(prop => prop.Name == "retentionDays" &&
+                prop.Value.GetRawText() is not ("30" or "60" or "90" or "180" or "365")))
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Invalid retention period\"}");
+                return;
+            }
+
+            var normalizedSettings = new List<(string Name, string Value)>(properties.Length);
+            foreach (var prop in properties)
+            {
+                if (!PublicSettingNames.Contains(prop.Name))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Unknown or protected setting\"}");
+                    return;
+                }
                 var value = prop.Value.ValueKind switch
                 {
                     System.Text.Json.JsonValueKind.True => "true",
@@ -429,6 +629,60 @@ public static class ApiHost
                     System.Text.Json.JsonValueKind.String => prop.Value.GetString() ?? "",
                     _ => prop.Value.GetRawText()
                 };
+
+                if (prop.Name is "trackAudio" or "trackBrowser" or "trackInput" or "timelineGrouped" or
+                    "showTitles" or "breakReminder" or "motionEnabled" or "browserStoreTitles" && prop.Value.ValueKind is not
+                    (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Toggle settings must be booleans\"}");
+                    return;
+                }
+                if (prop.Name == "idleThresholdSeconds" &&
+                    (!int.TryParse(value, out var idleSeconds) || idleSeconds < 15 || idleSeconds > 3600))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Idle threshold must be between 15 and 3600 seconds\"}");
+                    return;
+                }
+                if (prop.Name == "retentionDays" && value is not ("30" or "60" or "90" or "180" or "365"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid retention period\"}");
+                    return;
+                }
+                if (prop.Name == "breakIntervalMinutes" &&
+                    (!int.TryParse(value, out var breakMinutes) || breakMinutes < 5 || breakMinutes > 240))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Break interval must be between 5 and 240 minutes\"}");
+                    return;
+                }
+                if (prop.Name == "pollIntervalSeconds" &&
+                    (!int.TryParse(value, out var pollSeconds) || pollSeconds < 5 || pollSeconds > 300))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Polling interval must be between 5 and 300 seconds\"}");
+                    return;
+                }
+                if (prop.Name == "theme" && value is not ("default" or "terminal" or "copper" or "arctic" or "moss" or "crimson" or "gold" or "ember" or "rose" or "clay" or "sunset"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid theme\"}");
+                    return;
+                }
+                if (prop.Name == "timeFormat" && value is not ("12h" or "24h"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid time format\"}");
+                    return;
+                }
+                if (prop.Name == "browserUrlMode" && value is not ("domain" or "path" or "full"))
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid browser URL privacy level\"}");
+                    return;
+                }
 
                 if (prop.Name == "blockAction" && value is not ("notify" or "hide" or "kill" or "strict"))
                 {
@@ -556,11 +810,20 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Password required to weaken protected blocks\",\"code\":\"block_locked\"}");
                     return;
                 }
-                saveSetting?.Invoke(prop.Name switch
+                normalizedSettings.Add((prop.Name, value));
+            }
+
+            // Do not mutate persistent or live state until every value in the batch
+            // has passed validation. This prevents a rejected request applying a prefix.
+            foreach (var (name, value) in normalizedSettings)
+            {
+                saveSetting?.Invoke(name switch
                 {
                     "trackAudio" => "track_audio",
                     "trackBrowser" => "track_browser",
                     "trackInput" => "track_input",
+                    "browserUrlMode" => "browser_url_mode",
+                    "browserStoreTitles" => "browser_store_titles",
                     "idleThresholdSeconds" => "idle_threshold_seconds",
                     "theme" => "theme",
                     "timelineGrouped" => "timeline_grouped",
@@ -584,11 +847,11 @@ public static class ApiHost
                     "motionEnabled" => "motion_enabled",
                     "timelineMinSegmentSeconds" => "timeline_min_segment_seconds",
                     "heatmapDays" => "heatmap_days",
-                    _ => prop.Name
+                    _ => name
                 }, value);
 
                 // Apply live toggles
-                switch (prop.Name)
+                switch (name)
                 {
                     case "trackAudio":
                         setTrackAudio?.Invoke(value == "true");
@@ -601,6 +864,12 @@ public static class ApiHost
                         {
                             TrackBrowser = value == "true"
                         };
+                        break;
+                    case "browserUrlMode":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BrowserUrlMode = value };
+                        break;
+                    case "browserStoreTitles":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { BrowserStoreTitles = value == "true" };
                         break;
                     case "idleThresholdSeconds":
                         if (int.TryParse(value, out var secs))
@@ -692,6 +961,19 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapPost("/api/privacy/delete-all", async (HttpContext ctx) =>
+        {
+            if (clearActivityData is null)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status501NotImplemented;
+                return;
+            }
+            _browserTracker?.Reset();
+            clearActivityData();
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}");
+        });
+
         app.MapGet("/api/rules", async (HttpContext ctx) =>
         {
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
@@ -720,14 +1002,38 @@ public static class ApiHost
 
         app.MapPost("/api/rules", async (HttpContext ctx) =>
         {
+            if (ctx.Request.ContentLength is > 64 * 1024)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
             var pattern = doc.RootElement.GetProperty("pattern").GetString() ?? "";
             var category = doc.RootElement.GetProperty("category").GetString() ?? "other";
             var ruleType = doc.RootElement.TryGetProperty("ruleType", out var rt) ? rt.GetString() ?? "substring" : "substring";
             var target = doc.RootElement.TryGetProperty("target", out var tg) ? tg.GetString() ?? "exe" : "exe";
             var priority = doc.RootElement.TryGetProperty("priority", out var pr) && pr.TryGetInt32(out var pv) ? pv : 0;
+
+            if (pattern.Length is < 1 or > 512 || category.Length is < 1 or > 64 ||
+                ruleType is not ("substring" or "glob" or "regex") ||
+                target is not ("exe" or "title" or "domain") || priority is < 0 or > 10000)
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsync("{\"error\":\"Invalid categorization rule\"}");
+                return;
+            }
+            if (ruleType == "regex")
+            {
+                try { _ = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)); }
+                catch (ArgumentException)
+                {
+                    ctx.Response.StatusCode = 400;
+                    await ctx.Response.WriteAsync("{\"error\":\"Invalid regular expression\"}");
+                    return;
+                }
+            }
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
@@ -808,7 +1114,7 @@ public static class ApiHost
         {
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
             var root = doc.RootElement;
             if (root.TryGetProperty("ids", out var arr))
             {
@@ -901,7 +1207,7 @@ public static class ApiHost
         {
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
             var r = doc.RootElement;
             var goalType = r.TryGetProperty("goalType", out var gt) ? gt.GetString() ?? "max_time" : "max_time";
             var target = r.TryGetProperty("target", out var tg) ? tg.GetString() ?? "" : "";
@@ -1077,7 +1383,7 @@ public static class ApiHost
         {
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
             var audible = doc.RootElement.GetProperty("audible").GetBoolean();
             var browser = doc.RootElement.GetProperty("browser").GetString() ?? "browser";
             if (BrowserTrackingService.MatchesForeground(browser, LiveStatusStore.CurrentApp))
@@ -1115,8 +1421,8 @@ public static class ApiHost
         app.MapGet("/api/input-summary", async (HttpContext ctx) =>
         {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
-            DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+            if (!TryParseLocalDay(dateParam, out var queryDate))
+            { ctx.Response.StatusCode = 400; return; }
             var localDate = queryDate.Date;
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -1139,8 +1445,8 @@ public static class ApiHost
         app.MapGet("/api/audio-summary", async (HttpContext ctx) =>
         {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
-            DateTime queryDate = DateTime.Now;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed)) queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+            if (!TryParseLocalDay(dateParam, out var queryDate))
+            { ctx.Response.StatusCode = 400; return; }
             var localDate = queryDate.Date;
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
@@ -1162,8 +1468,8 @@ public static class ApiHost
 
         app.MapGet("/api/browser-summary", async (HttpContext ctx) =>
         {
-            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
-            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
+            if (!TryParseLocalDay(ctx.Request.Query["date"].FirstOrDefault(), out var local))
+            { ctx.Response.StatusCode = 400; return; }
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var snapshot = conn.BeginTransaction(deferred: true);
@@ -1173,8 +1479,8 @@ public static class ApiHost
 
         app.MapGet("/api/browser-time-summary", async (HttpContext ctx) =>
         {
-            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
-            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
+            if (!TryParseLocalDay(ctx.Request.Query["date"].FirstOrDefault(), out var local))
+            { ctx.Response.StatusCode = 400; return; }
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var snapshot = conn.BeginTransaction(deferred: true);
@@ -1194,8 +1500,8 @@ public static class ApiHost
 
         app.MapGet("/api/browser-hourly", async (HttpContext ctx) =>
         {
-            var date = DateTime.TryParse(ctx.Request.Query["date"].FirstOrDefault(), out var parsed) ? parsed.Date : DateTime.Now.Date;
-            var local = DateTime.SpecifyKind(date, DateTimeKind.Local);
+            if (!TryParseLocalDay(ctx.Request.Query["date"].FirstOrDefault(), out var local))
+            { ctx.Response.StatusCode = 400; return; }
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var snapshot = conn.BeginTransaction(deferred: true);
@@ -1396,8 +1702,12 @@ public static class ApiHost
             {
             var dateParam = ctx.Request.Query["date"].FirstOrDefault();
             DateTime? queryDate = null;
-            if (dateParam is not null && DateTime.TryParse(dateParam, out var parsed))
-                queryDate = DateTime.SpecifyKind(parsed, DateTimeKind.Local);
+            if (dateParam is not null)
+            {
+                if (!TryParseLocalDay(dateParam, out var parsed))
+                { ctx.Response.StatusCode = 400; return; }
+                queryDate = parsed;
+            }
             var svc = analytics;
             var result = await svc.GetDashboardAsync(queryDate);
             ctx.Response.StatusCode = 200;
@@ -1406,10 +1716,10 @@ public static class ApiHost
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText(Path.Combine(Path.GetDirectoryName(dbPath)!, "query_error.log"), $"{DateTime.UtcNow:o} summary: {ex}{Environment.NewLine}");
+                WriteBoundedLog(Path.Combine(Path.GetDirectoryName(dbPath)!, "query_error.log"), $"{DateTime.UtcNow:o} summary: {ex}{Environment.NewLine}");
                 ctx.Response.StatusCode = 500;
                 ctx.Response.ContentType = "application/json";
-                await ctx.Response.WriteAsync("{\"error\":\"" + ex.Message.Replace("\"", "'") + "\"}");
+                await ctx.Response.WriteAsync("{\"error\":\"The summary could not be calculated\"}");
             }
         });
 
@@ -1417,7 +1727,7 @@ public static class ApiHost
         {
             using var sr = new System.IO.StreamReader(ctx.Request.Body);
             var body = await sr.ReadToEndAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(body);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
             var reason = doc.RootElement.GetProperty("reason").GetString() ?? "";
             var startTime = doc.RootElement.GetProperty("startTime").GetString();
 
@@ -1448,7 +1758,7 @@ public static class ApiHost
         {
             ctx.Response.ContentType = "application/json";
             ctx.Response.StatusCode = 200;
-            var size = System.IO.File.Exists(dbPath) ? new System.IO.FileInfo(dbPath).Length : 0;
+            var size = TotalStorageBytes(dbPath);
             await ctx.Response.WriteAsync($"{{\"sizeBytes\":{size}}}");
         });
 
@@ -1456,6 +1766,8 @@ public static class ApiHost
         {
             var format = ctx.Request.Query["format"].FirstOrDefault() ?? "csv";
             var range = ctx.Request.Query["range"].FirstOrDefault() ?? "today";
+            if (format is not ("csv" or "json"))
+            { ctx.Response.StatusCode = 400; return; }
             ctx.Response.ContentType = format == "json" ? "application/json" : "text/csv";
             var label = range == "30days" ? "30days" : range == "today" ? "today" : range;
             ctx.Response.Headers.Append("Content-Disposition", $"attachment; filename=timelens-{label}.{format}");
@@ -1464,8 +1776,12 @@ public static class ApiHost
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
             var exportDay = DateTime.Today;
-            if (range != "today" && range != "30days" && DateTime.TryParse(range, out var selectedDay))
-                exportDay = DateTime.SpecifyKind(selectedDay.Date, DateTimeKind.Local);
+            if (range != "today" && range != "30days")
+            {
+                if (!TryParseLocalDay(range, out var selectedDay))
+                { ctx.Response.StatusCode = 400; return; }
+                exportDay = selectedDay;
+            }
             var rangeStart = (range == "30days" ? exportDay.AddDays(-29) : exportDay).ToUniversalTime();
             var rangeEnd = exportDay.AddDays(1).ToUniversalTime();
             if (rangeEnd > DateTime.UtcNow) rangeEnd = DateTime.UtcNow;
@@ -1484,16 +1800,21 @@ public static class ApiHost
             using var r = await cmd.ExecuteReaderAsync();
             if (format == "json")
             {
-                await using var w = new System.IO.StreamWriter(ctx.Response.Body);
-                w.Write("[");
-                var first = true;
+                await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+                json.WriteStartArray();
                 while (await r.ReadAsync())
                 {
-                    if (!first) w.Write(",");
-                    first = false;
-                    w.Write($$"""{"start":"{{r.GetString(0)}}","exe":"{{r.GetString(1)}}","title":"{{(r.IsDBNull(2) ? "" : r.GetString(2)).Replace("\"", "'")}}","category":"{{(r.IsDBNull(3) ? "" : r.GetString(3))}}","state":"{{(r.IsDBNull(4) ? "" : r.GetString(4))}}","secs":{{r.GetInt32(5)}}}""");
+                    json.WriteStartObject();
+                    json.WriteString("start", r.GetString(0));
+                    json.WriteString("exe", r.GetString(1));
+                    json.WriteString("title", r.IsDBNull(2) ? "" : r.GetString(2));
+                    json.WriteString("category", r.IsDBNull(3) ? "" : r.GetString(3));
+                    json.WriteString("state", r.IsDBNull(4) ? "" : r.GetString(4));
+                    json.WriteNumber("secs", Convert.ToInt32(r.GetValue(5)));
+                    json.WriteEndObject();
                 }
-                w.Write("]");
+                json.WriteEndArray();
+                await json.FlushAsync(ctx.RequestAborted);
             }
             else
             {
@@ -1501,9 +1822,12 @@ public static class ApiHost
                 await w.WriteLineAsync("start_time,exe_name,window_title,category,session_state,duration_secs");
                 while (await r.ReadAsync())
                 {
-                    var title = r.IsDBNull(2) ? "" : r.GetString(2).Replace("\"", "\"\"");
                     await w.WriteLineAsync(
-                        $"{r.GetString(0)},{r.GetString(1)},\"{title}\",{(r.IsDBNull(3) ? "" : r.GetString(3))},{(r.IsDBNull(4) ? "" : r.GetString(4))},{r.GetInt32(5)}");
+                        string.Join(",", CsvCell(r.GetString(0)), CsvCell(r.GetString(1)),
+                            CsvCell(r.IsDBNull(2) ? "" : r.GetString(2)),
+                            CsvCell(r.IsDBNull(3) ? "" : r.GetString(3)),
+                            CsvCell(r.IsDBNull(4) ? "" : r.GetString(4)),
+                            Convert.ToInt32(r.GetValue(5)).ToString(CultureInfo.InvariantCulture)));
                 }
             }
         });
@@ -1652,12 +1976,10 @@ public static class ApiHost
         app.MapGet("/api/block/stats", async (HttpContext ctx) =>
         {
             var dateText = ctx.Request.Query["date"].FirstOrDefault();
-            var localDay = DateTime.TryParseExact(dateText, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var requestedDay)
-                ? requestedDay.Date
-                : DateTime.Now.Date;
+            if (!TryParseLocalDay(dateText, out var localDay))
+            { ctx.Response.StatusCode = 400; return; }
             var dayStart = DateTime.SpecifyKind(localDay, DateTimeKind.Local).ToUniversalTime();
-            var dayEnd = dayStart.AddDays(1);
+            var dayEnd = DateTime.SpecifyKind(localDay.AddDays(1), DateTimeKind.Local).ToUniversalTime();
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
@@ -1813,6 +2135,53 @@ public static class ApiHost
             var path = Path.Combine(directory, name);
             if (File.Exists(path)) File.Delete(path);
         }
+    }
+
+    private static long TotalStorageBytes(string dbPath)
+    {
+        long total = 0;
+        foreach (var path in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+            if (File.Exists(path)) total += new FileInfo(path).Length;
+        var directory = Path.GetDirectoryName(dbPath);
+        if (directory is null || !Directory.Exists(directory)) return total;
+        foreach (var pattern in new[] { "block-notification-*", "*.log" })
+            foreach (var path in Directory.EnumerateFiles(directory, pattern, SearchOption.TopDirectoryOnly))
+                total += new FileInfo(path).Length;
+        return total;
+    }
+
+    private static void WriteBoundedLog(string path, string message)
+    {
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).Length > 1024 * 1024)
+                File.Move(path, path + ".previous", true);
+            File.AppendAllText(path, message);
+        }
+        catch { }
+    }
+
+    private static bool TryParseLocalDay(string? value, out DateTime localDay)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            localDay = DateTime.Now.Date;
+            return true;
+        }
+        if (!DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var parsed) || parsed.Date > DateTime.Now.Date)
+        {
+            localDay = default;
+            return false;
+        }
+        localDay = DateTime.SpecifyKind(parsed.Date, DateTimeKind.Local);
+        return true;
+    }
+
+    private static string CsvCell(string value)
+    {
+        if (value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r') value = "'" + value;
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 }
 

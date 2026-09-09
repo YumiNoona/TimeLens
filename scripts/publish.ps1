@@ -21,7 +21,6 @@ $rootExePath = "$root\TimeLens.exe"
 $installerScript = "$root\installer\TimeLens.iss"
 $installerOutput = "$root\installer\output\TimeLens-Setup.exe"
 $rootInstallerPath = "$root\TimeLens-Setup.exe"
-$chromeExtensionPath = "$root\TimeLens-Chrome-Extension.zip"
 $firefoxExtensionPath = "$root\TimeLens-Firefox-Extension.zip"
 
 $header = { Write-Host "`n$($args[0])" -ForegroundColor Cyan }
@@ -132,10 +131,9 @@ if (-not $SkipInstaller) {
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 & $ok "Standalone root TimeLens.exe ready"
 
-Remove-Item -LiteralPath $chromeExtensionPath, $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path "$root\src\browser-extensions\chrome\*" -DestinationPath $chromeExtensionPath
+Remove-Item -LiteralPath $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path "$root\src\browser-extensions\firefox\*" -DestinationPath $firefoxExtensionPath
-& $ok "Browser extension packages ready"
+& $ok "Firefox extension package ready"
 
 # --- Build installer ---
 if (-not $SkipInstaller) {
@@ -159,7 +157,6 @@ Write-Host "  Exe size:    ${exeSizeMB} MB" -ForegroundColor White
 Write-Host "  Packaging:   Single self-contained executable" -ForegroundColor White
 Write-Host "  Config:      $Config" -ForegroundColor White
 Write-Host "  Output:      $publishDir" -ForegroundColor White
-Write-Host "  Chrome:      $chromeExtensionPath" -ForegroundColor White
 Write-Host "  Firefox:     $firefoxExtensionPath" -ForegroundColor White
 if (-not $SkipInstaller) {
     $installerItem = Get-Item $rootInstallerPath -ErrorAction SilentlyContinue

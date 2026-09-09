@@ -57,7 +57,8 @@ internal static class BlockProtectionService
             if (saltText is null || hashText is null) return false;
             var salt = Convert.FromBase64String(saltText);
             var expected = Convert.FromBase64String(hashText);
-            var iterations = int.TryParse(iterationsText, out var parsed) && parsed >= 100_000 ? parsed : Iterations;
+            if (salt.Length != 32 || expected.Length != 32) return false;
+            var iterations = int.TryParse(iterationsText, out var parsed) && parsed is >= 100_000 and <= 2_000_000 ? parsed : Iterations;
             var actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expected.Length);
             return CryptographicOperations.FixedTimeEquals(actual, expected);
         }

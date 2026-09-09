@@ -13,6 +13,12 @@ public record AppSettings
     [JsonPropertyName("trackInput")]
     public bool TrackInput { get; init; } = true;
 
+    [JsonPropertyName("browserUrlMode")]
+    public string BrowserUrlMode { get; init; } = "full";
+
+    [JsonPropertyName("browserStoreTitles")]
+    public bool BrowserStoreTitles { get; init; } = true;
+
     [JsonPropertyName("idleThresholdSeconds")]
     public int IdleThresholdSeconds { get; init; } = 180;
 

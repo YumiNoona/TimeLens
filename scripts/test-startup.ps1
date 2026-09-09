@@ -50,6 +50,9 @@ public static class TimeLensStartupProbe {
 
 $process = $null
 $window = [IntPtr]::Zero
+$webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$PSDefaultParameterValues['Invoke-RestMethod:WebSession'] = $webSession
+$PSDefaultParameterValues['Invoke-WebRequest:WebSession'] = $webSession
 try {
     # Run the shipped EXE with no sibling DLLs required and an unrelated working directory.
     # --startup is the exact switch stored in HKCU\...\Run on Windows 10 and 11.
@@ -69,6 +72,7 @@ try {
         }
         if ($owner -eq $process.Id -and [TimeLensStartupProbe]::HasTrayIcon($window)) {
             try {
+                $null = Invoke-WebRequest 'http://127.0.0.1:47821/' -UseBasicParsing -TimeoutSec 2
                 $settings = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 2
                 if ($null -ne $settings.trackInput) { $ready = $true; break }
             } catch { }
@@ -255,4 +259,6 @@ try {
     throw
 } finally {
     if ($process -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
+    $PSDefaultParameterValues.Remove('Invoke-RestMethod:WebSession')
+    $PSDefaultParameterValues.Remove('Invoke-WebRequest:WebSession')
 }

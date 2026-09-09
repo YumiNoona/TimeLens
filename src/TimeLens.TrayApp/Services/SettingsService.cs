@@ -30,18 +30,20 @@ public sealed class SettingsService
             TrackAudio = dict.GetValueOrDefault("track_audio", "true") == "true",
             TrackBrowser = dict.GetValueOrDefault("track_browser", "true") == "true",
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",
-            IdleThresholdSeconds = int.TryParse(dict.GetValueOrDefault("idle_threshold_seconds", "180"), out var t) ? t : 180,
-            Theme = dict.GetValueOrDefault("theme", "default").Trim('"'),
+            BrowserUrlMode = dict.GetValueOrDefault("browser_url_mode", "full") switch { "domain" => "domain", "path" => "path", _ => "full" },
+            BrowserStoreTitles = dict.GetValueOrDefault("browser_store_titles", "true") == "true",
+            IdleThresholdSeconds = ReadInt(dict, "idle_threshold_seconds", 180, 15, 3600),
+            Theme = ReadChoice(dict, "theme", "default", "default", "terminal", "copper", "arctic", "moss", "crimson", "gold", "ember", "rose", "clay", "sunset"),
             TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "true") == "true",
             AutoStart = dict.GetValueOrDefault("auto_start", "false") == "true",
-            RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) ? rd : 90,
+            RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) && rd is >= 1 and <= 3650 ? rd : 90,
             ShowTitles = dict.GetValueOrDefault("show_titles", "false") == "true",
             BreakReminder = dict.GetValueOrDefault("break_reminder", "false") == "true",
-            BreakIntervalMinutes = int.TryParse(dict.GetValueOrDefault("break_interval_minutes", "50"), out var bi) ? bi : 50,
+            BreakIntervalMinutes = ReadInt(dict, "break_interval_minutes", 50, 5, 240),
             FocusMode = dict.GetValueOrDefault("focus_mode", "false") == "true",
             FocusBlocklist = dict.GetValueOrDefault("focus_blocklist", "[]"),
-            TimeFormat = dict.GetValueOrDefault("time_format", "12h"),
-            PollIntervalSeconds = int.TryParse(dict.GetValueOrDefault("poll_interval_seconds", "30"), out var pis) ? pis : 30,
+            TimeFormat = ReadChoice(dict, "time_format", "12h", "12h", "24h"),
+            PollIntervalSeconds = ReadInt(dict, "poll_interval_seconds", 30, 5, 300),
             BlockAction = dict.GetValueOrDefault("block_action", "hide"),
             BlockTitle = BlockNotification.NormalizeTitle(dict.GetValueOrDefault("block_title")),
             BlockMessage = BlockNotification.NormalizeMessage(dict.GetValueOrDefault("block_message")),
@@ -50,15 +52,24 @@ public sealed class SettingsService
             BlockNotifyIntervalSeconds = int.TryParse(dict.GetValueOrDefault("block_notify_interval_seconds", "300"), out var notifyInterval) ? Math.Clamp(notifyInterval, 5, 86400) : 300,
             BlockNotifyPosition = NormalizeNotifyPosition(dict.GetValueOrDefault("block_notify_position", "bottom-left")),
             BlockMediaLayout = NormalizeMediaLayout(dict.GetValueOrDefault("block_media_layout", "large")),
-            DefaultView = dict.GetValueOrDefault("default_view", "today"),
-            Density = dict.GetValueOrDefault("density", "comfortable"),
+            DefaultView = ReadChoice(dict, "default_view", "today", "today", "history", "apps", "browser", "timeline", "block", "rules", "settings"),
+            Density = ReadChoice(dict, "density", "comfortable", "comfortable", "compact"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
-            TimelineMinSegmentSeconds = int.TryParse(dict.GetValueOrDefault("timeline_min_segment_seconds", "60"), out var tmss) ? tmss : 60,
-            HeatmapDays = int.TryParse(dict.GetValueOrDefault("heatmap_days", "273"), out var hd) ? hd : 273,
+            TimelineMinSegmentSeconds = int.Parse(ReadChoice(dict, "timeline_min_segment_seconds", "60", "30", "60", "120", "300")),
+            HeatmapDays = int.Parse(ReadChoice(dict, "heatmap_days", "273", "28", "91", "273", "365")),
             BlockProtectionEnabled = dict.GetValueOrDefault("block_protection_enabled", "false") == "true",
             BlockProtectionScope = dict.GetValueOrDefault("block_protection_scope", "strict") == "all" ? "all" : "strict",
             BlockExitProtection = dict.GetValueOrDefault("block_exit_protection", "true") != "false",
         };
+    }
+
+    private static int ReadInt(IReadOnlyDictionary<string, string> values, string key, int fallback, int minimum, int maximum) =>
+        int.TryParse(values.GetValueOrDefault(key), out var parsed) && parsed >= minimum && parsed <= maximum ? parsed : fallback;
+
+    private static string ReadChoice(IReadOnlyDictionary<string, string> values, string key, string fallback, params string[] allowed)
+    {
+        var value = values.GetValueOrDefault(key, fallback).Trim('"');
+        return allowed.Contains(value, StringComparer.Ordinal) ? value : fallback;
     }
 
     private string NormalizeMediaType(string? value)

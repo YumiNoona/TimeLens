@@ -34,27 +34,30 @@ jobs:
         working-directory: src/TimeLens.Dashboard
         run: |
           npm ci
+          npm audit --audit-level=high
           npm run build
+
+      - name: Check .NET dependency advisories
+        run: dotnet list src/TimeLens.sln package --vulnerable --include-transitive
 
       - name: Verify browser extension scripts
         shell: pwsh
         run: |
           $scripts = @(
-            "src\browser-extensions\shared\background.js",
-            "src\browser-extensions\chrome\background.js",
-            "src\browser-extensions\firefox\background.js"
+            "src\browser-extensions\firefox\background.js",
+            "src\browser-extensions\firefox\content.js",
+            "src\browser-extensions\firefox\popup.js",
+            "src\browser-extensions\firefox\blocked.js"
           )
           foreach ($script in $scripts) {
             node --check $script
             if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed for $script" }
           }
-          $hashes = $scripts | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_).Hash }
-          if (($hashes | Select-Object -Unique).Count -ne 1) {
-            throw "Browser extension background scripts are out of sync"
-          }
 
       - name: Check browser extension behavior
-        run: node --test tests/browser-extension.test.mjs tests/timeline.test.mjs
+        run: |
+          node --test tests/browser-extension.test.mjs tests/timeline.test.mjs
+          npx --yes web-ext@10.6.0 lint --source-dir src/browser-extensions/firefox
 
       - name: Check fresh-install and database migration regressions
         run: dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -73,7 +76,6 @@ jobs:
           $expected = "${{ env.VERSION }}"
           [xml]$project = Get-Content "src\TimeLens.TrayApp\TimeLens.TrayApp.csproj"
           $dashboard = Get-Content "src\TimeLens.Dashboard\package.json" | ConvertFrom-Json
-          $chromeExtension = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
           $firefoxExtension = Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json
           $actual = @{
             TrayApp = [string]$project.Project.PropertyGroup.Version
@@ -84,8 +86,7 @@ jobs:
               throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
             }
           }
-          if ($chromeExtension.version -ne $firefoxExtension.version) { throw "Companion extension versions differ" }
-          Write-Host "Companion extensions: $($chromeExtension.version) (versioned independently)"
+          Write-Host "Firefox extension: $($firefoxExtension.version) (versioned independently)"
           Write-Host "Desktop release: $expected"
 
       - name: Prepare desktop executable
@@ -94,10 +95,24 @@ jobs:
           $publish = "src\TimeLens.TrayApp\bin\Release\net9.0\win-x64\publish"
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
 
+      - name: Sign desktop executable
+        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "timelens-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT))
+          $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          if (-not $signtool) { throw "signtool.exe was not found" }
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:SIGNING_PASSWORD "TimeLens.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Executable signing failed" }
+          Remove-Item -LiteralPath $certificate -Force
+
       - name: Package browser extensions
         shell: pwsh
         run: |
-          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-Chrome-Extension.zip"
           Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-Firefox-Extension.zip"
 
       - name: Install Inno Setup
@@ -112,13 +127,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
           Copy-Item "installer\output\TimeLens-Setup.exe" "TimeLens-Setup.exe"
 
+      - name: Sign Windows installer
+        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "timelens-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT))
+          $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:SIGNING_PASSWORD "TimeLens-Setup.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Installer signing failed" }
+          Remove-Item -LiteralPath $certificate -Force
+
       - name: Generate release checksums
         shell: pwsh
         run: |
           $assets = @(
             "TimeLens.exe",
             "TimeLens-Setup.exe",
-            "TimeLens-Chrome-Extension.zip",
             "TimeLens-Firefox-Extension.zip"
           )
           $checksums = foreach ($asset in $assets) {
@@ -132,7 +160,6 @@ jobs:
           files: |
             TimeLens.exe
             TimeLens-Setup.exe
-            TimeLens-Chrome-Extension.zip
             TimeLens-Firefox-Extension.zip
             SHA256SUMS.txt
           name: TimeLens ${{ env.VERSION }} — Keep your time in focus

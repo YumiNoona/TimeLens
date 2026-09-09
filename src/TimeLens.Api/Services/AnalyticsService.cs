@@ -16,10 +16,9 @@ public sealed class AnalyticsService
     private readonly List<string> _cacheOrder = new();
     private readonly object _cacheOrderLock = new();
     private const int MaxCacheEntries = 7;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     private static readonly TimeSpan CacheTtlToday = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan LockPruneAge = TimeSpan.FromDays(2);
 
     public AnalyticsService(string dbPath)
     {
@@ -40,8 +39,7 @@ public sealed class AnalyticsService
                 return entry.data;
         }
 
-        var sem = _locks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync();
+        await _refreshGate.WaitAsync();
         try
         {
             if ((isToday || isYesterday) &&
@@ -102,8 +100,7 @@ public sealed class AnalyticsService
         }
         finally
         {
-            sem.Release();
-            PruneLocks();
+            _refreshGate.Release();
         }
     }
 
@@ -246,11 +243,7 @@ public sealed class AnalyticsService
         }
         catch (Exception ex)
         {
-            System.IO.File.AppendAllText(
-                Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "TimeLens", "query_error.log"),
-                $"{DateTime.UtcNow:o} input_totals: {ex}{Environment.NewLine}");
+            LogQueryError($"{DateTime.UtcNow:o} input_totals: {ex}{Environment.NewLine}");
         }
 
         return new SummaryDto(
@@ -262,6 +255,18 @@ public sealed class AnalyticsService
             totalKeys,
             totalClicks
         );
+    }
+
+    private static void LogQueryError(string message)
+    {
+        try
+        {
+            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens", "query_error.log");
+            if (File.Exists(path) && new FileInfo(path).Length > 1024 * 1024)
+                File.Move(path, path + ".previous", true);
+            File.AppendAllText(path, message);
+        }
+        catch { }
     }
 
     private static async Task<TimelineBlockDto[]> GetTimelineAsync(
@@ -556,16 +561,6 @@ public sealed class AnalyticsService
                 r.IsDBNull(2) ? "" : r.GetString(2)));
         }
         return list.ToArray();
-    }
-
-    private void PruneLocks()
-    {
-        var cutoff = DateTime.UtcNow.Subtract(LockPruneAge).ToString("yyyy-MM-dd");
-        foreach (var key in _locks.Keys)
-        {
-            if (string.CompareOrdinal(key, cutoff) < 0)
-                _locks.TryRemove(key, out _);
-        }
     }
 
     private static string FormatDuration(int totalSecs)

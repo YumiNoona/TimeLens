@@ -6,7 +6,7 @@ const actionApi = api.action || api.browserAction;
 const ROOT = 'http://127.0.0.1:47821';
 const EVENT_API = ROOT + '/api/browser-event';
 const STATE_API = ROOT + '/api/browser-block-state';
-const SETTINGS_API = ROOT + '/api/settings';
+const SETTINGS_API = ROOT + '/api/extension/settings';
 const HEARTBEAT_API = ROOT + '/api/extension-heartbeat';
 const TAB_HEARTBEAT_API = ROOT + '/api/browser-heartbeat';
 const LEAVE_API = ROOT + '/api/browser-leave';
@@ -17,10 +17,20 @@ const EXTENSION_VERSION = api.runtime.getManifest().version;
 
 let trackingEnabled = true;
 let blockingEnabled = false;
-const imageDataCache = {};
+let pairToken = '';
+let imageDataCache = { url: '', data: '' };
+const notifiedTabs = new Set();
 
 function checkedFetch(url, options) {
-  return fetch(url, { ...options, signal: AbortSignal.timeout(3000) }).then(function(response) {
+  if (!pairToken) return Promise.reject(new Error('TimeLens is not paired'));
+  const request = options || {};
+  const headers = Object.assign({}, request.headers || {});
+  if (pairToken) headers['X-TimeLens-Extension'] = pairToken;
+  return fetch(url, { ...request, headers: headers, signal: AbortSignal.timeout(3000) }).then(function(response) {
+    if (response.status === 401) {
+      pairToken = '';
+      api.storage.local.remove('timelens_pair_token');
+    }
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return response;
   });
@@ -35,8 +45,8 @@ function hydrateNotifyMedia(response) {
   const presentation = response && response.presentation;
   const mediaUrl = presentation && presentation.mediaUrl;
   if (!presentation || response.action !== 'notify' || !mediaUrl) return Promise.resolve(response);
-  if (imageDataCache[mediaUrl]) {
-    presentation.mediaDataUrl = imageDataCache[mediaUrl];
+  if (imageDataCache.url === mediaUrl) {
+    presentation.mediaDataUrl = imageDataCache.data;
     return Promise.resolve(response);
   }
   return checkedFetch(mediaUrl).then(function(mediaResponse) { return mediaResponse.blob(); }).then(function(blob) {
@@ -46,20 +56,22 @@ function hydrateNotifyMedia(response) {
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
         binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
       }
-      imageDataCache[mediaUrl] = 'data:' + (blob.type || presentation.mediaType || 'image/png') + ';base64,' + btoa(binary);
-      presentation.mediaDataUrl = imageDataCache[mediaUrl];
+      imageDataCache = { url: mediaUrl, data: 'data:' + (blob.type || presentation.mediaType || 'image/png') + ';base64,' + btoa(binary) };
+      presentation.mediaDataUrl = imageDataCache.data;
       return response;
     });
   }).catch(function() { return response; });
 }
 
 function sendHeartbeat() {
+  if (!pairToken) return;
   checkedFetch(HEARTBEAT_API + '?browser=' + encodeURIComponent(BROWSER) +
     '&version=' + encodeURIComponent(EXTENSION_VERSION) + '&ts=' + Date.now(), { method: 'POST' })
     .catch(function() {});
 }
 
 function fetchSettings() {
+  if (!pairToken) return Promise.resolve(null);
   return checkedFetch(SETTINGS_API).then(function(response) { return response.json(); }).then(function(settings) {
     trackingEnabled = settings.trackBrowser !== false;
     blockingEnabled = settings.focusMode === true;
@@ -164,7 +176,9 @@ function mountNotifyToast(presentation, domain) {
     close.onmouseleave = function() { close.style.background = 'rgba(255,255,255,.06)'; close.style.color = '#b8c8c5'; };
     close.onclick = function() { card.remove(); };
     card.appendChild(close);
-    stack.insertBefore(card, stack.firstChild);
+    // A reminder refresh replaces the previous card so a long focus session
+    // cannot grow the page DOM indefinitely.
+    stack.replaceChildren(card);
     if (card.animate) card.animate(
       [{ opacity: 0, transform: 'translateY(' + (state.position.indexOf('top-') === 0 ? '-10px' : '10px') + ') scale(.985)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }],
       { duration: 200, easing: 'cubic-bezier(.2,.8,.2,1)' }
@@ -202,7 +216,9 @@ function mountNotifyToast(presentation, domain) {
       const response = await runtime.sendMessage({ type: 'timelens-check-block', domain: domain });
       if (!response || response.action === 'none') {
         clearInterval(window.__timelensFocusTimer);
+        clearInterval(window.__timelensFocusPulse);
         stack.remove();
+        window.__timelensFocusState = null;
       } else if (response.action === 'strict') {
         clearInterval(window.__timelensFocusTimer);
         location.href = runtime.getURL('blocked.html') + '?target=' + encodeURIComponent(domain) + '&url=' + encodeURIComponent(location.href);
@@ -235,12 +251,15 @@ function executeInTab(tabId, fn, args) {
 
 function applyBlockResponse(tabId, originalUrl, response) {
   if (!response || response.action === 'none') {
+    if (!notifiedTabs.delete(tabId)) return Promise.resolve();
     return executeInTab(tabId, clearNotifyToast, []);
   }
   if (response.action === 'notify') {
+    notifiedTabs.add(tabId);
     return executeInTab(tabId, mountNotifyToast, [response.presentation || {}, response.presentation && response.presentation.target || '']);
   }
   if (response.action === 'strict' && originalUrl && originalUrl.indexOf(BLOCKED_PAGE) !== 0) {
+    notifiedTabs.delete(tabId);
     const target = response.presentation && response.presentation.target || '';
     return api.tabs.update(tabId, { url: BLOCKED_PAGE + '?target=' + encodeURIComponent(target) + '&url=' + encodeURIComponent(originalUrl) });
   }
@@ -266,6 +285,29 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 });
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || message.type !== 'timelens-pair') return false;
+  fetch(ROOT + '/api/pair/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: String(message.code || '') }), signal: AbortSignal.timeout(3000) })
+    .then(function(response) { if (!response.ok) throw new Error('Pairing failed'); return response.json(); })
+    .then(function(result) {
+      pairToken = result.token || '';
+      return api.storage.local.set({ timelens_pair_token: pairToken });
+    })
+    .then(function() { return fetchSettings(); })
+    .then(function(settings) { sendResponse({ ok: true, trackingEnabled: settings && settings.trackBrowser !== false }); })
+    .catch(function() { sendResponse({ ok: false }); });
+  return true;
+});
+
+api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || message.type !== 'timelens-status') return false;
+  fetchSettings().then(function(settings) {
+    sendResponse({ paired: !!pairToken, connected: !!settings, trackingEnabled: settings && settings.trackBrowser !== false });
+  });
+  return true;
+});
+
+api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-check-block') return false;
   stateFor(message.domain).then(hydrateNotifyMedia).then(sendResponse).catch(function() { sendResponse({ action: 'none' }); });
   return true;
@@ -285,6 +327,7 @@ async function focusedTab() {
 }
 
 async function sampleFocusedTab() {
+  if (!pairToken) return;
   if (sampling) { sampleAgain = true; return; }
   sampling = true;
   try {
@@ -329,15 +372,22 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
   if (tab.active && (changeInfo.url || changeInfo.title || changeInfo.status === 'complete' || changeInfo.audible !== undefined))
     sampleFocusedTab();
 });
-api.tabs.onRemoved.addListener(sampleFocusedTab);
+api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
-api.runtime.onStartup.addListener(function() { fetchSettings().then(sampleFocusedTab); });
-api.runtime.onInstalled.addListener(function() { fetchSettings().then(sampleFocusedTab); });
+function initialize() {
+  return api.storage.local.get('timelens_pair_token').then(function(saved) {
+    pairToken = saved && saved.timelens_pair_token || '';
+    if (!pairToken) return null;
+    sendHeartbeat();
+    return fetchSettings().then(sampleFocusedTab);
+  });
+}
+api.runtime.onStartup.addListener(initialize);
+api.runtime.onInstalled.addListener(initialize);
 
 // Remove v6's undated replay queue: it cannot establish historical intervals.
 api.storage.local.remove('timelens_queue');
-sendHeartbeat();
-fetchSettings().then(sampleFocusedTab);
+initialize();
 // Best-effort five-second samples while the worker lives; alarms recover after
 // suspension/restart. Chrome 120+ supports a 30-second minimum alarm period.
 setInterval(sampleFocusedTab, 5000);
@@ -345,6 +395,7 @@ if (api.alarms) {
   api.alarms.create('timelens-heartbeat', { periodInMinutes: 0.5 });
   api.alarms.onAlarm.addListener(function(alarm) {
     if (alarm.name === 'timelens-heartbeat') {
+      if (!pairToken) return;
       sendHeartbeat();
       fetchSettings().then(sampleFocusedTab);
     }

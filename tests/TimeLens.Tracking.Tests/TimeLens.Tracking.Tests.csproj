@@ -7,6 +7,7 @@
     <Compile Include="../../src/TimeLens.TrayApp/RuntimeDiagnostics.cs" Link="RuntimeDiagnostics.cs" />
     <ProjectReference Include="../../src/TimeLens.Api/TimeLens.Api.csproj" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/DatabaseInitializer.cs" Link="DatabaseInitializer.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/DataRetentionService.cs" Link="DataRetentionService.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/SettingsService.cs" Link="SettingsService.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/EventWriter.cs" Link="EventWriter.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/WriterQueue.cs" Link="WriterQueue.cs" />

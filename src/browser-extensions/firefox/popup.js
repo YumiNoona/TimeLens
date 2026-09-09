@@ -1,6 +1,30 @@
-document.getElementById('version').textContent = 'v' + (typeof browser !== 'undefined' ? browser : chrome).runtime.getManifest().version;
-fetch('http://127.0.0.1:47821/api/settings', { signal: AbortSignal.timeout(3000) })
-  .then(response => { if (!response.ok) throw new Error(); return response.json(); })
-  .then(settings => { document.getElementById('status').textContent = settings.trackBrowser === false
-    ? 'Connected · Browser tracking is disabled in desktop settings.' : 'Connected · Browser tracking is enabled.'; })
-  .catch(() => { document.getElementById('status').textContent = 'Desktop app unavailable. Start TimeLens on this computer, then reopen this popup.'; });
+const runtime = browser.runtime;
+const status = document.getElementById('status');
+const pair = document.getElementById('pair');
+document.getElementById('version').textContent = 'v' + runtime.getManifest().version;
+
+function refreshStatus() {
+  runtime.sendMessage({ type: 'timelens-status' }).then(result => {
+    pair.classList.toggle('visible', !result || !result.paired);
+    status.textContent = !result || !result.paired
+      ? 'Not paired. Enter the code shown in the TimeLens Privacy center.'
+      : !result.connected
+        ? 'Paired · Desktop app unavailable.'
+        : result.trackingEnabled ? 'Connected · Browser tracking is enabled.' : 'Connected · Browser tracking is paused.';
+  }).catch(() => { status.textContent = 'Extension background service unavailable.'; });
+}
+
+document.getElementById('pairButton').addEventListener('click', () => {
+  const button = document.getElementById('pairButton');
+  const codeInput = document.getElementById('code');
+  const code = codeInput.value.replace(/\D/g, '');
+  if (code.length !== 8) { status.textContent = 'Enter the complete 8-digit code.'; return; }
+  button.disabled = true;
+  runtime.sendMessage({ type: 'timelens-pair', code }).then(result => {
+    if (!result || !result.ok) throw new Error();
+    codeInput.value = '';
+    refreshStatus();
+  }).catch(() => { status.textContent = 'Pairing failed. Generate a new code and try again.'; })
+    .finally(() => { button.disabled = false; });
+});
+refreshStatus();

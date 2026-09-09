@@ -9,6 +9,9 @@ public sealed class WriterQueue : IDisposable
     private readonly System.Threading.Tasks.Task _drainTask;
     private readonly CancellationTokenSource _cts = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<Action<SqliteCommand>> _queue = new();
+    private const int MaxQueuedOperations = 10_000;
+    private int _pendingOperations;
+    private long _droppedOperations;
     private Timer? _checkpointTimer;
 
     public WriterQueue(string dbPath)
@@ -38,6 +41,14 @@ public sealed class WriterQueue : IDisposable
 
     public void Enqueue(Action<SqliteCommand> op)
     {
+        if (Interlocked.Increment(ref _pendingOperations) > MaxQueuedOperations)
+        {
+            Interlocked.Decrement(ref _pendingOperations);
+            var dropped = Interlocked.Increment(ref _droppedOperations);
+            if (dropped == 1 || dropped % 100 == 0)
+                RuntimeDiagnostics.Write($"Writer queue full; dropped operations: {dropped}");
+            return;
+        }
         _queue.Enqueue(op);
     }
 
@@ -66,17 +77,18 @@ public sealed class WriterQueue : IDisposable
     {
         var batch = new List<Action<SqliteCommand>>();
         while (_queue.TryDequeue(out var op))
+        {
+            Interlocked.Decrement(ref _pendingOperations);
             batch.Add(op);
+        }
         if (batch.Count == 0) return;
         try
         {
             ExecuteBatch(batch);
         }
-        catch
+        catch (Exception ex)
         {
-            // Re-enqueue lost items so they aren't silently dropped
-            foreach (var op in batch) _queue.Enqueue(op);
-            throw;
+            RecoverBatch(batch, ex);
         }
     }
 
@@ -102,7 +114,10 @@ public sealed class WriterQueue : IDisposable
 
                 var batch = new List<Action<SqliteCommand>>();
                 while (_queue.TryDequeue(out var op))
+                {
+                    Interlocked.Decrement(ref _pendingOperations);
                     batch.Add(op);
+                }
                 if (batch.Count == 0) continue;
 
                 lock (_syncLock)
@@ -111,11 +126,9 @@ public sealed class WriterQueue : IDisposable
                     {
                         ExecuteBatch(batch);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Re-enqueue — don't silently drop operations
-                        foreach (var op in batch) _queue.Enqueue(op);
-                        throw;
+                        RecoverBatch(batch, ex);
                     }
                 }
             }
@@ -125,6 +138,34 @@ public sealed class WriterQueue : IDisposable
                 // Log and continue
             }
         }
+    }
+
+    private void RecoverBatch(List<Action<SqliteCommand>> batch, Exception batchError)
+    {
+        var transient = 0;
+        var dropped = 0;
+        foreach (var op in batch)
+        {
+            try
+            {
+                using var tx = _conn.BeginTransaction();
+                using var cmd = _conn.CreateCommand();
+                op(cmd);
+                cmd.ExecuteNonQuery();
+                tx.Commit();
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode is 5 or 6)
+            {
+                Enqueue(op);
+                transient++;
+            }
+            catch
+            {
+                dropped++;
+                Interlocked.Increment(ref _droppedOperations);
+            }
+        }
+        RuntimeDiagnostics.Write($"Writer batch recovery: {batchError.GetType().Name}; retried={transient}, dropped={dropped}");
     }
 
     public void Dispose()

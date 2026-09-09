@@ -34,9 +34,15 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             var now = _clock.GetUtcNow().UtcDateTime;
             // Delayed requests must never be replayed as current activity.
             if (evt.ObservedAt is { } observed && Math.Abs((now - observed.UtcDateTime).TotalSeconds) > 10) return;
-            if (evt.TabId <= 0 || !Uri.TryCreate(evt.Url, UriKind.Absolute, out var uri) ||
-                uri.Scheme is not ("http" or "https") || !Eligible(evt.Browser)) return;
-            evt = evt with { Domain = uri.Host.ToLowerInvariant() };
+            if (evt.TabId <= 0 || evt.Url.Length > 16384 || (evt.Title?.Length ?? 0) > 4096 ||
+                !Uri.TryCreate(evt.Url, UriKind.Absolute, out var uri) ||
+                uri.Scheme is not ("http" or "https") || evt.Browser != "firefox" || !Eligible(evt.Browser)) return;
+            evt = evt with
+            {
+                Domain = uri.Host.ToLowerInvariant(),
+                Url = PrivacyUrl(uri),
+                Title = LiveStatusStore.Settings.BrowserStoreTitles ? (evt.Title ?? "") : ""
+            };
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             if (_current is not null && now >= _lastCheckpoint && now - _lastCheckpoint <= TimeSpan.FromSeconds(30) && now - _lastSeen <= Lease)
@@ -111,7 +117,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             input.ObservedAt > now.AddSeconds(5) || input.ObservedAt < now.AddMinutes(-2) ||
             !Uri.TryCreate(input.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             input.Url.Length > 16384 || input.Title is null || input.Title.Length > 4096 ||
-            input.Browser is not ("chrome" or "firefox" or "edge" or "opera")) return false;
+            input.Browser != "firefox") return false;
         lock (_gate)
         {
             using var conn = Open();
@@ -123,8 +129,8 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
                 """;
             cmd.Parameters.AddWithValue("$id", input.BatchId);
             cmd.Parameters.AddWithValue("$domain", uri.Host.ToLowerInvariant());
-            cmd.Parameters.AddWithValue("$url", input.Url);
-            cmd.Parameters.AddWithValue("$title", input.Title);
+            cmd.Parameters.AddWithValue("$url", PrivacyUrl(uri));
+            cmd.Parameters.AddWithValue("$title", LiveStatusStore.Settings.BrowserStoreTitles ? input.Title : "");
             cmd.Parameters.AddWithValue("$browser", input.Browser);
             cmd.Parameters.AddWithValue("$time", input.ObservedAt.UtcDateTime.ToString("o"));
             cmd.Parameters.AddWithValue("$keys", input.Keystrokes);
@@ -139,6 +145,23 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
         var conn = new SqliteConnection($"Data Source={dbPath}");
         conn.Open();
         return conn;
+    }
+
+    private static string PrivacyUrl(Uri uri) => LiveStatusStore.Settings.BrowserUrlMode switch
+    {
+        "domain" => uri.GetLeftPart(UriPartial.Authority) + "/",
+        "path" => uri.GetLeftPart(UriPartial.Path),
+        _ => uri.AbsoluteUri
+    };
+
+    public void Reset()
+    {
+        lock (_gate)
+        {
+            _current = null;
+            _id = 0;
+            _lastSeen = _lastCheckpoint = default;
+        }
     }
 
     private void SaveEnd(SqliteConnection conn, DateTime now)

@@ -9,6 +9,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+      WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v7
@@ -96,17 +99,14 @@ jobs:
           Copy-Item "$publish\TimeLens.TrayApp.exe" "TimeLens.exe"
 
       - name: Sign desktop executable
-        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
         shell: pwsh
-        env:
-          SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "timelens-signing.pfx"
-          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT))
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
           $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1).FullName
           if (-not $signtool) { throw "signtool.exe was not found" }
-          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:SIGNING_PASSWORD "TimeLens.exe"
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD "TimeLens.exe"
           if ($LASTEXITCODE -ne 0) { throw "Executable signing failed" }
           Remove-Item -LiteralPath $certificate -Force
 
@@ -128,16 +128,13 @@ jobs:
           Copy-Item "installer\output\TimeLens-Setup.exe" "TimeLens-Setup.exe"
 
       - name: Sign Windows installer
-        if: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 != '' }}
+        if: ${{ env.WINDOWS_SIGNING_CERT_BASE64 != '' }}
         shell: pwsh
-        env:
-          SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "timelens-signing.pfx"
-          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:SIGNING_CERT))
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
           $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:SIGNING_PASSWORD "TimeLens-Setup.exe"
+          & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f $certificate /p $env:WINDOWS_SIGNING_CERT_PASSWORD "TimeLens-Setup.exe"
           if ($LASTEXITCODE -ne 0) { throw "Installer signing failed" }
           Remove-Item -LiteralPath $certificate -Force
 

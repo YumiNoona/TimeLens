@@ -78,14 +78,14 @@ jobs:
           $actual = @{
             TrayApp = [string]$project.Project.PropertyGroup.Version
             Dashboard = [string]$dashboard.version
-            ChromeExtension = [string]$chromeExtension.version
-            FirefoxExtension = [string]$firefoxExtension.version
           }
           foreach ($entry in $actual.GetEnumerator()) {
             if ($entry.Value -ne $expected) {
               throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
             }
           }
+          if ($chromeExtension.version -ne $firefoxExtension.version) { throw "Companion extension versions differ" }
+          Write-Host "Companion extensions: $($chromeExtension.version) (versioned independently)"
           Write-Host "Desktop release: $expected"
 
       - name: Prepare desktop executable

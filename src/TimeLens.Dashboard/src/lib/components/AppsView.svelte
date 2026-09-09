@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fmtTime } from '../utils';
+  import { fmtPrecise } from '../utils';
   import type { DashboardData, InputEntry } from '../types';
   import { appIcon } from '../appIcons';
   let { data }: { data: DashboardData } = $props();
@@ -12,10 +12,10 @@
     return `hsl(${hue}, 45%, 55%)`;
   }
 
-  type SortKey = 'name' | 'time';
+  type SortKey = 'name' | 'time' | 'keys' | 'clicks';
   let sortKey = $state<SortKey>('time');
   let search = $state('');
-  let inputData = $state<InputEntry[]>([]);
+  const inputData = $derived(allApps.map(app => ({ exeName: app.name, keystrokes: app.keystrokes, clicks: app.clicks })));
   let uncategorized = $state<{ exe: string; seconds: number }[]>([]);
   let assigningFor = $state<string | null>(null);
   let saving = $state<string | null>(null);
@@ -55,21 +55,16 @@
   }
 
   onMount(async () => {
-    try {
-      const r = await fetch('/api/input-summary');
-      if (!r.ok) throw new Error(`Server returned ${r.status}`);
-      inputData = await r.json();
-    } catch { inputData = []; }
     loadUncategorized();
   });
 
   let allApps = $derived(
     data.topApps
       .filter(a => a.name.toLowerCase().includes(search.toLowerCase()))
-      .toSorted((a, b) => sortKey === 'time' ? b.minutes - a.minutes : a.name.localeCompare(b.name))
+      .toSorted((a, b) => sortKey === 'time' ? b.minutes - a.minutes : sortKey === 'keys' ? b.keystrokes-a.keystrokes : sortKey === 'clicks' ? b.clicks-a.clicks : a.name.localeCompare(b.name))
   );
 
-  const formatAppTime = fmtTime;
+  const formatAppTime = (minutes: number) => fmtPrecise(minutes * 60);
 
 </script>
 
@@ -77,6 +72,8 @@
   <div class="app-toolbar">
     <input class="search" type="search" placeholder="Search apps…" bind:value={search} />
     <div class="sort-controls">
+      <button class="sort-btn chip-button" class:active={sortKey === 'keys'} onclick={() => sortKey = 'keys'}>Keystrokes</button>
+      <button class="sort-btn chip-button" class:active={sortKey === 'clicks'} onclick={() => sortKey = 'clicks'}>Clicks</button>
       <button class="sort-btn chip-button" class:active={sortKey === 'time'} onclick={() => sortKey = 'time'}>
         <i class="ti ti-clock" aria-hidden="true"></i> Time
       </button>
@@ -90,7 +87,7 @@
   <div class="table" role="table">
     <div class="th" role="row">
       <span role="columnheader">App</span>
-      <span role="columnheader">Time</span>
+      <span role="columnheader">Time / share</span>
     </div>
     {#each allApps as app, i}
       {@const icon = appIcon(app.name)}
@@ -104,10 +101,10 @@
           {app.name}
         </span>
         <span class="td-time" role="cell">
-          {formatAppTime(app.minutes)}
+          {formatAppTime(app.minutes)}<small class="app-share">{data.summary.activeSeconds ? Math.round(app.minutes * 6000 / data.summary.activeSeconds) : 0}% of active time</small>
         </span>
       </div>
-    {/each}
+    {:else}<p class="empty">No applications match your search.</p>{/each}
   </div>
 
   {#if inputData.length > 0}
@@ -122,7 +119,7 @@
           <span role="columnheader">Keystrokes</span>
           <span role="columnheader">Clicks</span>
         </div>
-        {#each inputData as row, i}
+        {#each inputData.filter(row => row.exeName.toLowerCase().includes(search.toLowerCase())) as row, i}
           {@const icon = appIcon(row.exeName || '')}
           <div class="tr input-tr" role="row" class:alt={i % 2 === 0}>
             <span class="td-name" role="cell">
@@ -179,6 +176,8 @@
 </div>
 
 <style>
+  .app-share { display:block; font-size:9px; color:var(--clr-text-ter); margin-top:4px; }
+  .empty { padding:16px; color:var(--clr-text-sec); }
   .apps { display: flex; flex-direction: column; gap: var(--sp-4); }
   .app-toolbar {
     display: flex;

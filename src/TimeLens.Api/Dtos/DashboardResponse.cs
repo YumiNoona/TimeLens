@@ -68,7 +68,7 @@ public sealed record TopAppDto(
 
 public sealed record HeatmapEntryDto(
     string Date,
-    int Value
+    double Value
 );
 
 public sealed record CategoryEntryDto(

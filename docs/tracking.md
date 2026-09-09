@@ -135,3 +135,7 @@ Additional design references (no source copied):
 - [ActivityWatch watcher separation](https://docs.activitywatch.net/en/latest/watchers.html)
 - [ActivityWatch aggregate input watcher](https://github.com/ActivityWatch/aw-watcher-input)
 - [ulogme local window and input-frequency tracking](https://github.com/karpathy/ulogme)
+
+## Precision refinements in 7.0.1
+
+Native input is bucketed by executable, PID and UTC capture second. A delayed five-second flush retains that timestamp, including across local midnight and retries. Heatmap values retain fractional minutes instead of dropping sub-minute activity. Timeline bar lengths use recorded duration, while grouped first/last timestamps describe an observation envelope, not continuous attendance. Browser extensions remain at 7.0.0.

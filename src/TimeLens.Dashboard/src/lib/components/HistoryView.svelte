@@ -10,16 +10,18 @@
   import BrowserHourlyCard from './BrowserHourlyCard.svelte';
   import MediaCard from './MediaCard.svelte';
   import TimelineView from './TimelineView.svelte';
-  import { normalizeTimeline } from '../utils';
+  import { normalizeTimeline, fmtPrecise } from '../utils';
   import UsageDetails from './UsageDetails.svelte';
   import { reorderable } from '../actions/reorderable';
 
   let {
     timelineGrouped = true,
-    showTitles = false
+    showTitles = false,
+    initialDate = ''
   }: {
     timelineGrouped?: boolean;
     showTitles?: boolean;
+    initialDate?: string;
   } = $props();
 
   function toLocalIso(date: Date): string {
@@ -71,6 +73,7 @@
   async function loadDate(date: string): Promise<void> {
     const currentRequest = ++requestId;
     isLoading = true;
+    historyData = null;
     loadError = null;
 
     try {
@@ -104,6 +107,7 @@
   }
 
   onMount(() => {
+    selectedDate = initialDate || todayIso;
     void loadDate(selectedDate);
   });
 </script>
@@ -117,6 +121,7 @@
     </div>
 
     <div class="date-controls" aria-label="History date controls">
+      <button class="today-button" disabled={isLoading} onclick={() => loadDate(selectedDate)}>Refresh</button>
       <button class="date-arrow" type="button" onclick={() => moveDay(-1)} aria-label="Previous day" title="Previous day">
         <i class="ti ti-chevron-left" aria-hidden="true"></i>
       </button>
@@ -163,7 +168,7 @@
       <section class="history-stats" aria-label="Daily summary" use:reorderable={{ key: 'history:stats' }}>
         <StatCard
           label="Active time"
-          value={historyData.summary.activeTime}
+          value={fmtPrecise(historyData.summary.activeSeconds)}
           variant="hero"
           accent={historyData.summary.activeSeconds > 0}
           icon="ti-clock-hour-4"
@@ -197,7 +202,7 @@
         />
         <StatCard
           label="Idle time"
-          value={historyData.summary.idleTime}
+          value={fmtPrecise(historyData.summary.idleSeconds)}
           variant="hero"
           icon="ti-coffee"
           chip={historyData.summary.idleSeconds > 0 && historyData.summary.activeSeconds + historyData.summary.idleSeconds > 0

@@ -18,7 +18,7 @@ try
         var received = false;
         watcher.ForegroundChanged += (_, _, _) => received = true;
         Check(watcher.PublishForeground("test.exe", "", 1) && received, "Tracking must continue after a callback failure");
-        input.InputActivityTick += (_, _, _, _) => throw new IOException("Injected input failure");
+        input.InputActivityTick += (_, _, _, _, _) => throw new IOException("Injected input failure");
         Check(!input.PublishInput(1, 1, 1, "test.exe"), "Timer subscriber failure must not terminate the process");
         Check(File.ReadAllText(Path.Combine(root, "runtime.log")).Contains("Injected database failure"), "Callback failures must have a persistent diagnostic");
     }
@@ -117,10 +117,23 @@ try
     Check(shortData.TopApps.Length == 12, "Apps page must not be limited to eight apps");
     Check(shortData.Summary.ActiveSeconds == 24 && shortData.Timeline.Length == 12, "Short switches and foreground shell time must survive");
     Check(Math.Abs(shortData.TopApps.Sum(x => x.Minutes) * 60 - 24) < .001, "Per-app minutes must retain seconds");
+    Check(Math.Abs(shortData.Heatmap.Last().Value * 60 - 24) < .001, "Heatmap must preserve activity shorter than a minute");
+    using (var capture = new InputMonitor())
+    using (var inputWriter = new EventWriter(shortPath, clock))
+    {
+        capture.InputActivityTick += (keys, clicks, pid, exe, observedAt) => inputWriter.InsertInputActivity(keys, clicks, pid, exe, observedAt);
+        var midnight = start.ToLocalTime().Date.AddDays(1).ToUniversalTime();
+        capture.RecordInput(1, "midnight.exe", 2, 1, midnight.AddSeconds(-1));
+        capture.RecordInput(1, "midnight.exe", 3, 2, midnight.AddSeconds(1));
+        capture.Flush();
+    }
+    Check(Scalar(shortPath, "SELECT COUNT(*) FROM input_activity WHERE exe_name='midnight.exe'") == 2, "Input batches must not merge across midnight");
+    var inputBeforeMidnight = await new AnalyticsService(shortPath).GetDashboardAsync(start.ToLocalTime().Date);
+    Check(inputBeforeMidnight.Summary.TotalKeystrokes == 2, "Delayed flush must retain the input capture day");
     using (var input = new InputMonitor())
     {
         var counts = new Dictionary<string, int>();
-        input.InputActivityTick += (keys, clicks, pid, exe) => counts[exe!] = keys;
+        input.InputActivityTick += (keys, clicks, pid, exe, observedAt) => counts[exe!] = keys;
         input.RecordInput(1, "editor.exe", 10, 0);
         input.RecordInput(2, "browser.exe", 3, 1);
         input.Flush();

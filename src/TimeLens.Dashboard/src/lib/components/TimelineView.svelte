@@ -3,12 +3,13 @@
   import { FolderTree, List } from 'lucide';
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
-  import { fmtHourFull, fmtDuration, normalizeTimeline } from '../utils';
+  import { fmtHourFull, fmtPrecise, normalizeTimeline } from '../utils';
   import { timeFormat } from '../stores/settings';
 
   let { data, timelineGrouped = true, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
 
   let selectedTypes = $state<string[]>([]);
+  let search = $state('');
   let groupedMode = $state(true);
   let expanded = $state<Set<string>>(new Set());
 
@@ -20,12 +21,11 @@
   let types = $derived([...new Set(timeline.map(b => b.type.toLowerCase()))]);
 
   let filtered = $derived(
-    selectedTypes.length === 0
-      ? timeline
-      : timeline.filter(b => selectedTypes.includes(b.type.toLowerCase()))
+    timeline.filter(b => (selectedTypes.length === 0 || selectedTypes.includes(b.type.toLowerCase())) &&
+      `${b.exeName} ${b.windowTitle ?? ''} ${b.project ?? ''}`.toLowerCase().includes(search.toLowerCase()))
   );
 
-  let maxSpan = $derived(Math.max(...filtered.map(b => b.endHour - b.startHour), 0.01));
+  const maxDuration = $derived(Math.max(...(groupedMode ? tree : filtered).map(b => b.durationSeconds), 1));
 
   type TreeNode = {
     id: string;
@@ -58,7 +58,6 @@
     const cats = [...catMap.values()].sort((a, b) => a.startHour - b.startHour);
 
     const result: TreeNode[] = [];
-    let nodeId = 0;
 
     for (const cat of cats) {
       // Level 1: group ALL blocks for the same exe into one parent (not split by time)
@@ -77,7 +76,7 @@
       const catChildren: TreeNode[] = [];
       for (const ag of appGroups) {
         const blockChildren: TreeNode[] = ag.blocks.map(b => ({
-          id: `t${nodeId++}`,
+          id: JSON.stringify([cat.type, ag.exe, b.startHour, b.endHour]),
           startHour: b.startHour,
           endHour: b.endHour,
           type: b.type,
@@ -92,7 +91,7 @@
 
         const dur = ag.blocks.reduce((s, b) => s + b.durationSeconds, 0);
         catChildren.push({
-          id: `t${nodeId++}`,
+          id: JSON.stringify([cat.type, ag.exe]),
           startHour: ag.startHour,
           endHour: ag.endHour,
           type: cat.type,
@@ -106,7 +105,7 @@
 
       const dur = cat.blocks.reduce((s, b) => s + b.durationSeconds, 0);
       result.push({
-        id: `t${nodeId++}`,
+        id: JSON.stringify([cat.type]),
         startHour: cat.startHour,
         endHour: cat.endHour,
         type: cat.type,
@@ -138,6 +137,8 @@
 </script>
 
 <div class="tlv">
+  <div class="tl-search-row"><input aria-label="Search timeline" placeholder="Search apps, window titles or projects…" bind:value={search} /><span>{filtered.length} segment{filtered.length === 1 ? '' : 's'} · {fmtPrecise(filtered.reduce((sum,b) => sum+b.durationSeconds,0))} recorded</span></div>
+  <p class="tl-explanation">Bar length represents recorded duration. Grouped time ranges show first and last observation, including gaps.</p>
   <div class="tl-controls">
     <div class="filter-row">
       {#each types as t}
@@ -150,6 +151,7 @@
         <button class="type-chip clear" onclick={() => selectedTypes = []}>Clear</button>
       {/if}
     </div>
+    {#if groupedMode}<button class="mode-btn chip-button" onclick={() => expanded = expanded.size ? new Set() : new Set(tree.flatMap(n => [n.id,...n.children.map(c => c.id)]))}>{expanded.size ? 'Collapse all' : 'Expand all'}</button>{/if}
     <button class="mode-btn chip-button" class:active={groupedMode} onclick={() => groupedMode = !groupedMode} title="Change timeline layout">
       <MorphingIcon icon={groupedMode ? FolderTree : List} size={14} strokeWidth={2} />
       {groupedMode ? 'Grouped' : 'Flat'}
@@ -192,9 +194,9 @@
               {n.label}
             </span>
             <div class="tl-bar-bg" aria-hidden="true">
-              <div class="tl-bar" style="width: {((n.endHour - n.startHour) / maxSpan) * 100}%; background: {colorForCategory(n.type)}"></div>
+              <div class="tl-bar" style="width: {(n.durationSeconds / maxDuration) * 100}%; background: {colorForCategory(n.type)}"></div>
             </div>
-            <span class="tl-dur">{fmtDuration(n.durationSeconds)}</span>
+            <span class="tl-dur">{fmtPrecise(n.durationSeconds)}</span>
           </button>
           {#if open}
             <div class="tl-children" style="border-color: {colorForCategory(n.type)}">
@@ -215,11 +217,11 @@
             <span class="tl-arrow">→</span>
             <span>{fmtHour(block.endHour)}</span>
           </div>
-          <span class="tl-type">{block.type}{#if block.project} · {block.project}{/if}</span>
+          <span class="tl-type" title={`${block.exeName} · ${block.windowTitle || block.type}`}><strong>{block.exeName || block.type}</strong>{#if showTitles && block.windowTitle}<small>{block.windowTitle}</small>{/if}</span>
           <div class="tl-bar-bg" aria-hidden="true">
-            <div class="tl-bar" style="width: {((block.endHour - block.startHour) / maxSpan) * 100}%; background: {colorForCategory(block.type)}"></div>
+            <div class="tl-bar" style="width: {(block.durationSeconds / maxDuration) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
-          <span class="tl-dur">{fmtDuration(block.durationSeconds)}</span>
+          <span class="tl-dur">{fmtPrecise(block.durationSeconds)}</span>
         </div>
       {/each}
     {/if}
@@ -227,6 +229,11 @@
 </div>
 
 <style>
+  .tl-search-row { display:flex; align-items:center; flex-wrap:wrap; gap:12px; color:var(--clr-text-sec); font-size:12px; }
+  .tl-search-row input { flex:1; min-width:220px; padding:10px 12px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:8px; color:var(--clr-text-pri); }
+  .tl-explanation { margin:0; color:var(--clr-text-sec); font-size:11px; }
+  .tl-type small { display:block; overflow:hidden; text-overflow:ellipsis; color:var(--clr-text-ter); }
+  .tl-bar { max-width:100%; }
   .tlv { display: flex; flex-direction: column; gap: 14px; }
   .tl-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .mode-btn i { font-size: 14px; }

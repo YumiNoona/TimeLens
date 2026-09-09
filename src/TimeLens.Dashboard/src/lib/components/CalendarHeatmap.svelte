@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { HeatmapEntry } from '../types';
+  import { fmtPrecise } from '../utils';
   import { heatmapDays } from '../stores/settings';
 
   let {
@@ -22,12 +23,23 @@
     return 'var(--heat-4)';
   }
 
-  const visibleEntries = $derived(entries.slice(-$heatmapDays));
+  let range = $state(0);
+  let inspected = $state<HeatmapEntry | null>(null);
+  const availableDays = $derived.by(() => {
+    const first = entries.findIndex(e => e.value > 0);
+    return first < 0 ? 28 : entries.length - first;
+  });
+  const days = $derived(range || Math.min($heatmapDays, availableDays <= 28 ? 28 : availableDays <= 91 ? 91 : $heatmapDays));
+  const visibleEntries = $derived(entries.slice(-days));
+  const activeDays = $derived(visibleEntries.filter(e => e.value > 0));
+  const totalMinutes = $derived(visibleEntries.reduce((sum, e) => sum + e.value, 0));
+  const peak = $derived([...visibleEntries].sort((a,b) => b.value-a.value)[0]);
+  const detail = $derived(inspected ?? visibleEntries.find(e => e.date === selectedDate) ?? visibleEntries.at(-1));
   const maxVal = $derived(Math.max(...visibleEntries.map(e => e.value), 1));
   const rangeLabel = $derived(
-    $heatmapDays === 28 ? 'Last 4 weeks' :
-    $heatmapDays === 91 ? 'Last 3 months' :
-    $heatmapDays === 273 ? 'Last 9 months' : 'Last 12 months'
+    days === 28 ? 'Last 4 weeks' :
+    days === 91 ? 'Last 3 months' :
+    days === 273 ? 'Last 9 months' : 'Last 12 months'
   );
 
   // Build week-based grid
@@ -82,20 +94,17 @@
   }
 
   function fmtActivity(minutes: number): string {
-    if (minutes <= 0) return 'No activity';
-    if (minutes < 60) return `${minutes}m active`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h${mins ? ` ${mins}m` : ''} active`;
+    return minutes <= 0 ? 'No recorded activity' : `${fmtPrecise(minutes * 60)} active`;
   }
 </script>
 
-<div class="heatmap-card">
+<div class="heatmap-card" class:short-range={days <= 28}>
   <div class="hm-header">
     <span class="hm-title"><i class="ti ti-calendar" aria-hidden="true"></i>Activity</span>
-    <span class="hm-range">{rangeLabel}</span>
+    <div class="hm-ranges" aria-label="Activity range">{#each [28,91,273,365] as option}<button class:chosen={days === option} onclick={() => range = option}>{option === 28 ? '4w' : option === 91 ? '3m' : option === 273 ? '9m' : '1y'}</button>{/each}</div>
   </div>
 
+  <div class="hm-summary"><span><strong>{fmtPrecise(totalMinutes * 60)}</strong> recorded</span><span><strong>{activeDays.length}</strong> active days</span><span><strong>{fmtPrecise(activeDays.length ? totalMinutes * 60 / activeDays.length : 0)}</strong> / active day</span></div>
   <div class="hm-overflow">
     <div class="hm-content">
       <div class="hm-body">
@@ -112,10 +121,11 @@
         <div class="hm-scroll">
           <div class="hm-month-row" style="grid-template-columns: repeat({weeks.length}, var(--hm-cell))">
             {#each monthLabels as ml}
-              <span class="hm-month" style="grid-column: {ml.col + 1} / span 2">{ml.text}</span>
+              <span class="hm-month" style="grid-column: {ml.col + 1}; overflow:visible">{ml.text}</span>
             {/each}
           </div>
 
+          {#if days <= 28}<div class="hm-weekdays" aria-hidden="true">{#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as day}<span>{day}</span>{/each}</div>{/if}
           <div class="hm-grid" role="group" aria-label="Activity heatmap">
             {#each weeks as week}
               {#each week as cell}
@@ -124,12 +134,14 @@
                     type="button"
                     class="hm-cell"
                     class:selected={cell.date === selectedDate}
-                    style="background: {intensity(cell.value, maxVal)}"
+                    style="background: {intensity(cell.value, maxVal)}; color: {cell.value / maxVal > .5 ? '#142015' : 'var(--md-on-surf)'}"
                     title="{fmtDate(cell.date)}: {fmtActivity(cell.value)}"
                     aria-label="{fmtDate(cell.date)}: {fmtActivity(cell.value)}"
                     aria-pressed={cell.date === selectedDate}
-                    onclick={() => onselect?.(cell.date)}
-                  ></button>
+                    onmouseenter={() => inspected = cell}
+                    onfocus={() => inspected = cell}
+                    onclick={() => { inspected = cell; onselect?.(cell.date); }}
+                  >{#if days <= 28}<span class="hm-date-number">{Number(cell.date.slice(-2))}</span>{/if}</button>
                 {:else}
                   <div class="hm-cell empty"></div>
                 {/if}
@@ -140,20 +152,21 @@
       </div>
 
       <div class="hm-legend" aria-label="Activity intensity from less to more">
-        <span class="hm-leg-label">Less</span>
+        <span class="hm-leg-label">0s</span>
         <div class="hm-cell" style="background:var(--heat-0)"></div>
         <div class="hm-cell" style="background:var(--heat-1)"></div>
         <div class="hm-cell" style="background:var(--heat-2)"></div>
         <div class="hm-cell" style="background:var(--heat-3)"></div>
         <div class="hm-cell" style="background:var(--heat-4)"></div>
-        <span class="hm-leg-label">More</span>
+        <span class="hm-leg-label">{fmtPrecise((peak?.value ?? 0) * 60)}</span>
       </div>
     </div>
   </div>
+  <div class="hm-detail" aria-live="polite"><span>{#if detail}<strong>{fmtDate(detail.date)}</strong> · {fmtActivity(detail.value)}{/if}</span><span>{rangeLabel}{#if peak?.value} · Best day {fmtDate(peak.date)}{/if}</span></div>
 </div>
 
 <style>
-  :root {
+  .heatmap-card {
     --heat-0: color-mix(in srgb, var(--md-primary) 4%, var(--clr-bg-ter));
     --heat-1: color-mix(in srgb, var(--md-primary) 22%, var(--clr-bg-ter));
     --heat-2: color-mix(in srgb, var(--md-primary) 45%, var(--clr-bg-ter));
@@ -162,9 +175,9 @@
   }
 
   .heatmap-card {
-    --hm-cell: 13px;
+    --hm-cell: clamp(13px, 1.5vw, 19px);
     width: 100%;
-    min-height: 292px;
+    min-height: 240px;
     max-width: 100%;
     box-sizing: border-box;
     display: flex;
@@ -176,6 +189,20 @@
     overflow: hidden;
   }
 
+  .hm-ranges { display:flex; gap:4px; }
+  .hm-ranges button { border:0; background:transparent; color:var(--md-on-surf-var); padding:6px 9px; border-radius:6px; cursor:pointer; }
+  .hm-ranges button.chosen { background:var(--clr-bg-ter); color:var(--md-primary); }
+  .hm-summary { display:flex; flex-wrap:wrap; gap:10px 24px; font-size:11px; color:var(--md-on-surf-var); margin-bottom:18px; }
+  .hm-summary strong { color:var(--md-on-surf); font-variant-numeric:tabular-nums; }
+  .hm-detail { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:14px; font-size:11px; color:var(--md-on-surf-var); }
+  button:focus-visible { outline:2px solid var(--md-primary); outline-offset:3px; }
+  .hm-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px; color:var(--md-on-surf-var); font-size:10px; text-align:center; }
+  .short-range .hm-content, .short-range .hm-scroll { width:100%; }
+  .short-range .hm-day-labels, .short-range .hm-month-row { display:none; }
+  .short-range .hm-grid { grid-auto-flow:row; grid-template-columns:repeat(7,minmax(24px,1fr)); grid-template-rows:none; grid-auto-rows:30px; gap:4px; }
+  .short-range .hm-grid .hm-cell { width:100%; height:30px; border-radius:5px; }
+  .hm-date-number { font:10px var(--font-mono); color:inherit; }
+  .short-range button.hm-cell:hover { transform:none; }
   .hm-header {
     display: flex;
     align-items: center;
@@ -185,7 +212,6 @@
   }
   .hm-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--md-on-surf); }
   .hm-header i { color: var(--md-on-surf-var); font-size: 15px; }
-  .hm-range { font-size: 11px; color: var(--md-on-surf-dim); background: var(--clr-bg-ter); border-radius: var(--shape-full); padding: 4px 8px; }
 
   .hm-overflow {
     flex: 1;
@@ -213,7 +239,7 @@
   }
   .hm-day-labels span {
     font-size: 9px;
-    color: var(--md-on-surf-dim);
+    color: var(--md-on-surf-var);
     line-height: var(--hm-cell);
     text-align: right;
   }
@@ -230,7 +256,7 @@
 
   .hm-month-row .hm-month {
     font-size: 9px;
-    color: var(--md-on-surf-dim);
+    color: var(--md-on-surf-var);
     font-weight: 500;
     white-space: nowrap;
     align-self: end;
@@ -274,7 +300,7 @@
   }
   .hm-leg-label {
     font-size: 9px;
-    color: var(--md-on-surf-dim);
+    color: var(--md-on-surf-var);
   }
   .hm-legend .hm-cell {
     width: 10px;

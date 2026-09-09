@@ -695,9 +695,9 @@ internal static class Program
             LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
         }
 
-        void OnInputTick(int keys, int clicks, int? pid, string? exe)
+        void OnInputTick(int keys, int clicks, int? pid, string? exe, DateTime observedAt)
         {
-            writer.InsertInputActivity(keys, clicks, pid, exe);
+            writer.InsertInputActivity(keys, clicks, pid, exe, observedAt);
         }
 
         void ApplyTrackAudio(bool on)

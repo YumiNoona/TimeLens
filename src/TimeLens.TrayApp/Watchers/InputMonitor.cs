@@ -14,14 +14,14 @@ public sealed class InputMonitor : IDisposable
     private static readonly LowLevelMouseProc MouseProc = MouseHookCallback;
 
     private readonly object _countsLock = new();
-    private readonly Dictionary<(int Pid, string Exe), (int Keys, int Clicks)> _counts = new();
+    private readonly Dictionary<(int Pid, string Exe, DateTime ObservedAt), (int Keys, int Clicks)> _counts = new();
     private static InputMonitor? _instance;
 
     private IntPtr _keyboardHook;
     private IntPtr _mouseHook;
     private Timer? _flushTimer;
 
-    public event Action<int, int, int?, string?>? InputActivityTick;
+    public event Action<int, int, int?, string?, DateTime>? InputActivityTick;
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowsHookEx(int idHook, IntPtr lpfn, IntPtr hmod, uint dwThreadId);
@@ -60,12 +60,14 @@ public sealed class InputMonitor : IDisposable
 
     private void FlushCounters(object? state) => RuntimeDiagnostics.TryRun("Input timer", Flush);
 
-    internal void RecordInput(int pid, string exe, int keys, int clicks)
+    internal void RecordInput(int pid, string exe, int keys, int clicks, DateTime? observedAt = null)
     {
+        var captured = (observedAt ?? DateTime.UtcNow).ToUniversalTime();
+        var second = new DateTime(captured.Ticks - captured.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc);
         lock (_countsLock)
         {
-            var current = _counts.GetValueOrDefault((pid, exe));
-            _counts[(pid, exe)] = (current.Keys + keys, current.Clicks + clicks);
+            var current = _counts.GetValueOrDefault((pid, exe, second));
+            _counts[(pid, exe, second)] = (current.Keys + keys, current.Clicks + clicks);
         }
     }
 
@@ -77,15 +79,15 @@ public sealed class InputMonitor : IDisposable
 
     internal void Flush()
     {
-        KeyValuePair<(int Pid, string Exe), (int Keys, int Clicks)>[] batch;
+        KeyValuePair<(int Pid, string Exe, DateTime ObservedAt), (int Keys, int Clicks)>[] batch;
         lock (_countsLock) { batch = _counts.ToArray(); _counts.Clear(); }
         foreach (var entry in batch)
-            if (!PublishInput(entry.Value.Keys, entry.Value.Clicks, entry.Key.Pid, entry.Key.Exe))
-                RecordInput(entry.Key.Pid, entry.Key.Exe, entry.Value.Keys, entry.Value.Clicks);
+            if (!PublishInput(entry.Value.Keys, entry.Value.Clicks, entry.Key.Pid, entry.Key.Exe, entry.Key.ObservedAt))
+                RecordInput(entry.Key.Pid, entry.Key.Exe, entry.Value.Keys, entry.Value.Clicks, entry.Key.ObservedAt);
     }
 
-    internal bool PublishInput(int keys, int clicks, int? pid, string? exe) =>
-        RuntimeDiagnostics.TryRun("Input subscriber", () => InputActivityTick?.Invoke(keys, clicks, pid, exe));
+    internal bool PublishInput(int keys, int clicks, int? pid, string? exe, DateTime? observedAt = null) =>
+        RuntimeDiagnostics.TryRun("Input subscriber", () => InputActivityTick?.Invoke(keys, clicks, pid, exe, observedAt ?? DateTime.UtcNow));
 
     private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {

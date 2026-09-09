@@ -85,9 +85,9 @@ public sealed class EventWriter : IDisposable
         _queue.Dispose();
     }
 
-    public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName)
+    public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName, DateTime? observedAt = null)
     {
-        var ts = DateTime.UtcNow.ToString("o");
+        var ts = (observedAt ?? _clock.GetUtcNow().UtcDateTime).ToUniversalTime().ToString("o");
         _queue.Enqueue(cmd =>
         {
             cmd.CommandText = """

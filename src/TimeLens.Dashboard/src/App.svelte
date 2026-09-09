@@ -5,6 +5,7 @@
 
   import { fmtPrecise } from './lib/utils';
   import TopApps from './lib/components/TopApps.svelte';
+  import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
 
   import AppsView from './lib/components/AppsView.svelte';
@@ -35,6 +36,7 @@
   let showTitles = $state(false);
 
   let view = $state('today');
+  let historyDate = $state('');
   let pollInterval = $state(30);
   let now = $state(new Date());
   let activeTheme = 'default';
@@ -102,7 +104,7 @@
   }
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
-  let refreshInFlight = false;
+  let refreshInFlight = $state(false);
 
   async function loadCompanionData(): Promise<void> {
     const [sites, time, audio, hours] = await Promise.allSettled([
@@ -202,13 +204,14 @@
             <h1 class="today-date">{dateStr}</h1>
             <p class="today-purpose">Activity since local midnight. Sessions crossing midnight are split between days.</p>
           </div>
+          <button class="view-all-link" disabled={refreshInFlight} onclick={() => refreshVisibleData(false)}><i class="ti ti-refresh" aria-hidden="true"></i> Refresh activity</button>
         </div>
 
         <div class="today-content">
           <section class="today-hero" use:reorderable={{ key: 'today:stats' }}>
             <StatCard
               label="Active time"
-              value={$data.summary.activeTime}
+              value={fmtPrecise($data.summary.activeSeconds)}
               variant="hero"
               accent={true}
               icon="ti-clock-hour-4"
@@ -250,7 +253,7 @@
             />
             <StatCard
               label="Idle time"
-              value={$data.summary.idleTime}
+              value={fmtPrecise($data.summary.idleSeconds)}
               variant="hero"
               icon="ti-coffee"
               chip={$data.summary.idleSeconds > 0
@@ -260,6 +263,7 @@
             />
           </section>
 
+          <CalendarHeatmap entries={$data.heatmap} onselect={(date) => { historyDate = date; goTo('history'); }} />
           <div class="today-grid" use:reorderable={{ key: 'today:insights' }}>
             <TopApps apps={$data.topApps} />
             <CategoryBreakdown categories={$data.categories} />
@@ -303,7 +307,7 @@
       {/if}
 
     {:else if view === 'history'}
-      <HistoryView {timelineGrouped} {showTitles} />
+      <HistoryView {timelineGrouped} {showTitles} initialDate={historyDate} />
     {:else if view === 'browser'}
       <div class="topbar">
         <div class="page-heading">

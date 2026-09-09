@@ -5,7 +5,7 @@
 
   let { categories, periodLabel = 'today' }: { categories: CategoryEntry[]; periodLabel?: string } = $props();
 
-  const total = $derived(categories.reduce((sum, category) => sum + category.minutes, 0) || 1);
+  const total = $derived(categories.reduce((sum, category) => sum + category.minutes, 0));
   const sorted = $derived([...categories].sort((a, b) => b.minutes - a.minutes));
   const RADIUS = 72;
   const STROKE = 18;
@@ -15,7 +15,7 @@
   const slices = $derived.by(() => {
     let offset = 0;
     return sorted.map(category => {
-      const ratio = category.minutes / total;
+      const ratio = category.minutes / (total || 1);
       const fullDash = CIRCUMFERENCE * ratio;
       const result = {
         name: category.name,
@@ -24,7 +24,7 @@
         dashOffset: -offset,
         ratio,
         minutes: category.minutes,
-        percentage: category.percentage,
+        percentage: Math.round(ratio * 100),
       };
       offset += fullDash;
       return result;
@@ -33,7 +33,7 @@
 
   let hovered = $state<string | null>(null);
   const activeSlice = $derived(slices.find(slice => slice.name === hovered) ?? slices[0] ?? null);
-  const visibleSlices = $derived(slices.slice(0, 5));
+  const visibleSlices = $derived(slices);
 </script>
 
 <div class="card category-card">
@@ -70,7 +70,7 @@
           {#if activeSlice}
             <span class="center-dot" style="background:{activeSlice.color}"></span>
             <span class="cat-pct-main">{activeSlice.percentage}%</span>
-            <span class="cat-label">{activeSlice.name}</span>
+
             <span class="cat-time-main">{fmtTime(activeSlice.minutes)}</span>
           {:else}
             <span class="cat-pct-main">0%</span>
@@ -78,7 +78,7 @@
           {/if}
         </div>
       </div>
-      <div class="donut-caption"><span>Top category</span><strong>{slices[0]?.name ?? '—'}</strong><small>{periodLabel}</small></div>
+      <div class="donut-caption"><small>{periodLabel} · hover or focus for details</small></div>
     </div>
 
     <div class="category-list" role="list" aria-label="Category details">
@@ -86,6 +86,8 @@
         <button
           type="button"
           class="category-row"
+          title={`${slice.name}: ${fmtTime(slice.minutes)} (${slice.percentage}%)`}
+          aria-label={`${slice.name}: ${fmtTime(slice.minutes)} (${slice.percentage}%)`}
           class:active={hovered === slice.name || (!hovered && index === 0)}
           style="--rank-color:{slice.color}"
           onmouseenter={() => hovered = slice.name}
@@ -93,8 +95,8 @@
           onfocus={() => hovered = slice.name}
           onblur={() => hovered = null}
         >
-          <span class="rank">{index + 1}</span>
-          <span class="category-copy"><strong>{slice.name}</strong><span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span></span>
+          <span class="rank" aria-hidden="true"></span>
+          <span class="category-copy"><span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span></span>
           <span class="category-metric"><strong>{slice.percentage}%</strong><small>{fmtTime(slice.minutes)}</small></span>
         </button>
       {/each}
@@ -123,20 +125,20 @@
   .cat-label { max-width: 88px; margin-top: 5px; overflow: hidden; color: var(--clr-text-sec); font-size: 11px; font-weight: 600; text-transform: capitalize; text-overflow: ellipsis; white-space: nowrap; }
   .cat-time-main { margin-top: 2px; color: var(--clr-text-ter); font: 9px var(--font-mono); }
   .donut-caption { z-index: 1; display: grid; grid-template-columns: auto auto; align-items: center; gap: 2px 6px; margin-top: -4px; }
-  .donut-caption span { color: var(--clr-text-ter); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
-  .donut-caption strong { color: var(--clr-text-pri); font-size: 10px; text-transform: capitalize; }
   .donut-caption small { grid-column: 1 / -1; color: var(--clr-text-ter); font-size: 9px; text-align: center; }
   .category-list { display: flex; flex-direction: column; gap: 6px; }
-  .category-row { min-height: 52px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 7px 10px; color: var(--clr-text-sec); background: color-mix(in srgb, var(--clr-bg-ter) 54%, transparent); border: 1px solid transparent; border-radius: 11px; font-family: inherit; text-align: left; cursor: pointer; transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out); }
-  .category-row:hover, .category-row.active { background: var(--clr-bg-ter); border-color: color-mix(in srgb, var(--rank-color, var(--md-primary)) 34%, var(--clr-border)); }
+  .category-row { min-height: 52px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 7px 10px; color: var(--clr-text-sec); background: transparent; border: 1px solid transparent; border-radius: 11px; font-family: inherit; text-align: left; cursor: pointer; transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out); }
+  .category-row:hover, .category-row.active { background: transparent; border-color: transparent; }
   .rank { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--rank-color); background: color-mix(in srgb, var(--rank-color) 14%, var(--clr-bg-sec)); border: 1px solid color-mix(in srgb, var(--rank-color) 28%, transparent); font: 600 10px var(--font-mono); }
   .category-copy { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-  .category-copy strong { overflow: hidden; color: var(--clr-text-pri); font-size: 11px; font-weight: 600; text-transform: capitalize; text-overflow: ellipsis; white-space: nowrap; }
   .mini-track { height: 4px; overflow: hidden; border-radius: 99px; background: var(--clr-bg-sec); }
   .mini-track span { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 300ms var(--ease-out); }
   .category-metric { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .category-metric strong { min-width: 42px; padding: 3px 6px; border-radius: 7px; color: var(--clr-text-pri); background: var(--clr-bg-sec); text-align: center; font: 600 11px var(--font-mono); }
+  .category-metric strong { min-width: 42px; padding: 3px 6px; border-radius: 7px; color: var(--clr-text-pri); background: transparent; text-align: center; font: 600 11px var(--font-mono); }
   .category-metric small { color: var(--clr-text-ter); font: 9px var(--font-mono); }
+  .rank { width:8px; height:8px; border:0; border-radius:50%; background:var(--rank-color); }
+  .category-row { min-height:38px; grid-template-columns:12px minmax(0,1fr) auto; padding:4px 0; border:0; border-radius:0; }
+  .category-row:focus-visible { outline:2px solid var(--md-primary); outline-offset:4px; }
   @media (max-width: 900px) {
     .category-layout { grid-template-columns: 1fr; }
     .donut-panel { min-height: 224px; }

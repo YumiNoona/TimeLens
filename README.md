@@ -15,7 +15,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 7.0
+## Version 7.0.1
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The production desktop, dashboard, installer, and companion extension packages are released as `v7.0.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The desktop, dashboard and installer are released as `v7.0.1`; companion extensions remain `7.0.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -159,3 +159,5 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
 
 Chrome submission instructions: [Chrome Web Store guide](docs/chrome-web-store.md).
+
+Desktop 7.0.1 refines the heatmap, category donut, app reports and timeline. Input batches retain capture timestamps across midnight; heatmap values preserve seconds. See [7.0.1 release notes](docs/releases/7.0.1.md).

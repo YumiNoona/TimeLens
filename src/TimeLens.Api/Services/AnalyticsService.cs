@@ -432,7 +432,7 @@ public sealed class AnalyticsService
                 start = stop;
             }
         }
-        var map = seconds.ToDictionary(x => x.Key, x => (int)Math.Round(x.Value) / 60);
+        var map = seconds.ToDictionary(x => x.Key, x => x.Value / 60.0);
 
         var entries = new List<HeatmapEntryDto>();
         for (int i = 0; i < HeatmapDays; i++)

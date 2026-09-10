@@ -11,6 +11,7 @@
   import MediaCard from './MediaCard.svelte';
   import TimelineView from './TimelineView.svelte';
   import { normalizeTimeline, fmtPrecise } from '../utils';
+  import { showSeconds } from '../stores/settings';
   import UsageDetails from './UsageDetails.svelte';
   import { reorderable } from '../actions/reorderable';
 
@@ -168,7 +169,7 @@
       <section class="history-stats" aria-label="Daily summary" use:reorderable={{ key: 'history:stats' }}>
         <StatCard
           label="Active time"
-          value={fmtPrecise(historyData.summary.activeSeconds)}
+          value={fmtPrecise(historyData.summary.activeSeconds, $showSeconds)}
           variant="hero"
           accent={historyData.summary.activeSeconds > 0}
           icon="ti-clock-hour-4"
@@ -202,7 +203,7 @@
         />
         <StatCard
           label="Idle time"
-          value={fmtPrecise(historyData.summary.idleSeconds)}
+          value={fmtPrecise(historyData.summary.idleSeconds, $showSeconds)}
           variant="hero"
           icon="ti-coffee"
           chip={historyData.summary.idleSeconds > 0 && historyData.summary.activeSeconds + historyData.summary.idleSeconds > 0

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { DashboardData } from '../types';
   import { fmtPrecise } from '../utils';
+  import { showSeconds } from '../stores/settings';
   let { data, date }: { data: DashboardData; date: string } = $props();
   let mode = $state<'sites' | 'apps'>('sites');
   let query = $state('');
@@ -42,18 +43,18 @@
   <p class="hint">Website time is part of browser app time, not added on top. Input counts are recorded events, never typed text. “—” means website input was not collected; historical counts cannot be reconstructed. Sessions may include title changes in older history.</p>
   <div class="usage-scroll"><table><thead><tr><th>{mode === 'sites' ? 'Website' : 'Executable / app'}</th><th>Active time</th><th>Keystrokes</th><th>Clicks</th><th>Sessions</th><th>{mode === 'sites' ? 'Last seen' : 'Details'}</th></tr></thead><tbody>
   {#each rows as row}
-    <tr><td><button class="row-name" aria-expanded={expanded.has(row.id)} onclick={() => toggle(row.id)}><span>{expanded.has(row.id) ? '−' : '+'}</span>{row.id}</button></td><td class="time">{fmtPrecise(row.seconds)}</td><td>{count(row.keys)}</td><td>{count(row.clicks)}</td><td>{row.sessions}</td><td>{row.lastSeen ? seen(row.lastSeen) : 'Window titles'}</td></tr>
+    <tr><td><button class="row-name" aria-expanded={expanded.has(row.id)} onclick={() => toggle(row.id)}><span>{expanded.has(row.id) ? '−' : '+'}</span>{row.id}</button></td><td class="time">{fmtPrecise(row.seconds, $showSeconds)}</td><td>{count(row.keys)}</td><td>{count(row.clicks)}</td><td>{row.sessions}</td><td>{row.lastSeen ? seen(row.lastSeen) : 'Window titles'}</td></tr>
     {#if expanded.has(row.id)}
       <tr class="detail-row"><td colspan="6">
         {#if mode === 'sites'}
           <div class="pages">
           {#each data.browserSites.find(site => site.domain === row.id)?.pages ?? [] as page}
-            <div class="page"><div class="page-copy"><strong>{page.title || page.url}</strong><span title={page.url}>{page.url}</span><small>{page.browser} · last seen {seen(page.lastSeen)} · {page.sessions} sessions</small></div><div class="page-metrics"><strong>{fmtPrecise(page.totalSeconds)}</strong><span>{count(page.keystrokes)} keystrokes · {count(page.clicks)} clicks</span></div></div>
+            <div class="page"><div class="page-copy"><strong>{page.title || page.url}</strong><span title={page.url}>{page.url}</span><small>{page.browser} · last seen {seen(page.lastSeen)} · {page.sessions} sessions</small></div><div class="page-metrics"><strong>{fmtPrecise(page.totalSeconds, $showSeconds)}</strong><span>{count(page.keystrokes)} keystrokes · {count(page.clicks)} clicks</span></div></div>
           {/each}
           </div>
         {:else}
           <div class="pages">{#each data.timeline.filter(segment => segment.exeName === row.id && segment.type !== 'idle' && segment.type !== 'away') as segment}
-            <div class="page"><div class="page-copy"><strong>{segment.windowTitle || '(No window title)'}</strong><small>{String(Math.floor(segment.startHour)).padStart(2, '0')}:{String(Math.floor(segment.startHour * 60) % 60).padStart(2, '0')} · {segment.project || segment.type}</small></div><strong>{fmtPrecise(segment.durationSeconds)}</strong></div>
+            <div class="page"><div class="page-copy"><strong>{segment.windowTitle || '(No window title)'}</strong><small>{String(Math.floor(segment.startHour)).padStart(2, '0')}:{String(Math.floor(segment.startHour * 60) % 60).padStart(2, '0')} · {segment.project || segment.type}</small></div><strong>{fmtPrecise(segment.durationSeconds, $showSeconds)}</strong></div>
           {/each}</div>
         {/if}
       </td></tr>

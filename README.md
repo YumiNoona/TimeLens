@@ -15,7 +15,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 7.2.0
+## Version 7.3.0
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -118,7 +118,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The desktop, dashboard, installer, and Firefox companion are released as `v7.2.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The desktop, dashboard, installer, and Firefox companion are released as `v7.3.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -159,4 +159,4 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 Firefox is the supported browser companion. Legacy Chrome sources are not packaged or release-tested.
 
-TimeLens 7.2.0 strengthens local security, tracking reliability, data retention, and Firefox efficiency while adding a focused Privacy Center. See [7.2.0 release notes](docs/releases/7.2.0.md).
+TimeLens 7.3.0 refines the dashboard with a cleaner activity heatmap, readable category breakdowns, and a duration-precision preference. See [7.3.0 release notes](docs/releases/7.3.0.md).

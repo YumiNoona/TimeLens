@@ -32,7 +32,7 @@ public static class ApiHost
         "timelineGrouped", "autoStart", "retentionDays", "showTitles", "breakReminder",
         "breakIntervalMinutes", "focusMode", "focusBlocklist", "blockAction", "blockTitle",
         "blockMessage", "blockNotifyIntervalSeconds", "blockNotifyPosition", "blockMediaLayout",
-        "pollIntervalSeconds", "timeFormat", "defaultView", "density", "motionEnabled",
+        "pollIntervalSeconds", "timeFormat", "showSeconds", "defaultView", "density", "motionEnabled",
         "timelineMinSegmentSeconds", "heatmapDays"
     };
 
@@ -631,7 +631,7 @@ public static class ApiHost
                 };
 
                 if (prop.Name is "trackAudio" or "trackBrowser" or "trackInput" or "timelineGrouped" or
-                    "showTitles" or "breakReminder" or "motionEnabled" or "browserStoreTitles" && prop.Value.ValueKind is not
+                    "showTitles" or "showSeconds" or "breakReminder" or "motionEnabled" or "browserStoreTitles" && prop.Value.ValueKind is not
                     (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
                 {
                     ctx.Response.StatusCode = 400;
@@ -842,6 +842,7 @@ public static class ApiHost
                     "blockMediaLayout" => "block_media_layout",
                     "pollIntervalSeconds" => "poll_interval_seconds",
                     "timeFormat" => "time_format",
+                    "showSeconds" => "show_seconds",
                     "defaultView" => "default_view",
                     "density" => "density",
                     "motionEnabled" => "motion_enabled",
@@ -931,6 +932,9 @@ public static class ApiHost
                         break;
                     case "timeFormat":
                         LiveStatusStore.Settings = LiveStatusStore.Settings with { TimeFormat = value };
+                        break;
+                    case "showSeconds":
+                        LiveStatusStore.Settings = LiveStatusStore.Settings with { ShowSeconds = value == "true" };
                         break;
                     case "pollIntervalSeconds":
                         if (int.TryParse(value, out var pis))

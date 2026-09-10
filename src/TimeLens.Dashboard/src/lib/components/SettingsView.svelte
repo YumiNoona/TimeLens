@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import {
     heatmapDays as heatmapDaysStore,
+    showSeconds as showSecondsStore,
     timeFormat as timeFormatStore
   } from '../stores/settings';
 
@@ -40,6 +41,7 @@
   let breakInterval = $state(50);
   let focusMode = $state(false);
   let timeFormat = $state('12h');
+  let showSeconds = $state(false);
   let pollInterval = $state(30);
   let defaultView = $state('today');
   let density = $state('comfortable');
@@ -127,6 +129,7 @@
       breakInterval = s.breakIntervalMinutes ?? 50;
       focusMode = s.focusMode ?? false;
       timeFormat = s.timeFormat ?? '12h';
+      showSeconds = s.showSeconds ?? false;
       pollInterval = s.pollIntervalSeconds ?? 30;
       defaultView = s.defaultView ?? 'today';
       density = s.density ?? 'comfortable';
@@ -136,6 +139,7 @@
       blockProtectionScope = s.blockProtectionScope === 'all' ? 'all' : 'strict';
       blockExitProtection = s.blockExitProtection ?? true;
       timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h');
+      showSecondsStore.set(showSeconds);
       heatmapDaysStore.set(heatmapDays);
       apiReachable = true;
     } catch {
@@ -510,39 +514,54 @@
     </div>
   </section>
 
-  <section class="card card-wide">
+  <section class="card card-wide timeline-history-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-timeline-event" aria-hidden="true"></i></span>
       <div><h2>Timeline & history</h2><p>Decide how much detail appears in daily activity views.</p></div>
     </div>
-    <div class="settings-columns">
-      <div class="setting-row">
-        <div class="setting-info"><span class="setting-label">Default timeline layout</span><span class="setting-desc">Group activity into expandable categories</span></div>
-        <select class="select wide" bind:value={timelineGrouped} onchange={() => { save('timelineGrouped', timelineGrouped); ontimelinegrouped?.(timelineGrouped); }}>
-          <option value={true}>Grouped</option><option value={false}>Flat</option>
-        </select>
+    <div class="history-settings-grid">
+      <div class="setting-group">
+        <div class="setting-group-title"><i class="ti ti-timeline" aria-hidden="true"></i><span>Timeline</span></div>
+        <div class="setting-row">
+          <div class="setting-info"><span class="setting-label">Default layout</span><span class="setting-desc">Group activity into expandable categories</span></div>
+          <select class="select wide" bind:value={timelineGrouped} onchange={() => { save('timelineGrouped', timelineGrouped); ontimelinegrouped?.(timelineGrouped); }}>
+            <option value={true}>Grouped</option><option value={false}>Flat</option>
+          </select>
+        </div>
+        <label class="setting-row">
+          <div class="setting-info"><span class="setting-label">Window titles</span><span class="setting-desc">Show titles in expanded timeline rows</span></div>
+          <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => { showTitles = value; onshowtitles?.(value); })} />
+        </label>
       </div>
-      <label class="setting-row">
-        <div class="setting-info"><span class="setting-label">Window titles</span><span class="setting-desc">Include titles in expanded timeline rows</span></div>
-        <input type="checkbox" class="toggle" checked={showTitles} onchange={(e) => setToggle('showTitles', e, value => { showTitles = value; onshowtitles?.(value); })} />
-      </label>
-      <div class="setting-row">
-        <div class="setting-info"><span class="setting-label">Activity heatmap</span><span class="setting-desc">Range shown in History</span></div>
-        <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
-          <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
-        </select>
+
+      <div class="setting-group">
+        <div class="setting-group-title"><i class="ti ti-calendar-stats" aria-hidden="true"></i><span>History display</span></div>
+        <div class="setting-row">
+          <div class="setting-info"><span class="setting-label">Heatmap range</span><span class="setting-desc">Default period shown in History</span></div>
+          <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
+            <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
+          </select>
+        </div>
+        <label class="setting-row">
+          <div class="setting-info"><span class="setting-label">Show seconds</span><span class="setting-desc">Add seconds to activity durations</span></div>
+          <input type="checkbox" class="toggle" checked={showSeconds} onchange={(e) => setToggle('showSeconds', e, value => { showSeconds = value; showSecondsStore.set(value); })} />
+        </label>
       </div>
-      <div class="setting-row">
-        <div class="setting-info"><span class="setting-label">Time format</span><span class="setting-desc">Timestamp notation throughout the dashboard</span></div>
-        <select class="select" bind:value={timeFormat} onchange={() => { save('timeFormat', timeFormat); timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h'); }}>
-          <option value="12h">12 hour</option><option value="24h">24 hour</option>
-        </select>
-      </div>
-      <div class="setting-row">
-        <div class="setting-info"><span class="setting-label">Dashboard refresh</span><span class="setting-desc">How often live data is requested</span></div>
-        <select class="select wide" bind:value={pollInterval} onchange={() => { save('pollIntervalSeconds', pollInterval); onpollinterval?.(pollInterval); }}>
-          {#each [5, 10, 30, 60] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
-        </select>
+
+      <div class="setting-group">
+        <div class="setting-group-title"><i class="ti ti-clock-cog" aria-hidden="true"></i><span>Clock & updates</span></div>
+        <div class="setting-row">
+          <div class="setting-info"><span class="setting-label">Time format</span><span class="setting-desc">Timestamp notation across the dashboard</span></div>
+          <select class="select" bind:value={timeFormat} onchange={() => { save('timeFormat', timeFormat); timeFormatStore.set(timeFormat === '24h' ? '24h' : '12h'); }}>
+            <option value="12h">12 hour</option><option value="24h">24 hour</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info"><span class="setting-label">Dashboard refresh</span><span class="setting-desc">How often live data is requested</span></div>
+          <select class="select wide" bind:value={pollInterval} onchange={() => { save('pollIntervalSeconds', pollInterval); onpollinterval?.(pollInterval); }}>
+            {#each [5, 10, 30, 60] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
+          </select>
+        </div>
       </div>
     </div>
   </section>
@@ -656,8 +675,14 @@
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
   .setting-desc { color: var(--clr-text-sec); font-size: 11px; line-height: 1.35; }
-  .settings-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .settings-columns .setting-row:nth-child(even) { border-left: 1px solid var(--clr-border); }
+  .timeline-history-card .card-header { padding-bottom: 15px; border-bottom: 1px solid var(--clr-border); }
+  .timeline-history-card .card-header p { display: block; }
+  .history-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; background: color-mix(in srgb, var(--clr-bg-ter) 35%, transparent); }
+  .setting-group { min-width: 0; overflow: hidden; background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-md); }
+  .setting-group-title { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 13px; color: var(--clr-text-sec); background: color-mix(in srgb, var(--md-primary) 4%, var(--clr-bg-ter)); border-bottom: 1px solid var(--clr-border); font-size: 11px; font-weight: 650; letter-spacing: .02em; }
+  .setting-group-title i { color: var(--md-primary); font-size: 14px; }
+  .setting-group .setting-row { min-height: 64px; padding: 10px 13px; border-top: 0; }
+  .setting-group .setting-row + .setting-row { border-top: 1px solid var(--clr-border); }
   .toggle { appearance: none; width: 40px; height: 22px; flex: 0 0 auto; margin: 0; border-radius: 99px; background: var(--clr-border-strong); position: relative; cursor: pointer; transition: background var(--duration-base) var(--ease-out); }
   .toggle::after { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: white; box-shadow: var(--shadow-xs); transition: transform var(--duration-base) var(--ease-out); }
   .toggle:checked { background: var(--md-primary); }
@@ -713,14 +738,19 @@
   @media (max-width: 960px) {
     .compact-card { grid-template-columns: 1fr; }
     .compact-card .setting-row:nth-child(odd) { border-left: 0; }
-    .settings-columns { grid-template-columns: 1fr; }
-    .settings-columns .setting-row:nth-child(even) { border-left: 0; }
+    .history-settings-grid { grid-template-columns: 1fr 1fr; }
+    .setting-group:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+    .setting-group:last-child .setting-group-title { grid-column: 1 / -1; }
+    .setting-group:last-child .setting-row + .setting-row { border-top: 0; border-left: 1px solid var(--clr-border); }
     .theme-grid { grid-template-columns: repeat(2, 1fr); }
   }
   @media (max-width: 620px) {
     .protection-form { grid-template-columns: 1fr; }
     .setting-row.export-row { align-items: stretch; flex-direction: column; }
     .theme-grid { grid-template-columns: 1fr; }
+    .history-settings-grid { grid-template-columns: 1fr; padding: 10px; }
+    .setting-group:last-child { grid-column: auto; display: block; }
+    .setting-group:last-child .setting-row + .setting-row { border-top: 1px solid var(--clr-border); border-left: 0; }
     .select, .select.wide { min-width: 112px; }
     .update-row { align-items: stretch; flex-direction: column; }
     .update-copy { align-items: flex-start; flex-direction: column; }

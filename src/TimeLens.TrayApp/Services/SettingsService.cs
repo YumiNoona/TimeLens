@@ -43,6 +43,7 @@ public sealed class SettingsService
             FocusMode = dict.GetValueOrDefault("focus_mode", "false") == "true",
             FocusBlocklist = dict.GetValueOrDefault("focus_blocklist", "[]"),
             TimeFormat = ReadChoice(dict, "time_format", "12h", "12h", "24h"),
+            ShowSeconds = dict.GetValueOrDefault("show_seconds", "false") == "true",
             PollIntervalSeconds = ReadInt(dict, "poll_interval_seconds", 30, 5, 300),
             BlockAction = dict.GetValueOrDefault("block_action", "hide"),
             BlockTitle = BlockNotification.NormalizeTitle(dict.GetValueOrDefault("block_title")),

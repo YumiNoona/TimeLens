@@ -93,6 +93,7 @@ internal static class Program
                 service.Save("block_notify_interval_seconds", "1800");
                 service.Save("block_notify_position", "top-right");
                 service.Save("block_media_layout", "banner");
+                service.Save("show_seconds", "true");
                 service.Save("first_run_done", "true");
                 using (var conn = new SqliteConnection($"Data Source={path}"))
                 {
@@ -106,7 +107,7 @@ internal static class Program
                 var settings = DatabaseInitializer.Initialize(path);
                 Check(settings.RetentionDays == 365 && settings.Theme == "terminal" &&
                       settings.BlockNotifyIntervalSeconds == 1800 && settings.BlockNotifyPosition == "top-right" &&
-                      settings.BlockMediaLayout == "banner",
+                      settings.BlockMediaLayout == "banner" && settings.ShowSeconds,
                       "Saved preferences changed.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='wake'") == 1, "Saved retention was ignored; history was deleted.");
                 Check(Query(path, "SELECT count(*) FROM session_events WHERE event_type='sleep'") == 0, "Expired history was not purged.");

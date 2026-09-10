@@ -59,7 +59,7 @@ test('Firefox package contains the canonical scripts and resources', () => {
   for (const family of ['firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.2.0');
+    assert.equal(manifest.version, '7.3.0');
     assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
     assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
     assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,

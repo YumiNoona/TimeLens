@@ -3,6 +3,7 @@
   import { fmtPrecise } from '../utils';
   import type { DashboardData, InputEntry } from '../types';
   import { appIcon } from '../appIcons';
+  import { showSeconds } from '../stores/settings';
   let { data }: { data: DashboardData } = $props();
 
   function hashColor(s: string): string {
@@ -64,7 +65,7 @@
       .toSorted((a, b) => sortKey === 'time' ? b.minutes - a.minutes : sortKey === 'keys' ? b.keystrokes-a.keystrokes : sortKey === 'clicks' ? b.clicks-a.clicks : a.name.localeCompare(b.name))
   );
 
-  const formatAppTime = (minutes: number) => fmtPrecise(minutes * 60);
+  const formatAppTime = (minutes: number) => fmtPrecise(minutes * 60, $showSeconds);
 
 </script>
 

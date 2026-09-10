@@ -2,6 +2,7 @@
   import type { CategoryEntry } from '../types';
   import { colorForCategory } from '../colors';
   import { fmtTime } from '../utils';
+  import { showSeconds } from '../stores/settings';
 
   let { categories, periodLabel = 'today' }: { categories: CategoryEntry[]; periodLabel?: string } = $props();
 
@@ -42,7 +43,7 @@
       <i class="ti ti-chart-donut-4" aria-hidden="true"></i>
       <div><div class="card-title">Categories</div><span>Where your active time went</span></div>
     </div>
-    <span class="tracked-pill"><i class="ti ti-clock-hour-4" aria-hidden="true"></i>{fmtTime(total)} tracked</span>
+    <span class="tracked-pill"><i class="ti ti-clock-hour-4" aria-hidden="true"></i>{fmtTime(total, $showSeconds)} tracked</span>
   </div>
 
   <div class="category-layout">
@@ -70,8 +71,8 @@
           {#if activeSlice}
             <span class="center-dot" style="background:{activeSlice.color}"></span>
             <span class="cat-pct-main">{activeSlice.percentage}%</span>
-
-            <span class="cat-time-main">{fmtTime(activeSlice.minutes)}</span>
+            <span class="cat-label">{activeSlice.name}</span>
+            <span class="cat-time-main">{fmtTime(activeSlice.minutes, $showSeconds)}</span>
           {:else}
             <span class="cat-pct-main">0%</span>
             <span class="cat-label">No activity</span>
@@ -86,8 +87,8 @@
         <button
           type="button"
           class="category-row"
-          title={`${slice.name}: ${fmtTime(slice.minutes)} (${slice.percentage}%)`}
-          aria-label={`${slice.name}: ${fmtTime(slice.minutes)} (${slice.percentage}%)`}
+          title={`${slice.name}: ${fmtTime(slice.minutes, $showSeconds)} (${slice.percentage}%)`}
+          aria-label={`${slice.name}: ${fmtTime(slice.minutes, $showSeconds)} (${slice.percentage}%)`}
           class:active={hovered === slice.name || (!hovered && index === 0)}
           style="--rank-color:{slice.color}"
           onmouseenter={() => hovered = slice.name}
@@ -96,8 +97,11 @@
           onblur={() => hovered = null}
         >
           <span class="rank" aria-hidden="true"></span>
-          <span class="category-copy"><span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span></span>
-          <span class="category-metric"><strong>{slice.percentage}%</strong><small>{fmtTime(slice.minutes)}</small></span>
+          <span class="category-copy">
+            <span class="category-name-line"><strong>{slice.name}</strong><small>#{index + 1}</small></span>
+            <span class="mini-track"><span style="width:{slice.percentage}%;background:{slice.color}"></span></span>
+          </span>
+          <span class="category-metric"><strong>{slice.percentage}%</strong><small>{fmtTime(slice.minutes, $showSeconds)}</small></span>
         </button>
       {/each}
     </div>
@@ -130,14 +134,17 @@
   .category-row { min-height: 52px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 7px 10px; color: var(--clr-text-sec); background: transparent; border: 1px solid transparent; border-radius: 11px; font-family: inherit; text-align: left; cursor: pointer; transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out); }
   .category-row:hover, .category-row.active { background: transparent; border-color: transparent; }
   .rank { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--rank-color); background: color-mix(in srgb, var(--rank-color) 14%, var(--clr-bg-sec)); border: 1px solid color-mix(in srgb, var(--rank-color) 28%, transparent); font: 600 10px var(--font-mono); }
-  .category-copy { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .category-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .category-name-line { display:flex; align-items:center; gap:7px; min-width:0; }
+  .category-name-line strong { min-width:0; overflow:hidden; color:var(--clr-text-pri); font-size:11px; font-weight:600; text-overflow:ellipsis; text-transform:capitalize; white-space:nowrap; }
+  .category-name-line small { color:var(--clr-text-ter); font:9px var(--font-mono); }
   .mini-track { height: 4px; overflow: hidden; border-radius: 99px; background: var(--clr-bg-sec); }
   .mini-track span { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 300ms var(--ease-out); }
   .category-metric { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
   .category-metric strong { min-width: 42px; padding: 3px 6px; border-radius: 7px; color: var(--clr-text-pri); background: transparent; text-align: center; font: 600 11px var(--font-mono); }
   .category-metric small { color: var(--clr-text-ter); font: 9px var(--font-mono); }
   .rank { width:8px; height:8px; border:0; border-radius:50%; background:var(--rank-color); }
-  .category-row { min-height:38px; grid-template-columns:12px minmax(0,1fr) auto; padding:4px 0; border:0; border-radius:0; }
+  .category-row { min-height:42px; grid-template-columns:12px minmax(0,1fr) auto; padding:5px 0; border:0; border-radius:0; }
   .category-row:focus-visible { outline:2px solid var(--md-primary); outline-offset:4px; }
   @media (max-width: 900px) {
     .category-layout { grid-template-columns: 1fr; }

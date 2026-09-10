@@ -3,6 +3,7 @@
   import { colorForApp } from '../colors';
   import { fmtTime } from '../utils';
   import { appIcon } from '../appIcons';
+  import { showSeconds } from '../stores/settings';
 
   let { apps }: { apps: AppEntry[] } = $props();
 
@@ -34,7 +35,7 @@
           <div class="app-bar-fill" class:bar-passive={passive} style="width: {Math.round(app.minutes / maxMins * 100)}%"></div>
         </div>
         <span class="app-time">
-          {fmtTime(app.minutes)}
+          {fmtTime(app.minutes, $showSeconds)}
           {#if passive}
             <span class="app-passive-badge">no input</span>
           {/if}

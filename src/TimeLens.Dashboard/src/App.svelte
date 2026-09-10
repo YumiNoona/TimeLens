@@ -21,11 +21,11 @@
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
-  import { timeFormat as timeFormatStore, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
+  import { timeFormat as timeFormatStore, showSeconds, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
   import { reorderable } from './lib/actions/reorderable';
 
   let browserSites = $state<BrowserEntry[]>([]);
-  let browserTime = $state<{domain: string; totalMinutes: number}[]>([]);
+  let browserTime = $state<{domain: string; totalMinutes: number; totalSeconds?: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
   let browserHourlyRaw = $state<{hour: number; totalSeconds: number}[]>([]);
   let browserHourly = $derived.by(() => {
@@ -34,6 +34,9 @@
   });
   let timelineGrouped = $state(true);
   let showTitles = $state(false);
+  const browseTimeSeconds = $derived(browserTime
+    .filter(entry => entry.domain !== '127.0.0.1' && entry.domain !== 'test.example.com')
+    .reduce((sum, entry) => sum + (entry.totalSeconds ?? entry.totalMinutes * 60), 0));
 
   let view = $state('today');
   let historyDate = $state('');
@@ -69,7 +72,7 @@
   }
 
   function compactDuration(minutes: number): string {
-    return fmtPrecise(minutes * 60);
+    return fmtPrecise(minutes * 60, $showSeconds);
   }
 
   function applyTheme(t: string) {
@@ -109,7 +112,7 @@
   async function loadCompanionData(): Promise<void> {
     const [sites, time, audio, hours] = await Promise.allSettled([
       fetchJson<BrowserEntry[]>('/api/browser-summary'),
-      fetchJson<{domain: string; totalMinutes: number}[]>('/api/browser-time-summary'),
+      fetchJson<{domain: string; totalMinutes: number; totalSeconds?: number}[]>('/api/browser-time-summary'),
       fetchJson<AudioEntry[]>('/api/audio-summary'),
       getBrowserHourly()
     ]);
@@ -127,6 +130,7 @@
       timelineGrouped = typeof s.timelineGrouped === 'boolean' ? s.timelineGrouped : true;
       showTitles = typeof s.showTitles === 'boolean' ? s.showTitles : false;
       if (s.timeFormat === '24h' || s.timeFormat === '12h') timeFormatStore.set(s.timeFormat);
+      if (typeof s.showSeconds === 'boolean') showSeconds.set(s.showSeconds);
       if (typeof s.pollIntervalSeconds === 'number') pollInterval = s.pollIntervalSeconds;
       if (s.density === 'compact' || s.density === 'comfortable') applyDensity(s.density);
       if (typeof s.motionEnabled === 'boolean') applyMotion(s.motionEnabled);
@@ -211,7 +215,7 @@
           <section class="today-hero" use:reorderable={{ key: 'today:stats' }}>
             <StatCard
               label="Active time"
-              value={fmtPrecise($data.summary.activeSeconds)}
+              value={fmtPrecise($data.summary.activeSeconds, $showSeconds)}
               variant="hero"
               accent={true}
               icon="ti-clock-hour-4"
@@ -253,7 +257,7 @@
             />
             <StatCard
               label="Idle time"
-              value={fmtPrecise($data.summary.idleSeconds)}
+              value={fmtPrecise($data.summary.idleSeconds, $showSeconds)}
               variant="hero"
               icon="ti-coffee"
               chip={$data.summary.idleSeconds > 0
@@ -320,7 +324,7 @@
         <div class="stat-row">
           <StatCard label="Unique sites" value={browserSites.length} />
           <StatCard label="Recorded sessions" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
-          <StatCard label="Browse time" value={`${browserTime.filter(bt => bt.domain !== '127.0.0.1' && bt.domain !== 'test.example.com').reduce((a, b) => a + b.totalMinutes, 0)}m`} />
+          <StatCard label="Browse time" value={fmtPrecise(browseTimeSeconds, $showSeconds)} />
         </div>
         {#if browserSites.length === 0 && browserTime.length === 0}
           <div class="empty-view">

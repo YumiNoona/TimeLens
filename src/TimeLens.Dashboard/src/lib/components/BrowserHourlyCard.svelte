@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fmtPrecise } from '../utils';
-  import { timeFormat as timeFormatStore } from '../stores/settings';
+  import { showSeconds, timeFormat as timeFormatStore } from '../stores/settings';
 
   let { browserHourly }: { browserHourly: { hour: number; totalSeconds: number }[] } = $props();
 
@@ -24,7 +24,7 @@
         <div><div class="card-title">Website time by hour</div><span>When browsing was most active</span></div>
       </div>
       <div class="hourly-summary">
-        <span><strong>{fmtPrecise(totalSeconds)}</strong> active</span>
+        <span><strong>{fmtPrecise(totalSeconds, $showSeconds)}</strong> active</span>
         <span><strong>{hourLabel(peak.hour)}</strong> peak</span>
       </div>
     </div>
@@ -41,9 +41,9 @@
                 class:zero={entry.totalSeconds === 0}
                 class:peak={entry.totalSeconds === peak.totalSeconds && peak.totalSeconds > 0}
                 style="height:{entry.totalSeconds > 0 ? Math.max(6, entry.totalSeconds / maxSeconds * 100) : 2}%"
-                aria-label={`${hourLabel(entry.hour)}: ${fmtPrecise(entry.totalSeconds)} active`}
+                aria-label={`${hourLabel(entry.hour)}: ${fmtPrecise(entry.totalSeconds, $showSeconds)} active`}
               >
-                <span>{fmtPrecise(entry.totalSeconds)}<small>{hourLabel(entry.hour)}</small></span>
+                <span>{fmtPrecise(entry.totalSeconds, $showSeconds)}<small>{hourLabel(entry.hour)}</small></span>
               </button>
             </div>
           {/each}

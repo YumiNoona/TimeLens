@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { HeatmapEntry } from '../types';
   import { fmtPrecise } from '../utils';
-  import { heatmapDays } from '../stores/settings';
+  import { heatmapDays, showSeconds } from '../stores/settings';
 
   let {
     entries,
@@ -13,13 +13,13 @@
     onselect?: (date: string) => void;
   } = $props();
 
-  // Buckets: 0, 1-25%, 26-50%, 51-75%, 76%+
+  // A square-root scale gives low-activity days a useful visual distinction.
   function intensity(v: number, max: number): string {
     if (v === 0) return 'var(--heat-0)';
-    const pct = v / max;
-    if (pct <= 0.25) return 'var(--heat-1)';
+    const pct = Math.sqrt(v / max);
+    if (pct <= 0.28) return 'var(--heat-1)';
     if (pct <= 0.50) return 'var(--heat-2)';
-    if (pct <= 0.75) return 'var(--heat-3)';
+    if (pct <= 0.72) return 'var(--heat-3)';
     return 'var(--heat-4)';
   }
 
@@ -94,18 +94,22 @@
   }
 
   function fmtActivity(minutes: number): string {
-    return minutes <= 0 ? 'No recorded activity' : `${fmtPrecise(minutes * 60)} active`;
+    return minutes <= 0 ? 'No recorded activity' : `${fmtPrecise(minutes * 60, $showSeconds)} active`;
   }
 </script>
 
-<div class="heatmap-card" class:short-range={days <= 28}>
+<div class="heatmap-card" class:short-range={days <= 28} class:medium-range={days > 28 && days <= 91}>
   <div class="hm-header">
-    <span class="hm-title"><i class="ti ti-calendar" aria-hidden="true"></i>Activity</span>
+    <div class="hm-heading"><span class="hm-title"><i class="ti ti-calendar" aria-hidden="true"></i>Activity</span><small>Consistency over time</small></div>
     <div class="hm-ranges" aria-label="Activity range">{#each [28,91,273,365] as option}<button class:chosen={days === option} onclick={() => range = option}>{option === 28 ? '4w' : option === 91 ? '3m' : option === 273 ? '9m' : '1y'}</button>{/each}</div>
   </div>
 
-  <div class="hm-summary"><span><strong>{fmtPrecise(totalMinutes * 60)}</strong> recorded</span><span><strong>{activeDays.length}</strong> active days</span><span><strong>{fmtPrecise(activeDays.length ? totalMinutes * 60 / activeDays.length : 0)}</strong> / active day</span></div>
-  <div class="hm-overflow">
+  <div class="hm-summary">
+    <span><small>Recorded</small><strong>{fmtPrecise(totalMinutes * 60, $showSeconds)}</strong></span>
+    <span><small>Active days</small><strong>{activeDays.length}</strong></span>
+    <span><small>Daily average</small><strong>{fmtPrecise(activeDays.length ? totalMinutes * 60 / activeDays.length : 0, $showSeconds)}</strong></span>
+  </div>
+  <div class="hm-chart-surface"><div class="hm-overflow">
     <div class="hm-content">
       <div class="hm-body">
         <div class="hm-day-labels" aria-hidden="true">
@@ -152,17 +156,17 @@
       </div>
 
       <div class="hm-legend" aria-label="Activity intensity from less to more">
-        <span class="hm-leg-label">0s</span>
+        <span class="hm-leg-label">Less</span>
         <div class="hm-cell" style="background:var(--heat-0)"></div>
         <div class="hm-cell" style="background:var(--heat-1)"></div>
         <div class="hm-cell" style="background:var(--heat-2)"></div>
         <div class="hm-cell" style="background:var(--heat-3)"></div>
         <div class="hm-cell" style="background:var(--heat-4)"></div>
-        <span class="hm-leg-label">{fmtPrecise((peak?.value ?? 0) * 60)}</span>
+        <span class="hm-leg-label">More</span>
       </div>
     </div>
-  </div>
-  <div class="hm-detail" aria-live="polite"><span>{#if detail}<strong>{fmtDate(detail.date)}</strong> · {fmtActivity(detail.value)}{/if}</span><span>{rangeLabel}{#if peak?.value} · Best day {fmtDate(peak.date)}{/if}</span></div>
+  </div></div>
+  <div class="hm-detail" aria-live="polite"><span>{#if detail}<strong>{fmtDate(detail.date)}</strong> · {fmtActivity(detail.value)}{/if}</span><span>{rangeLabel}{#if peak?.value} · Peak {fmtPrecise(peak.value * 60, $showSeconds)} on {fmtDate(peak.date)}{/if}</span></div>
 </div>
 
 <style>
@@ -175,9 +179,9 @@
   }
 
   .heatmap-card {
-    --hm-cell: clamp(13px, 1.5vw, 19px);
+    --hm-cell: clamp(14px, 1.55vw, 19px);
     width: 100%;
-    min-height: 240px;
+    min-height: 300px;
     max-width: 100%;
     box-sizing: border-box;
     display: flex;
@@ -185,16 +189,20 @@
     background: var(--md-surface-1);
     border-radius: var(--shape-lg);
     border: 1px solid var(--md-outline);
-    padding: 16px 20px 14px;
+    padding: 18px 20px 15px;
     overflow: hidden;
   }
 
-  .hm-ranges { display:flex; gap:4px; }
-  .hm-ranges button { border:0; background:transparent; color:var(--md-on-surf-var); padding:6px 9px; border-radius:6px; cursor:pointer; }
-  .hm-ranges button.chosen { background:var(--clr-bg-ter); color:var(--md-primary); }
-  .hm-summary { display:flex; flex-wrap:wrap; gap:10px 24px; font-size:11px; color:var(--md-on-surf-var); margin-bottom:18px; }
-  .hm-summary strong { color:var(--md-on-surf); font-variant-numeric:tabular-nums; }
-  .hm-detail { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:14px; font-size:11px; color:var(--md-on-surf-var); }
+  .medium-range { --hm-cell: clamp(17px, 2vw, 23px); }
+  .hm-ranges { display:flex; gap:3px; padding:3px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:9px; }
+  .hm-ranges button { border:0; background:transparent; color:var(--md-on-surf-var); padding:5px 8px; border-radius:6px; cursor:pointer; font-size:11px; }
+  .hm-ranges button.chosen { background:var(--clr-bg-ter); color:var(--md-primary); box-shadow:0 1px 2px color-mix(in srgb, #000 25%, transparent); }
+  .hm-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:14px; }
+  .hm-summary span { display:flex; flex-direction:column; gap:4px; padding:9px 10px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:9px; }
+  .hm-summary small { color:var(--md-on-surf-var); font-size:9px; text-transform:uppercase; letter-spacing:.07em; }
+  .hm-summary strong { color:var(--md-on-surf); font:600 13px var(--font-mono); font-variant-numeric:tabular-nums; }
+  .hm-detail { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:12px; font-size:10px; color:var(--md-on-surf-var); }
+  .hm-detail strong { color:var(--md-on-surf); }
   button:focus-visible { outline:2px solid var(--md-primary); outline-offset:3px; }
   .hm-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px; color:var(--md-on-surf-var); font-size:10px; text-align:center; }
   .short-range .hm-content, .short-range .hm-scroll { width:100%; }
@@ -208,21 +216,23 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 14px;
+    margin-bottom: 13px;
   }
+  .hm-heading { display:flex; flex-direction:column; gap:2px; }
   .hm-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--md-on-surf); }
+  .hm-heading small { color:var(--md-on-surf-var); font-size:10px; }
   .hm-header i { color: var(--md-on-surf-var); font-size: 15px; }
 
+  .hm-chart-surface { flex:1; min-height:0; display:flex; background:color-mix(in srgb, var(--clr-bg-sec) 58%, transparent); border:1px solid var(--clr-border); border-radius:11px; }
   .hm-overflow {
     flex: 1;
     display: flex;
     align-items: center;
     overflow-x: auto;
-    padding: 2px 8px 2px 2px;
-    margin-inline: -2px;
+    padding: 12px 14px;
     scrollbar-gutter: stable;
   }
-  .hm-content { width: max-content; margin: 0 auto; padding-right: 4px; }
+  .hm-content { width: max-content; margin: auto; padding-right: 4px; }
 
   .hm-body {
     display: flex;
@@ -232,7 +242,7 @@
   .hm-day-labels {
     display: grid;
     grid-template-rows: repeat(7, var(--hm-cell));
-    gap: 3px;
+    gap: 4px;
     padding-top: 17px;
     width: 24px;
     flex-shrink: 0;
@@ -249,7 +259,7 @@
   .hm-month-row {
     display: grid;
     grid-auto-columns: var(--hm-cell);
-    gap: 3px;
+    gap: 4px;
     margin-bottom: 4px;
     height: 13px;
   }
@@ -271,7 +281,7 @@
   }
 
   .hm-cell {
-    border-radius: 2px;
+    border-radius: 4px;
     width: var(--hm-cell);
     height: var(--hm-cell);
   }
@@ -294,7 +304,7 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    margin-top: 12px;
+    margin-top: 10px;
     padding-right: 2px;
     justify-content: flex-end;
   }
@@ -305,5 +315,15 @@
   .hm-legend .hm-cell {
     width: 10px;
     height: 10px;
+  }
+  @media (max-width: 560px) {
+    .heatmap-card { padding:14px 12px 12px; min-height:0; }
+    .hm-summary { grid-template-columns:1fr; gap:5px; }
+    .hm-summary span { flex-direction:row; justify-content:space-between; align-items:center; padding:7px 9px; }
+    .hm-header { align-items:flex-start; }
+    .hm-ranges button { padding:5px 6px; }
+    .hm-chart-surface { min-height:190px; }
+    .hm-overflow { padding:10px; }
+    .hm-detail { line-height:1.45; }
   }
 </style>

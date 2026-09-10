@@ -322,7 +322,8 @@ try
     port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
     listener.Stop();
     using var stopSecureApi = new CancellationTokenSource();
-    var secureHost = TimeLens.Api.ApiHost.StartAsync(browserPath, stopSecureApi.Token, port: port);
+    var secureHost = TimeLens.Api.ApiHost.StartAsync(browserPath, stopSecureApi.Token,
+        saveSetting: (key, value) => new SettingsService(browserPath).Save(key, value), port: port);
     using var anonymous = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}"), Timeout = TimeSpan.FromSeconds(5) };
     using var dashboardHandler = new HttpClientHandler { CookieContainer = new System.Net.CookieContainer() };
     using var dashboard = new HttpClient(dashboardHandler) { BaseAddress = anonymous.BaseAddress, Timeout = TimeSpan.FromSeconds(5) };
@@ -351,6 +352,11 @@ try
                 "All settings must be validated before any value in a batch is persisted");
         Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='show_titles'") == 0,
             "A later invalid setting must not partially persist an earlier setting");
+        using (var secondsPreference = new StringContent("{\"showSeconds\":true}", System.Text.Encoding.UTF8, "application/json"))
+            (await dashboard.PostAsync("/api/settings", secondsPreference)).EnsureSuccessStatusCode();
+        Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='show_seconds' AND value='true'") == 1 &&
+              TimeLens.Api.LiveStatusStore.Settings.ShowSeconds,
+            "Duration precision preference was not saved and applied live");
         using var codeResponse = await dashboard.PostAsync("/api/pair/code", null);
         codeResponse.EnsureSuccessStatusCode();
         using var codeDoc = System.Text.Json.JsonDocument.Parse(await codeResponse.Content.ReadAsStringAsync());

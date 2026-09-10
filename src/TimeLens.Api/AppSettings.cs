@@ -76,6 +76,9 @@ public record AppSettings
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; init; } = "12h";
 
+    [JsonPropertyName("showSeconds")]
+    public bool ShowSeconds { get; init; } = false;
+
     [JsonPropertyName("pollIntervalSeconds")]
     public int PollIntervalSeconds { get; init; } = 30;
 

@@ -1,11 +1,14 @@
 import type { TimelineBlock } from './types';
 
-export function fmtDuration(secs: number): string {
-  if (secs < 60) return Math.max(0, Math.round(secs)) + 's';
-  const m = Math.floor(secs / 60);
-  if (m < 60) return m + 'm';
-  const h = Math.floor(m / 60);
-  return h + 'h ' + (m % 60) + 'm';
+export function fmtDuration(secs: number, includeSeconds = false): string {
+  const total = Math.max(0, Math.round(Number.isFinite(secs) ? secs : 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor(total % 3600 / 60);
+  const s = total % 60;
+  if (includeSeconds) return `${h ? h + 'h ' : ''}${h || m ? m + 'm ' : ''}${s}s`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m`;
+  return total > 0 ? '<1m' : '0m';
 }
 
 /**
@@ -39,8 +42,8 @@ export function normalizeTimeline(blocks: TimelineBlock[], minimumSeconds = 0): 
   return merged.filter(block => block.durationSeconds >= minimumSeconds);
 }
 
-export function fmtTime(mins: number): string {
-  return fmtDuration(mins * 60);
+export function fmtTime(mins: number, includeSeconds = false): string {
+  return fmtDuration(mins * 60, includeSeconds);
 }
 
 export function fmtHourShort(h: number, fmt?: '12h' | '24h'): string {
@@ -63,8 +66,4 @@ export function fmtHourFull(n: number, fmt?: '12h' | '24h'): string {
   return `${h - 12}:${mm}pm`;
 }
 
-export function fmtPrecise(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
-  return `${h ? h + 'h ' : ''}${h || m ? m + 'm ' : ''}${s}s`;
-}
+export const fmtPrecise = fmtDuration;

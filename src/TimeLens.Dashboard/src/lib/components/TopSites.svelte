@@ -3,6 +3,7 @@
   import { colorForApp } from '../colors';
   import { fmtPrecise } from '../utils';
   import { appIcon } from '../appIcons';
+  import { showSeconds } from '../stores/settings';
 
   let { sites, emptyLabel = 'No browsing activity today.' }: { sites: BrowserEntry[]; emptyLabel?: string } = $props();
 
@@ -34,7 +35,7 @@
           <div class="site-bar-track">
             <div class="site-bar-fill" style="width: {Math.round((site.totalSeconds || 0) / maxSeconds * 100)}%"></div>
           </div>
-          <span class="site-count" title="Foreground website time; sessions are recorded visits, not minutes"><strong>{fmtPrecise(site.totalSeconds || 0)}</strong><small>{site.visits} sessions</small></span>
+          <span class="site-count" title="Foreground website time; sessions are recorded visits, not minutes"><strong>{fmtPrecise(site.totalSeconds || 0, $showSeconds)}</strong><small>{site.visits} sessions</small></span>
         </div>
       {/each}
     </div>

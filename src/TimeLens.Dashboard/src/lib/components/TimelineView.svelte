@@ -4,7 +4,7 @@
   import type { DashboardData, TimelineBlock } from '../types';
   import { colorForCategory } from '../colors';
   import { fmtHourFull, fmtPrecise, normalizeTimeline } from '../utils';
-  import { timeFormat } from '../stores/settings';
+  import { showSeconds, timeFormat } from '../stores/settings';
 
   let { data, timelineGrouped = true, showTitles = false }: { data: DashboardData; timelineGrouped?: boolean; showTitles?: boolean } = $props();
 
@@ -137,7 +137,7 @@
 </script>
 
 <div class="tlv">
-  <div class="tl-search-row"><input aria-label="Search timeline" placeholder="Search apps, window titles or projects…" bind:value={search} /><span>{filtered.length} segment{filtered.length === 1 ? '' : 's'} · {fmtPrecise(filtered.reduce((sum,b) => sum+b.durationSeconds,0))} recorded</span></div>
+  <div class="tl-search-row"><input aria-label="Search timeline" placeholder="Search apps, window titles or projects…" bind:value={search} /><span>{filtered.length} segment{filtered.length === 1 ? '' : 's'} · {fmtPrecise(filtered.reduce((sum,b) => sum+b.durationSeconds,0), $showSeconds)} recorded</span></div>
   <p class="tl-explanation">Bar length represents recorded duration. Grouped time ranges show first and last observation, including gaps.</p>
   <div class="tl-controls">
     <div class="filter-row">
@@ -196,7 +196,7 @@
             <div class="tl-bar-bg" aria-hidden="true">
               <div class="tl-bar" style="width: {(n.durationSeconds / maxDuration) * 100}%; background: {colorForCategory(n.type)}"></div>
             </div>
-            <span class="tl-dur">{fmtPrecise(n.durationSeconds)}</span>
+            <span class="tl-dur">{fmtPrecise(n.durationSeconds, $showSeconds)}</span>
           </button>
           {#if open}
             <div class="tl-children" style="border-color: {colorForCategory(n.type)}">
@@ -221,7 +221,7 @@
           <div class="tl-bar-bg" aria-hidden="true">
             <div class="tl-bar" style="width: {(block.durationSeconds / maxDuration) * 100}%; background: {colorForCategory(block.type)}"></div>
           </div>
-          <span class="tl-dur">{fmtPrecise(block.durationSeconds)}</span>
+          <span class="tl-dur">{fmtPrecise(block.durationSeconds, $showSeconds)}</span>
         </div>
       {/each}
     {/if}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fmtPrecise } from '../utils';
+  import { showSeconds } from '../stores/settings';
   let { browserTime }: { browserTime: { domain: string; totalMinutes: number; totalSeconds?: number }[] } = $props();
 
   const filtered = $derived(
@@ -25,7 +26,7 @@
       {#each filtered as bt}
         <div class="bt-row">
           <span class="bt-domain"><strong>{bt.domain.replace(/^www\./, '')}</strong><small>{activityKind(bt.domain)}</small></span>
-          <span class="bt-time">{fmtPrecise(bt.totalSeconds ?? bt.totalMinutes * 60)}</span>
+          <span class="bt-time">{fmtPrecise(bt.totalSeconds ?? bt.totalMinutes * 60, $showSeconds)}</span>
         </div>
       {/each}
     </div>

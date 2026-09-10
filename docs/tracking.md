@@ -73,9 +73,9 @@ an exit record; durable activity checkpoints remain the recovery boundary.
 
 ## Browser intervals in 7.0
 
-A single visible Firefox tab is checkpointed alongside desktop foreground state. Switching
+A single visible browser tab is checkpointed alongside desktop foreground state. Switching
 away or entering idle ends that interval. Five-second extension samples are backed
-by a 30-second Firefox alarm; after 65 seconds without an extension
+by a 30-second browser alarm; after 65 seconds without an extension
 observation the cached tab is discarded. Desktop sampling gaps over 30 seconds are
 never bridged. A crashed extension can therefore leave up to 65 seconds of uncertain
 website attribution while its browser remains foreground. Normal desktop crash loss
@@ -104,7 +104,7 @@ Additional reference implementations consulted (design inspiration; no source co
 
 On a Windows desktop, compare a stopwatch with app switches, two same-app windows,
 reading past the idle threshold, selected video playback, locking/unlocking and sleep.
-Load the Firefox ZIP temporarily, pair it from the Privacy center, switch tabs/windows,
+Load the Firefox ZIP temporarily or Chrome ZIP unpacked, pair it from the Privacy center, switch tabs/windows,
 navigate a single-page application, open an internal page and restart Firefox. Confirm site time stops when
 switching to an editor and resumes on browser focus. Repeat across local midnight.
 Test packaged Windows apps and any elevated apps used in your workflow; Windows access
@@ -139,3 +139,5 @@ Additional design references (no source copied):
 ## Precision refinements in 7.0.1
 
 Native input is bucketed by executable, PID and UTC capture second. A delayed five-second flush retains that timestamp, including across local midnight and retries. Heatmap values retain fractional minutes instead of dropping sub-minute activity. Timeline bar lengths use recorded duration, while grouped first/last timestamps describe an observation envelope, not continuous attendance. Browser extensions remain at 7.0.0.
+
+Desktop 5.0.0 and companion 7.1.0 continue the current release numbering. Chrome and Firefox use identical tracking code and independently paired profile tokens; revocation removes all paired profiles.

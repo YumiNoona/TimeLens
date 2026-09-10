@@ -22,11 +22,12 @@ let imageDataCache = { url: '', data: '' };
 const notifiedTabs = new Set();
 
 function checkedFetch(url, options) {
+  if (new URL(url, ROOT).origin !== ROOT) return Promise.reject(new Error('Non-local endpoint'));
   if (!pairToken) return Promise.reject(new Error('TimeLens is not paired'));
   const request = options || {};
   const headers = Object.assign({}, request.headers || {});
   if (pairToken) headers['X-TimeLens-Extension'] = pairToken;
-  return fetch(url, { ...request, headers: headers, signal: AbortSignal.timeout(3000) }).then(function(response) {
+  return fetch(url, { ...request, headers: headers, redirect: 'error', signal: AbortSignal.timeout(3000) }).then(function(response) {
     if (response.status === 401) {
       pairToken = '';
       api.storage.local.remove('timelens_pair_token');

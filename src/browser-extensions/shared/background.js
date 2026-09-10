@@ -19,13 +19,19 @@ let trackingEnabled = true;
 let blockingEnabled = false;
 let pairToken = '';
 let imageDataCache = { url: '', data: '' };
+const notifiedTabs = new Set();
 
 function checkedFetch(url, options) {
+  if (new URL(url, ROOT).origin !== ROOT) return Promise.reject(new Error('Non-local endpoint'));
   if (!pairToken) return Promise.reject(new Error('TimeLens is not paired'));
   const request = options || {};
   const headers = Object.assign({}, request.headers || {});
   if (pairToken) headers['X-TimeLens-Extension'] = pairToken;
-  return fetch(url, { ...request, headers: headers, signal: AbortSignal.timeout(3000) }).then(function(response) {
+  return fetch(url, { ...request, headers: headers, redirect: 'error', signal: AbortSignal.timeout(3000) }).then(function(response) {
+    if (response.status === 401) {
+      pairToken = '';
+      api.storage.local.remove('timelens_pair_token');
+    }
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return response;
   });
@@ -246,12 +252,15 @@ function executeInTab(tabId, fn, args) {
 
 function applyBlockResponse(tabId, originalUrl, response) {
   if (!response || response.action === 'none') {
+    if (!notifiedTabs.delete(tabId)) return Promise.resolve();
     return executeInTab(tabId, clearNotifyToast, []);
   }
   if (response.action === 'notify') {
+    notifiedTabs.add(tabId);
     return executeInTab(tabId, mountNotifyToast, [response.presentation || {}, response.presentation && response.presentation.target || '']);
   }
   if (response.action === 'strict' && originalUrl && originalUrl.indexOf(BLOCKED_PAGE) !== 0) {
+    notifiedTabs.delete(tabId);
     const target = response.presentation && response.presentation.target || '';
     return api.tabs.update(tabId, { url: BLOCKED_PAGE + '?target=' + encodeURIComponent(target) + '&url=' + encodeURIComponent(originalUrl) });
   }
@@ -364,7 +373,7 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
   if (tab.active && (changeInfo.url || changeInfo.title || changeInfo.status === 'complete' || changeInfo.audible !== undefined))
     sampleFocusedTab();
 });
-api.tabs.onRemoved.addListener(sampleFocusedTab);
+api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
 function initialize() {
   return api.storage.local.get('timelens_pair_token').then(function(saved) {

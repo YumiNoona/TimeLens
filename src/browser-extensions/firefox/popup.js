@@ -1,4 +1,4 @@
-const runtime = browser.runtime;
+const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
 const status = document.getElementById('status');
 const pair = document.getElementById('pair');
 document.getElementById('version').textContent = 'v' + runtime.getManifest().version;

@@ -228,14 +228,15 @@ public static class ApiHost
             var origin = ctx.Request.Headers.Origin.ToString();
             var localOrigin = $"http://127.0.0.1:{port}";
             var localHostOrigin = $"http://localhost:{port}";
-            var isFirefoxOrigin = origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase);
-            if (!string.IsNullOrEmpty(origin) && origin != localOrigin && origin != localHostOrigin && !isFirefoxOrigin)
+            var isExtensionOrigin = origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase) ||
+                origin.StartsWith("chrome-extension://", StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(origin) && origin != localOrigin && origin != localHostOrigin && !isExtensionOrigin)
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
 
-            if (isFirefoxOrigin)
+            if (isExtensionOrigin)
             {
                 ctx.Response.Headers.AccessControlAllowOrigin = origin;
                 ctx.Response.Headers.Vary = "Origin";
@@ -245,7 +246,7 @@ public static class ApiHost
 
             if (HttpMethods.IsOptions(ctx.Request.Method))
             {
-                if (!isFirefoxOrigin)
+                if (!isExtensionOrigin)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
@@ -272,7 +273,7 @@ public static class ApiHost
 
             if (path.Equals("/api/pair/exchange", StringComparison.OrdinalIgnoreCase))
             {
-                if (!isFirefoxOrigin)
+                if (!isExtensionOrigin)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;

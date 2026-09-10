@@ -47,6 +47,9 @@ jobs:
         shell: pwsh
         run: |
           $scripts = @(
+            "src\browser-extensions\chrome\background.js",
+            "src\browser-extensions\chrome\popup.js",
+            "src\browser-extensions\chrome\blocked.js",
             "src\browser-extensions\firefox\background.js",
             "src\browser-extensions\firefox\content.js",
             "src\browser-extensions\firefox\popup.js",
@@ -89,6 +92,8 @@ jobs:
               throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
             }
           }
+          $chromeExtension = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
+          if ($chromeExtension.version -ne '7.1.0' -or $firefoxExtension.version -ne $chromeExtension.version) { throw "Companion version mismatch" }
           Write-Host "Firefox extension: $($firefoxExtension.version) (versioned independently)"
           Write-Host "Desktop release: $expected"
 
@@ -113,6 +118,7 @@ jobs:
       - name: Package browser extensions
         shell: pwsh
         run: |
+          Compress-Archive -Path "src\browser-extensions\chrome\*" -DestinationPath "TimeLens-Chrome-Extension.zip"
           Compress-Archive -Path "src\browser-extensions\firefox\*" -DestinationPath "TimeLens-Firefox-Extension.zip"
 
       - name: Install Inno Setup
@@ -144,6 +150,7 @@ jobs:
           $assets = @(
             "TimeLens.exe",
             "TimeLens-Setup.exe",
+            "TimeLens-Chrome-Extension.zip",
             "TimeLens-Firefox-Extension.zip"
           )
           $checksums = foreach ($asset in $assets) {
@@ -157,6 +164,7 @@ jobs:
           files: |
             TimeLens.exe
             TimeLens-Setup.exe
+            TimeLens-Chrome-Extension.zip
             TimeLens-Firefox-Extension.zip
             SHA256SUMS.txt
           name: TimeLens ${{ env.VERSION }} — Keep your time in focus

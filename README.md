@@ -15,7 +15,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 7.3.0
+## Version 5.0.0
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -81,13 +81,13 @@ TimeLens/
 │   ├── TimeLens.Api/            # local Kestrel API and updater
 │   ├── TimeLens.Dashboard/      # embedded Svelte dashboard
 │   ├── TimeLens.TrayApp/        # Win32 tray host, watchers, and services
-│   └── browser-extensions/      # Firefox companion (legacy Chrome sources remain for reference)
+│   └── browser-extensions/      # Chrome and Firefox companions
 ├── scripts/                     # local publish/install helpers
 ├── .github/workflows/release.yml
 └── vercel.json                  # builds only web/ and exposes api/
 ```
 
-The release includes the Firefox extension package alongside the desktop binaries. The Firefox Add-ons listing remains the recommended signed installation; release packages are useful for review and developer installation.
+The release includes Chrome and Firefox extension packages alongside the desktop binaries. The Firefox Add-ons listing remains the recommended signed installation; release packages are useful for review and developer installation.
 
 ## Website and Vercel
 
@@ -115,10 +115,11 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 
 - `TimeLens.exe`
 - `TimeLens-Setup.exe`
+- `TimeLens-Chrome-Extension.zip`
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The desktop, dashboard, installer, and Firefox companion are released as `v7.3.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
+The desktop, dashboard and installer are released as `v5.0.0`; both browser companions are `7.1.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -157,6 +158,6 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
 
-Firefox is the supported browser companion. Legacy Chrome sources are not packaged or release-tested.
+Chrome and Firefox are supported, packaged and release-tested. Pair each through the Privacy center; multiple browser profiles can remain paired. Revoke removes all paired access.
 
-TimeLens 7.3.0 refines the dashboard with a cleaner activity heatmap, readable category breakdowns, and a duration-precision preference. See [7.3.0 release notes](docs/releases/7.3.0.md).
+TimeLens 5.0.0 refines the dashboard with a cleaner activity heatmap, readable category breakdowns, and a duration-precision preference. See [5.0.0 release notes](docs/releases/5.0.0.md).

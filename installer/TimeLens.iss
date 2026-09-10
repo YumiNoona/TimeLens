@@ -1,5 +1,5 @@
 #ifndef AppVersion
-#define AppVersion "7.3.0"
+#define AppVersion "5.0.0"
 #endif
 
 #define AppName "TimeLens"

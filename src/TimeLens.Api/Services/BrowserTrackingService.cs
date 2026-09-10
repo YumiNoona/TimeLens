@@ -34,9 +34,9 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             var now = _clock.GetUtcNow().UtcDateTime;
             // Delayed requests must never be replayed as current activity.
             if (evt.ObservedAt is { } observed && Math.Abs((now - observed.UtcDateTime).TotalSeconds) > 10) return;
-            if (evt.TabId <= 0 || evt.Url.Length > 16384 || (evt.Title?.Length ?? 0) > 4096 ||
+            if (evt.TabId <= 0 || (evt.Url?.Length ?? 0) > 16384 || (evt.Title?.Length ?? 0) > 4096 ||
                 !Uri.TryCreate(evt.Url, UriKind.Absolute, out var uri) ||
-                uri.Scheme is not ("http" or "https") || evt.Browser != "firefox" || !Eligible(evt.Browser)) return;
+                uri.Scheme is not ("http" or "https") || evt.Browser is not ("firefox" or "chrome" or "edge" or "opera") || !Eligible(evt.Browser)) return;
             evt = evt with
             {
                 Domain = uri.Host.ToLowerInvariant(),
@@ -117,7 +117,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             input.ObservedAt > now.AddSeconds(5) || input.ObservedAt < now.AddMinutes(-2) ||
             !Uri.TryCreate(input.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             input.Url.Length > 16384 || input.Title is null || input.Title.Length > 4096 ||
-            input.Browser != "firefox") return false;
+            input.Browser is not ("firefox" or "chrome" or "edge" or "opera")) return false;
         lock (_gate)
         {
             using var conn = Open();

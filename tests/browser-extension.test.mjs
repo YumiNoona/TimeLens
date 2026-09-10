@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../src/browser-extensions/firefox/background.js', import.meta.url), 'utf8');
 
-for (const family of ['firefox']) test(`${family}: focus, navigation, private tabs, recovery`, async () => {
+for (const family of ['firefox', 'chrome']) test(`${family}: focus, navigation, private tabs, recovery`, async () => {
   const calls = [];
   const event = () => ({ addListener(fn) { this.listener = fn; } });
   let focused = true;
@@ -13,7 +13,7 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   let blockAction = 'none';
   const injections = [], redirects = [];
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.2.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '7.1.0' }), getURL: p => `extension://${p}`,
       onMessage: event(), onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -32,6 +32,7 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(setImmediate); };
   const observations = () => calls.filter(x => x.url.endsWith('/api/browser-event'));
   await settle();
+  await assert.rejects(sandbox.checkedFetch('https://example.net/private'), /Non-local/);
   assert.equal(observations().at(-1).body.tabId, 1);
   assert.ok(observations().at(-1).body.observedAt);
   assert.equal(observations().at(-1).headers['X-TimeLens-Extension'], 'test-token');
@@ -55,15 +56,19 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   assert.ok(redirects.some(url => url.startsWith('extension://blocked.html?')), 'Strict must redirect to the blocked page');
 });
 
-test('Firefox package contains the canonical scripts and resources', () => {
-  for (const family of ['firefox']) {
+test('Both browser packages contain the canonical scripts and resources', () => {
+  for (const family of ['firefox', 'chrome']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.3.0');
+    assert.equal(manifest.version, '7.1.0');
+    assert.equal(readFileSync(new URL('background.js', root), 'utf8'), source);
+    for (const file of ['popup.js','blocked.js']) assert.equal(readFileSync(new URL(file, root), 'utf8'), readFileSync(new URL(`../src/browser-extensions/firefox/${file}`, import.meta.url), 'utf8'));
+    if (family === 'firefox') {
     assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
     assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
     assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
       ['browsingActivity', 'websiteActivity']);
+    }
     assert.equal(readFileSync(new URL('content.js', root), 'utf8'), readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8'));
     assert.deepEqual(manifest.content_scripts[0].matches, ['http://*/*', 'https://*/*']);
     for (const file of ['popup.html', 'popup.js', 'blocked.html', 'blocked.js']) assert.ok(readFileSync(new URL(file, root), 'utf8').length);

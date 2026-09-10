@@ -6,7 +6,7 @@ namespace TimeLens.Api;
 
 /// <summary>
 /// Keeps the dashboard session in memory and persists only a hash of the paired
-/// Firefox token. The token grants access solely to the extension endpoints;
+/// browser tokens. Each token grants access solely to the extension endpoints;
 /// it is never an administrator credential.
 /// </summary>
 public sealed class LocalApiSecurity
@@ -50,7 +50,7 @@ public sealed class LocalApiSecurity
         if (string.IsNullOrWhiteSpace(presented)) return false;
         var expectedHash = Volatile.Read(ref _extensionTokenHash);
         return !string.IsNullOrWhiteSpace(expectedHash) &&
-               FixedEquals(Hash(presented), expectedHash);
+               expectedHash.Split(';', StringSplitOptions.RemoveEmptyEntries).Any(hash => FixedEquals(Hash(presented), hash));
     }
 
     public string CreatePairCode()
@@ -82,19 +82,28 @@ public sealed class LocalApiSecurity
             _pairCodeHash = null;
             _pairCodeExpiresUtc = DateTime.MinValue;
             _pairFailures = 0;
+            var token = Token();
+            var tokenHash = Hash(token);
+            // Preserve existing profiles when pairing another browser. The legacy
+            // single hash remains readable; retain at most 16 paired profiles.
+            var hashes = (_extensionTokenHash ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .TakeLast(15).Append(tokenHash);
+            var stored = string.Join(";", hashes);
+            WriteSetting("firefox_pair_token_hash", stored);
+            Volatile.Write(ref _extensionTokenHash, stored);
+            return token;
         }
-
-        var token = Token();
-        var tokenHash = Hash(token);
-        WriteSetting("firefox_pair_token_hash", tokenHash);
-        Volatile.Write(ref _extensionTokenHash, tokenHash);
-        return token;
     }
 
     public void RevokeExtension()
     {
-        DeleteSetting("firefox_pair_token_hash");
-        Volatile.Write(ref _extensionTokenHash, null);
+        lock (_pairGate)
+        {
+            _pairCodeHash = null;
+            _pairCodeExpiresUtc = DateTime.MinValue;
+            DeleteSetting("firefox_pair_token_hash");
+            Volatile.Write(ref _extensionTokenHash, null);
+        }
     }
 
     private string? ReadSetting(string key)

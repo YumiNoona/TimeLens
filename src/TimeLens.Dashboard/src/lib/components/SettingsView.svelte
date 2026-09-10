@@ -195,19 +195,19 @@
       if (!response.ok) throw new Error();
       const result = await response.json();
       pairCode = result.code;
-      pairMessage = 'Enter this code in Firefox within two minutes.';
+      pairMessage = 'Enter this code in Chrome or Firefox within two minutes.';
     } catch { pairMessage = 'Could not create a pairing code.'; }
     finally { privacyBusy = false; }
   }
 
-  async function revokeFirefox() {
+  async function revokeBrowsers() {
     privacyBusy = true;
     try {
       const response = await fetch('/api/pair/revoke', { method: 'POST' });
       if (!response.ok) throw new Error();
       pairCode = '';
-      pairMessage = 'Firefox access revoked. Pair again to resume browser tracking.';
-    } catch { pairMessage = 'Could not revoke Firefox access.'; }
+      pairMessage = 'All paired browser access revoked. Pair again to resume browser tracking.';
+    } catch { pairMessage = 'Could not revoke browser extension access.'; }
     finally { privacyBusy = false; }
   }
 
@@ -469,7 +469,7 @@
   <section class="card card-wide privacy-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-shield-lock" aria-hidden="true"></i></span>
-      <div><h2>Privacy center</h2><p>Control collection, Firefox access, and deletion.</p></div>
+      <div><h2>Privacy center</h2><p>Control collection, browser extension access, and deletion.</p></div>
     </div>
     <div class="settings-columns">
       <div class="setting-row">
@@ -483,11 +483,11 @@
         <input type="checkbox" class="toggle" checked={browserStoreTitles} onchange={(e) => setToggle('browserStoreTitles', e, value => browserStoreTitles = value)} />
       </label>
       <div class="setting-row pair-row">
-        <div class="setting-info"><span class="setting-label">Firefox pairing</span><span class="setting-desc">A short-lived code grants this local Firefox extension access</span></div>
+        <div class="setting-info"><span class="setting-label">Browser pairing</span><span class="setting-desc">A short-lived code grants a local Chrome or Firefox extension extension access</span></div>
         <div class="button-group">
           {#if pairCode}<code class="pair-code">{pairCode}</code>{/if}
           <button class="secondary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>New code</button>
-          <button class="secondary-btn" type="button" onclick={revokeFirefox} disabled={privacyBusy}>Revoke</button>
+          <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Revoke</button>
         </div>
       </div>
       <div class="setting-row delete-row">

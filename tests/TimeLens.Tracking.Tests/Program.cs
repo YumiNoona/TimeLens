@@ -269,6 +269,17 @@ try
         TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { BrowserUrlMode = "full", BrowserStoreTitles = true };
     }
     Console.WriteLine("PASS: corroborated website time, legacy overlap repair at query time, idle union, input deduplication and missing-data semantics.");
+    var chromePath = Path.Combine(root, "chrome.db");
+    DatabaseInitializer.Initialize(chromePath);
+    clock.Now = start;
+    TimeLens.Api.LiveStatusStore.CurrentApp = "chrome.exe";
+    var chromeTracker = new BrowserTrackingService(chromePath, clock);
+    chromeTracker.Observe(new TimeLens.Api.Dtos.BrowserEventDto("example.com", "https://example.com/", "Chrome", "chrome", false, 1));
+    clock.Now = start.AddSeconds(3);
+    chromeTracker.Tick();
+    Check(Scalar(chromePath, "SELECT count(*) FROM browser_events") == 1, "Chrome observations must be accepted after pairing support is restored");
+    Check(chromeTracker.RecordInput(new TimeLens.Api.Dtos.BrowserInputDto(Guid.NewGuid().ToString(), "https://example.com/", "Chrome", "chrome", new DateTimeOffset(clock.Now), 2, 1)), "Chrome input must be accepted");
+    TimeLens.Api.LiveStatusStore.CurrentApp = "firefox.exe";
     // Run real HTTP routes on a free loopback port, without touching an installed tracker.
     var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
     listener.Start();
@@ -389,6 +400,26 @@ try
         var storedToken = securityCmd.ExecuteScalar()?.ToString();
         Check(storedToken?.Length == 64 && storedToken != token,
             "The Firefox bearer token must never be stored in plaintext");
+        using var nextCodeResponse = await dashboard.PostAsync("/api/pair/code", null);
+        using var nextCodeDoc = System.Text.Json.JsonDocument.Parse(await nextCodeResponse.Content.ReadAsStringAsync());
+        using var chromeExchange = new HttpRequestMessage(HttpMethod.Post, "/api/pair/exchange") {
+            Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(new { code = nextCodeDoc.RootElement.GetProperty("code").GetString() }), System.Text.Encoding.UTF8, "application/json") };
+        chromeExchange.Headers.Add("Origin", "chrome-extension://test-profile");
+        using var chromeResponse = await anonymous.SendAsync(chromeExchange);
+        chromeResponse.EnsureSuccessStatusCode();
+        using var chromeDoc = System.Text.Json.JsonDocument.Parse(await chromeResponse.Content.ReadAsStringAsync());
+        foreach (var pairedToken in new[] { token, chromeDoc.RootElement.GetProperty("token").GetString() })
+        {
+            using var pairedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/extension/settings");
+            pairedRequest.Headers.Add("X-TimeLens-Extension", pairedToken);
+            (await anonymous.SendAsync(pairedRequest)).EnsureSuccessStatusCode();
+        }
+        using var revoke = await dashboard.PostAsync("/api/pair/revoke", null);
+        revoke.EnsureSuccessStatusCode();
+        using var revokedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/extension/settings");
+        revokedRequest.Headers.Add("X-TimeLens-Extension", token);
+        Check((await anonymous.SendAsync(revokedRequest)).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Revocation must invalidate paired browser tokens");
+
     }
     finally { stopSecureApi.Cancel(); await secureHost; }
     Console.WriteLine("PASS: localhost API session isolation and one-time Firefox pairing.");

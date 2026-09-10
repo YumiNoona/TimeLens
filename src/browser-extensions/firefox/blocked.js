@@ -1,4 +1,4 @@
-const runtime = browser.runtime;
+const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
 const params = new URLSearchParams(location.search);
 const target = params.get('target') || '';
 const original = params.get('url') || '';

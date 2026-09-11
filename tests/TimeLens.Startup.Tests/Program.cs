@@ -213,7 +213,11 @@ internal static class Program
     {
         using var tray = new NativeTrayIcon();
         var opened = 0;
+        var managed = 0;
+        var exitRequested = 0;
         tray.OpenDashboardRequested += () => opened++;
+        tray.ManageBlocksRequested += () => managed++;
+        tray.ExitRequested += () => exitRequested++;
         tray.StartupRequested += () =>
         {
             var hwnd = FindWindowW("TimeLensHiddenWindow", "TimeLens");
@@ -223,6 +227,10 @@ internal static class Program
             // Simulate the version-4 keyboard activation delivered by the shell.
             SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
             Check(opened == 1, "Keyboard activation did not open the dashboard.");
+            SendMessageW(hwnd, 0x111, new IntPtr(0x8004), IntPtr.Zero);
+            Check(managed == 1 && exitRequested == 0, "Manage Blocks must not dispatch Exit.");
+            SendMessageW(hwnd, 0x111, new IntPtr(0x8003), IntPtr.Zero);
+            Check(exitRequested == 1 && managed == 1, "Exit must dispatch its protection handler.");
             Action failingLaunch = () => throw new IOException("Injected browser launch failure");
             tray.OpenDashboardRequested += failingLaunch;
             SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));

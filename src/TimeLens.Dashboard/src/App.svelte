@@ -164,12 +164,18 @@
 
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-  onMount(async () => {
-    await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
-
-    document.addEventListener('visibilitychange', onVisibility);
-    if (!document.hidden) startPoll();
-    return () => { stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
+  onMount(() => {
+    let disposed = false;
+    void (async () => {
+      await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
+      if (disposed) return;
+      const requestedView = new URLSearchParams(window.location.search).get('view');
+      if (requestedView && ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'].includes(requestedView))
+        goTo(requestedView);
+      document.addEventListener('visibilitychange', onVisibility);
+      if (!document.hidden) startPoll();
+    })();
+    return () => { disposed = true; stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
   });
 
   function onVisibility() {

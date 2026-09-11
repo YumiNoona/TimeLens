@@ -594,7 +594,7 @@
         {#if blockProtectionEnabled}
           <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
           <label><span>Protect changes</span><select bind:value={blockProtectionScope}><option value="strict">Strict targets only</option><option value="all">All focus targets</option></select></label>
-          <label class="protection-toggle"><span><strong>Protect tray exit</strong><small>Ask for the current password before TimeLens can close from its tray menu.</small></span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} aria-label="Protect tray exit" /></label>
+          <label class="protection-toggle"><span><strong>Protect tray exit</strong><small>Prevent closing while unexpired apps or websites remain on your blocklist. Empty lists and expired timers never prevent exit. Turn this off with your password to allow closing.</small></span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} aria-label="Protect tray exit" /></label>
         {/if}
         <label><span>{blockProtectionEnabled ? 'New password' : 'Password'}</span><input type="password" bind:value={protectionNewPassword} autocomplete="new-password" placeholder="6–128 characters" /></label>
         <label><span>Confirm password</span><input type="password" bind:value={protectionConfirmPassword} autocomplete="new-password" placeholder="Type it again" /></label>

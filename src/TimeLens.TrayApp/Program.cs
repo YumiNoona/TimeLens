@@ -769,11 +769,11 @@ internal static class Program
         var dashboardBuildKey = executablePath is not null && File.Exists(executablePath)
             ? File.GetLastWriteTimeUtc(executablePath).Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture)
             : DateTime.UtcNow.Ticks.ToString("x", System.Globalization.CultureInfo.InvariantCulture);
-        void OpenDashboard()
+        void OpenDashboard(string view = "")
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}",
+                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}&view={Uri.EscapeDataString(view)}",
                 UseShellExecute = true
             });
         }
@@ -844,11 +844,13 @@ internal static class Program
                 UseShellExecute = true
             });
         };
+        tray.ManageBlocksRequested += () => OpenDashboard("block");
+        tray.IsExitProtected = () => BlockExitPolicy.RequiresUnlock(LiveStatusStore.Settings);
         tray.ExitRequested += () =>
         {
-            if (LiveStatusStore.Settings.BlockProtectionEnabled && LiveStatusStore.Settings.BlockExitProtection)
+            if (BlockExitPolicy.RequiresUnlock(LiveStatusStore.Settings))
             {
-                tray.ShowBalloon("TimeLens is protected", "Unlock protected blocks from the Block page before exiting.", true);
+                tray.ShowBalloon("TimeLens is protected", "Apps or websites are still on your blocklist. Manage blocks, or turn off tray exit protection in Settings using your password.", true);
                 return;
             }
             RequestShutdown();

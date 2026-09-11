@@ -1,3 +1,4 @@
+using TimeLens.Api;
 using Microsoft.Data.Sqlite;
 using TimeLens.Api.Services;
 using TimeLens.TrayApp.Services;
@@ -7,6 +8,26 @@ var root = Path.Combine(Path.GetTempPath(), "TimeLens-tracking-" + Guid.NewGuid(
 Directory.CreateDirectory(root);
 try
 {
+    {
+        var settings = new AppSettings { BlockProtectionEnabled = true, BlockExitProtection = true };
+        Check(!BlockExitPolicy.RequiresUnlock(settings), "A saved password must not protect an empty blocklist.");
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = "[ ]" }), "Whitespace-only lists must allow exit.");
+        var app = new BlockEntry("game.exe", "u", null);
+        var site = new BlockEntry("example.com", "u", null, "notify");
+        var expired = new BlockEntry("expired.com", "t", DateTime.UtcNow.AddHours(-1).ToString("o"));
+        var timed = new BlockEntry("timer.com", "t", DateTime.UtcNow.AddHours(1).ToString("o"));
+        foreach (var entry in new[] { app, site, timed })
+        {
+            var blocked = settings with { FocusBlocklist = BlockEntryHelper.Serialize([expired, entry]) };
+            Check(BlockExitPolicy.RequiresUnlock(blocked), "A remaining app, site or future timer must protect exit, even with focus off.");
+            Check(!BlockExitPolicy.RequiresUnlock(blocked with { BlockExitProtection = false }), "Exit option must be respected.");
+            Check(!BlockExitPolicy.RequiresUnlock(blocked with { BlockProtectionEnabled = false }), "Unprotected blocks must allow exit.");
+        }
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = BlockEntryHelper.Serialize([expired]) }), "Expired timers must not prevent exit.");
+        Check(BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = "[\"game.exe\"]" }), "Legacy blocklists must still protect exit.");
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = BlockEntryHelper.Serialize([new("timelens.exe", "u", null)]) }), "Excluded system targets must not prevent exit.");
+    }
+    Console.WriteLine("PASS: exit protection follows remaining block targets.");
     TimeLens.TrayApp.RuntimeDiagnostics.Initialize(root);
     using (var watcher = new WinEventWatcher())
     using (var input = new InputMonitor())
@@ -324,6 +345,23 @@ try
         using var leave = new StringContent("{\"browser\":\"firefox\",\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
         (await client.PostAsync("/api/browser-leave", leave)).EnsureSuccessStatusCode();
         Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events WHERE tab_id=20") == 1, "HTTP heartbeat shares the event writer and does not inflate visits");
+        // The test host has no shutdown callback: exercise real exit responses safely.
+        var originalSettings = TimeLens.Api.LiveStatusStore.Settings;
+        using var passwordBody = new StringContent("{\"password\":\"exit-policy-test\"}", System.Text.Encoding.UTF8, "application/json");
+        (await client.PostAsync("/api/block/protection/setup", passwordBody)).EnsureSuccessStatusCode();
+        var protectedSettings = TimeLens.Api.LiveStatusStore.Settings with { BlockExitProtection = true };
+        try
+        {
+            foreach (var blocklist in new[] { "[]", "[\"game.exe\"]", "[\"example.com\"]",
+                TimeLens.Api.BlockEntryHelper.Serialize([new("example.com", "t", DateTime.UtcNow.AddHours(-1).ToString("o"))]), "[]" })
+            {
+                TimeLens.Api.LiveStatusStore.Settings = protectedSettings with { FocusBlocklist = blocklist };
+                using var exitResponse = await client.PostAsync("/api/app/exit", null);
+                var expected = blocklist.Contains("game.exe") || blocklist == "[\"example.com\"]" ? 423 : 200;
+                Check((int)exitResponse.StatusCode == expected, "HTTP exit must protect existing targets and immediately allow empty or expired lists.");
+            }
+        }
+        finally { TimeLens.Api.LiveStatusStore.Settings = originalSettings; }
     }
     finally { stopApi.Cancel(); await host; }
     Console.WriteLine("PASS: isolated HTTP browser ingestion, heartbeat, leave, long-visit totals and midnight boundaries.");

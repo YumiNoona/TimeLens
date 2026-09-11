@@ -466,7 +466,7 @@ public static class ApiHost
 
         app.MapPost("/api/app/exit", async (HttpContext ctx) =>
         {
-            if (BlockProtectionService.IsEnabled(dbPath) && LiveStatusStore.Settings.BlockExitProtection && !HasBlockUnlock(ctx))
+            if (BlockExitPolicy.RequiresUnlock(LiveStatusStore.Settings) && BlockProtectionService.IsEnabled(dbPath) && !HasBlockUnlock(ctx))
             {
                 ctx.Response.StatusCode = StatusCodes.Status423Locked;
                 await ctx.Response.WriteAsync("{\"error\":\"Password required to exit while blocks are protected\",\"code\":\"block_locked\"}");

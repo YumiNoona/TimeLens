@@ -160,4 +160,4 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 Chrome and Firefox are supported, packaged and release-tested. In Settings, choose **Connect**, copy the two-minute code, then enter it in the extension popup. Pairing authorizes only that local browser profile to submit activity to TimeLens; no account or internet service is involved. Multiple profiles can remain paired, and **Disconnect all** revokes them together.
 
-TimeLens 7.0.0 adds browser visit inspection, flexible exports, clearer input analytics, the Paper theme, and streamlined local browser pairing. See [7.0.0 release notes](docs/releases/7.0.0.md).
+TimeLens 7.1.0 adds browser visit inspection, flexible exports, clearer input analytics, the Paper theme, and streamlined local browser pairing. See [7.1.0 release notes](docs/releases/7.1.0.md).

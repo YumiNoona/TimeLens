@@ -505,12 +505,16 @@
       </label>
       <div class="setting-row pair-row">
         <div class="setting-info"><span class="setting-label">Connect browser extension</span><span class="setting-desc">Pairing lets the extension send the active site and interaction counts only to this PC. It prevents other local apps from writing fake browser history.</span></div>
-        <div class="button-group">
-          {#if pairCode}<button class="pair-code" type="button" title="Copy pairing code" onclick={copyPairCode}>{pairCode}<i class="ti {pairCopied ? 'ti-check' : 'ti-copy'}"></i></button>{/if}
-          <button class="secondary-btn" type="button" onclick={() => window.open('/extension-setup','_blank')}><i class="ti ti-brand-firefox"></i>Get Firefox</button>
-          <button class="secondary-btn" type="button" title="Download the Chrome developer package" onclick={() => window.open('https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-Chrome-Extension.zip','_blank')}><i class="ti ti-brand-chrome"></i>Chrome ZIP</button>
-          <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>{pairCode ? 'New code' : 'Connect'}</button>
-          <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Disconnect all</button>
+        <div class="browser-actions">
+          <div class="button-group download-actions">
+            <button class="secondary-btn" type="button" title="Download the Firefox extension package" onclick={() => window.open('https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-Firefox-Extension.zip','_blank')}><i class="ti ti-brand-firefox"></i>Get Firefox ZIP</button>
+            <button class="secondary-btn" type="button" title="Download the Chrome extension package" onclick={() => window.open('https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-Chrome-Extension.zip','_blank')}><i class="ti ti-brand-chrome"></i>Get Chrome ZIP</button>
+          </div>
+          <div class="button-group connection-actions">
+            {#if pairCode}<button class="pair-code" type="button" title="Copy pairing code" onclick={copyPairCode}>{pairCode}<i class="ti {pairCopied ? 'ti-check' : 'ti-copy'}"></i></button>{/if}
+            <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>{pairCode ? 'New code' : 'Connect'}</button>
+            <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Disconnect all</button>
+          </div>
         </div>
       </div>
       <div class="setting-row delete-row">
@@ -732,6 +736,7 @@
   button:disabled { opacity: .4; cursor: not-allowed; }
   .path { color: var(--clr-text-sec); font: 11px var(--font-mono); white-space: nowrap; }
   .pair-code { height:34px;display:flex;align-items:center;gap:8px;padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border:1px solid color-mix(in srgb,var(--md-primary) 30%,transparent); border-radius: var(--shape-sm); font: 700 15px var(--font-mono); letter-spacing: .1em;cursor:pointer }
+  .browser-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:flex-end}.button-group{gap:6px}.connection-actions{padding-left:18px;border-left:1px solid var(--clr-border)}
   .privacy-message { padding: 9px 16px 13px; border-top: 1px solid var(--clr-border); color: var(--clr-text-sec); font-size: 11px; }
   .icon-btn { width: 30px; height: 30px; border: 0; color: var(--clr-text-sec); background: transparent; }
   .protection-header { border-bottom: 1px solid var(--clr-border); }
@@ -743,7 +748,8 @@
   .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
   .protection-form select { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; outline: none; }
   .protection-toggle { grid-column: 1 / -1; margin:0;padding:10px 12px !important;border:1px solid var(--clr-border) !important;border-radius:var(--shape-md);background:var(--clr-bg-ter);flex-direction:row !important }
-  .protection-toggle input.toggle { width: 40px; height: 22px; flex: 0 0 40px; padding: 0; border: 0; }
+  .protection-toggle input.toggle { appearance:none;width:40px;height:22px;flex:0 0 40px;padding:0;border:0;border-radius:999px;background:var(--clr-border-strong);overflow:visible }
+  .protection-toggle input.toggle:checked { background:var(--md-primary) }
   .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
   .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
   .protection-feedback { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 8px 9px; border-radius: var(--shape-sm); font-size: 10px; }
@@ -752,7 +758,7 @@
   .protection-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
   .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .danger-btn:hover { background: var(--md-err-cont); }
-  .export-builder{display:grid;gap:12px;padding:14px 16px;border-top:1px solid var(--clr-border)}.export-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.export-controls input{height:34px;padding:0 9px;border:1px solid var(--clr-border);border-radius:var(--shape-sm);background:var(--clr-bg-ter);color:var(--clr-text-pri);font:11px var(--font-mono)}.export-controls>span{color:var(--clr-text-ter);font-size:10px}
+  .export-builder{display:grid;grid-template-columns:minmax(230px,1fr) auto;align-items:center;gap:24px;padding:14px 16px;border-top:1px solid var(--clr-border)}.export-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.export-controls input{height:34px;padding:0 9px;border:1px solid var(--clr-border);border-radius:var(--shape-sm);background:var(--clr-bg-ter);color:var(--clr-text-pri);font:11px var(--font-mono)}.export-controls>span{color:var(--clr-text-ter);font-size:10px}
   .release-dialog { width: min(510px, calc(100vw - 32px)); padding: 0; overflow: hidden; border: 1px solid var(--clr-border-strong); border-radius: var(--shape-lg); color: var(--clr-text-pri); background: var(--clr-bg-sec); box-shadow: var(--shadow-lg); }
   .release-dialog::backdrop { background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
   .release-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 20px 15px; border-bottom: 1px solid var(--clr-border); }
@@ -771,8 +777,11 @@
   }
   @media (max-width: 620px) {
     .protection-form { grid-template-columns: 1fr; }
+    .export-builder { grid-template-columns:1fr; }
     .export-controls { align-items: stretch; flex-direction: column; }
     .export-controls > * { width: 100%; }
+    .browser-actions { justify-content:flex-start;gap:10px; }
+    .connection-actions { width:100%;padding:10px 0 0;border-left:0;border-top:1px solid var(--clr-border); }
     .theme-grid { grid-template-columns: 1fr; }
     .history-settings-grid { grid-template-columns: 1fr; padding: 10px; }
     .setting-group:last-child { grid-column: auto; display: block; }

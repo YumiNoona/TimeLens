@@ -15,17 +15,6 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-
-
-## Version 7.2.0
-
-- Accurate foreground, idle/away, browser, audio, click, and keystroke-count tracking with durable checkpoints and local-day allocation
-- Date-aware browser Overview, Visits, and Pages reports plus detailed per-app input activity
-- App and website focus controls with preset or custom durations, four enforcement modes, optional password protection, and protected tray exit
-- Chrome and Firefox companions at 7.2.0 with local profile pairing and matching tracking/blocking behavior
-- CSV or JSON exports for today, the last 30 days, a specific month, a whole year, or an exact date range
-- Local-only SQLite storage, configurable 30-day to two-year retention, and no account or activity telemetry
-
 ## Install
 
 1. [Download the latest TimeLens installer](https://timelens.venusapp.in/api/download).
@@ -109,20 +98,6 @@ All non-secret values above already have these defaults in the server code. With
 
 `/api/latest-release` returns only sanitized version, size, checksum, publication time, and the raw-app update URL. A valid release must be non-draft, non-prerelease, use a supported production tag (`v5.0.0` or later), and contain `TimeLens.exe`, `TimeLens-Setup.exe`, and `SHA256SUMS.txt`.
 
-## Releasing and updates
-
-The release workflow builds the dashboard, publishes the Native AOT app, verifies matching desktop/dashboard versions, and uploads:
-
-- `TimeLens.exe`
-- `TimeLens-Setup.exe`
-- `TimeLens-Chrome-Extension.zip`
-- `TimeLens-Firefox-Extension.zip`
-- `SHA256SUMS.txt`
-
-The desktop, dashboard, installer, and both browser companions are released as `v7.2.0`. Vercel serves the guided installer to website visitors, while installed apps discover the separately checksummed desktop executable through the update feed.
-
-The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
-
 ## Local API
 
 Base URL: `http://127.0.0.1:47821`
@@ -157,5 +132,3 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 - GitHub Actions release automation
 
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
-
-Chrome and Firefox use the same companion logic. In Settings, choose **Connect**, then enter the two-minute code in the extension popup. Pairing authorizes that local browser profile to submit activity to TimeLens; **Disconnect all** revokes every profile. See the [7.2.0 release notes](docs/releases/7.2.0.md), [tracking details](docs/tracking.md), and [deployed user guide](web/docs.html).

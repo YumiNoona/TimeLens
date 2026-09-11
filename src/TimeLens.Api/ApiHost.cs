@@ -607,7 +607,7 @@ public static class ApiHost
                 return;
             }
             if (properties.Any(prop => prop.Name == "retentionDays" &&
-                prop.Value.GetRawText() is not ("30" or "60" or "90" or "180" or "365")))
+                prop.Value.GetRawText() is not ("30" or "60" or "90" or "180" or "365" or "730")))
             {
                 ctx.Response.StatusCode = 400;
                 await ctx.Response.WriteAsync("{\"error\":\"Invalid retention period\"}");

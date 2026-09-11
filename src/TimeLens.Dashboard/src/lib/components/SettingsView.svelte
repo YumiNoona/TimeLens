@@ -62,7 +62,7 @@
   let saveMessage = $state('');
   const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   let exportFormat = $state<'csv'|'json'>('csv');
-  let exportRange = $state('month');
+  let exportRange = $state('30days');
   let exportMonth = $state(localDate().slice(0,7));
   let exportYear = $state(new Date().getFullYear());
   let exportStart = $state(localDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));

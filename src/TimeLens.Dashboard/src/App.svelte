@@ -369,7 +369,7 @@
           <h1 class="page-title">Settings</h1>
           <p class="page-purpose">Configure tracking, privacy, appearance, reminders, and storage.</p>
         </div>
-        <a class="page-docs" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-book-2" aria-hidden="true"></i>Docs</a>
+        <div class="page-actions"><a class="page-docs" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-book-2" aria-hidden="true"></i>Docs</a><a class="page-docs page-donate" href="https://timelens.venusapp.in/#donate" target="_blank" rel="noopener noreferrer"><i class="ti ti-heart-handshake" aria-hidden="true"></i>Donate</a></div>
       </div>
       <div class="content"><SettingsView
         ontheme={applyTheme}
@@ -563,8 +563,10 @@
   }
 
   .page-heading { min-width: 0; }
+  .page-actions { flex: 0 0 auto; display:flex; align-items:center; gap:8px; }
   .page-docs { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; color: var(--clr-text-sec); background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; text-decoration: none; transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
   .page-docs:hover { color: var(--md-primary); border-color: var(--md-primary); background: var(--md-primary-cont); }
+  .page-donate { color:var(--md-primary); }
   .page-eyebrow {
     color: var(--md-primary);
     font-size: var(--type-page-eyebrow);

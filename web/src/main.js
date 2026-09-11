@@ -24,6 +24,11 @@ document.querySelectorAll('.donate-open').forEach((button) => {
   });
 });
 
+if (location.hash === '#donate' && !dialog.open) dialog.showModal();
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#donate' && !dialog.open) dialog.showModal();
+});
+
 document.querySelector('.dialog-close').addEventListener('click', () => dialog.close());
 dialog.addEventListener('click', (event) => {
   const box = dialog.getBoundingClientRect();

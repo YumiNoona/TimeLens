@@ -93,7 +93,7 @@ jobs:
             }
           }
           $chromeExtension = Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json
-          if ($chromeExtension.version -ne '7.1.0' -or $firefoxExtension.version -ne $chromeExtension.version) { throw "Companion version mismatch" }
+          if ($chromeExtension.version -ne '7.2.0' -or $firefoxExtension.version -ne $chromeExtension.version) { throw "Companion version mismatch" }
           Write-Host "Firefox extension: $($firefoxExtension.version) (versioned independently)"
           Write-Host "Desktop release: $expected"
 

@@ -60,7 +60,7 @@ test('Both browser packages contain the canonical scripts and resources', () => 
   for (const family of ['firefox', 'chrome']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.1.0');
+    assert.equal(manifest.version, '7.2.0');
     assert.equal(readFileSync(new URL('background.js', root), 'utf8'), source);
     for (const file of ['popup.js','blocked.js']) assert.equal(readFileSync(new URL(file, root), 'utf8'), readFileSync(new URL(`../src/browser-extensions/firefox/${file}`, import.meta.url), 'utf8'));
     if (family === 'firefox') {

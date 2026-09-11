@@ -408,6 +408,10 @@ try
         using (var invalidRetention = new StringContent("{\"retentionDays\":-1}", System.Text.Encoding.UTF8, "application/json"))
             Check((await dashboard.PostAsync("/api/settings", invalidRetention)).StatusCode == System.Net.HttpStatusCode.BadRequest,
                 "Invalid retention must be rejected before it can delete history");
+        using (var longestRetention = new StringContent("{\"retentionDays\":730}", System.Text.Encoding.UTF8, "application/json"))
+            (await dashboard.PostAsync("/api/settings", longestRetention)).EnsureSuccessStatusCode();
+        Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='retention_days' AND value='730'") == 1,
+            "Every retention period offered by Settings must be accepted and persisted");
         using (var invalidBatch = new StringContent("{\"theme\":\"terminal\",\"retentionDays\":-1}", System.Text.Encoding.UTF8, "application/json"))
             Check((await dashboard.PostAsync("/api/settings", invalidBatch)).StatusCode == System.Net.HttpStatusCode.BadRequest,
                 "A rejected settings batch must not partially apply earlier values");

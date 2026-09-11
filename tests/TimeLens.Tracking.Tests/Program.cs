@@ -345,6 +345,23 @@ try
         using var leave = new StringContent("{\"browser\":\"firefox\",\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
         (await client.PostAsync("/api/browser-leave", leave)).EnsureSuccessStatusCode();
         Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events WHERE tab_id=20") == 1, "HTTP heartbeat shares the event writer and does not inflate visits");
+        using (var visitResponse = await client.GetAsync($"/api/browser-visits?date={start.ToLocalTime():yyyy-MM-dd}"))
+        {
+            visitResponse.EnsureSuccessStatusCode();
+            using var visitJson = System.Text.Json.JsonDocument.Parse(await visitResponse.Content.ReadAsStringAsync());
+            Check(visitJson.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array,
+                "Browser visit details must return a stable array payload.");
+        }
+        using (var exportResponse = await client.GetAsync($"/api/export?format=json&range=custom&start={start.ToLocalTime():yyyy-MM-dd}&end={start.ToLocalTime().AddDays(1):yyyy-MM-dd}"))
+        {
+            exportResponse.EnsureSuccessStatusCode();
+            Check(exportResponse.Content.Headers.ContentDisposition?.FileName?.Contains("-to-") == true,
+                "Custom exports must identify their inclusive date range.");
+        }
+        Check((await client.GetAsync("/api/export?format=csv&range=custom&start=2026-02-02&end=2026-01-01")).StatusCode == System.Net.HttpStatusCode.BadRequest,
+            "Reverse custom export ranges must be rejected.");
+        foreach (var rangeUrl in new[] { "/api/export?format=csv&range=month&month=2026-02", "/api/export?format=json&range=year&year=2025" })
+            (await client.GetAsync(rangeUrl)).EnsureSuccessStatusCode();
         // The test host has no shutdown callback: exercise real exit responses safely.
         var originalSettings = TimeLens.Api.LiveStatusStore.Settings;
         using var passwordBody = new StringContent("{\"password\":\"exit-policy-test\"}", System.Text.Encoding.UTF8, "application/json");
@@ -406,6 +423,9 @@ try
         Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='show_seconds' AND value='true'") == 1 &&
               TimeLens.Api.LiveStatusStore.Settings.ShowSeconds,
             "Duration precision preference was not saved and applied live");
+        using (var paperTheme = new StringContent("{\"theme\":\"paper\"}", System.Text.Encoding.UTF8, "application/json"))
+            (await dashboard.PostAsync("/api/settings", paperTheme)).EnsureSuccessStatusCode();
+        Check(TimeLens.Api.LiveStatusStore.Settings.Theme == "paper", "Paper theme must be accepted and applied live");
         using var codeResponse = await dashboard.PostAsync("/api/pair/code", null);
         codeResponse.EnsureSuccessStatusCode();
         using var codeDoc = System.Text.Json.JsonDocument.Parse(await codeResponse.Content.ReadAsStringAsync());

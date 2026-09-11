@@ -29,6 +29,7 @@
   let browserStoreTitles = $state(true);
   let pairCode = $state('');
   let pairMessage = $state('');
+  let pairCopied = $state(false);
   let privacyBusy = $state(false);
   let idleMinutes = $state(3);
   let theme = $state('default');
@@ -59,6 +60,13 @@
   let apiReachable = $state(true);
   let savingKey = $state('');
   let saveMessage = $state('');
+  const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  let exportFormat = $state<'csv'|'json'>('csv');
+  let exportRange = $state('month');
+  let exportMonth = $state(localDate().slice(0,7));
+  let exportYear = $state(new Date().getFullYear());
+  let exportStart = $state(localDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  let exportEnd = $state(localDate());
   type UpdateStatus = {
     currentVersion: string;
     latestVersion?: string;
@@ -92,6 +100,7 @@
     { id: 'rose', label: 'Rose', color: '#F080A0' },
     { id: 'clay', label: 'Clay', color: '#C8A080' },
     { id: 'sunset', label: 'Sunset', color: '#F0A060' },
+    { id: 'paper', label: 'Paper', color: '#F4F1E8' },
   ];
   const views = [
     { id: 'today', label: 'Today' },
@@ -183,8 +192,18 @@
     void save(key, value);
   }
 
-  function exportCsv(range: string) {
-    window.open(`/api/export?format=csv&range=${range}`, '_blank');
+  function exportActivity() {
+    const params = new URLSearchParams({ format: exportFormat, range: exportRange });
+    if (exportRange === 'custom') { params.set('start', exportStart); params.set('end', exportEnd); }
+    if (exportRange === 'month') params.set('month', exportMonth);
+    if (exportRange === 'year') params.set('year', String(exportYear));
+    window.open(`/api/export?${params}`, '_blank');
+  }
+
+  async function copyPairCode() {
+    if (!pairCode) return;
+    try { await navigator.clipboard.writeText(pairCode); pairCopied = true; setTimeout(() => pairCopied = false, 1500); }
+    catch { pairMessage = 'Copy is unavailable. Select the code and enter it in the extension.'; }
   }
 
   async function createPairCode() {
@@ -195,7 +214,9 @@
       if (!response.ok) throw new Error();
       const result = await response.json();
       pairCode = result.code;
-      pairMessage = 'Enter this code in Chrome or Firefox within two minutes.';
+      try { await navigator.clipboard.writeText(pairCode); pairCopied = true; setTimeout(() => pairCopied = false, 1500); }
+      catch { }
+      pairMessage = 'Code ready and copied when browser permissions allow. Open the TimeLens extension, choose Pair, and paste it within two minutes.';
     } catch { pairMessage = 'Could not create a pairing code.'; }
     finally { privacyBusy = false; }
   }
@@ -461,7 +482,7 @@
     <div class="setting-row">
       <div class="setting-info"><span class="setting-label">Idle threshold</span><span class="setting-desc">Inactivity required before time becomes idle</span></div>
       <select class="select" bind:value={idleMinutes} onchange={() => save('idleThresholdSeconds', idleMinutes * 60)}>
-        {#each [1, 2, 3, 5, 10, 15] as minutes}<option value={minutes}>{minutes} min</option>{/each}
+        {#each [1, 2, 3, 5, 10, 15, 20, 30, 60] as minutes}<option value={minutes}>{minutes} min</option>{/each}
       </select>
     </div>
   </section>
@@ -483,11 +504,13 @@
         <input type="checkbox" class="toggle" checked={browserStoreTitles} onchange={(e) => setToggle('browserStoreTitles', e, value => browserStoreTitles = value)} />
       </label>
       <div class="setting-row pair-row">
-        <div class="setting-info"><span class="setting-label">Browser pairing</span><span class="setting-desc">A short-lived code grants a local Chrome or Firefox extension extension access</span></div>
+        <div class="setting-info"><span class="setting-label">Connect browser extension</span><span class="setting-desc">Pairing lets the extension send the active site and interaction counts only to this PC. It prevents other local apps from writing fake browser history.</span></div>
         <div class="button-group">
-          {#if pairCode}<code class="pair-code">{pairCode}</code>{/if}
-          <button class="secondary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>New code</button>
-          <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Revoke</button>
+          {#if pairCode}<button class="pair-code" type="button" title="Copy pairing code" onclick={copyPairCode}>{pairCode}<i class="ti {pairCopied ? 'ti-check' : 'ti-copy'}"></i></button>{/if}
+          <button class="secondary-btn" type="button" onclick={() => window.open('/extension-setup','_blank')}><i class="ti ti-brand-firefox"></i>Get Firefox</button>
+          <button class="secondary-btn" type="button" title="Download the Chrome developer package" onclick={() => window.open('https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-Chrome-Extension.zip','_blank')}><i class="ti ti-brand-chrome"></i>Chrome ZIP</button>
+          <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>{pairCode ? 'New code' : 'Connect'}</button>
+          <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Disconnect all</button>
         </div>
       </div>
       <div class="setting-row delete-row">
@@ -501,7 +524,7 @@
   <section class="card card-wide">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-palette" aria-hidden="true"></i></span>
-      <div><h2>Appearance</h2><p>Pick an accent while keeping the same accessible dark surfaces.</p></div>
+      <div><h2>Appearance</h2><p>Choose a dark accent or the light Paper theme.</p></div>
     </div>
     <div class="theme-grid">
       {#each themes as option}
@@ -539,7 +562,7 @@
         <div class="setting-row">
           <div class="setting-info"><span class="setting-label">Heatmap range</span><span class="setting-desc">Default period shown in History</span></div>
           <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
-            <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
+            <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={182}>6 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
           </select>
         </div>
         <label class="setting-row">
@@ -559,7 +582,7 @@
         <div class="setting-row">
           <div class="setting-info"><span class="setting-label">Dashboard refresh</span><span class="setting-desc">How often live data is requested</span></div>
           <select class="select wide" bind:value={pollInterval} onchange={() => { save('pollIntervalSeconds', pollInterval); onpollinterval?.(pollInterval); }}>
-            {#each [5, 10, 30, 60] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
+            {#each [5, 10, 15, 30, 60, 120, 300] as seconds}<option value={seconds}>{seconds} seconds</option>{/each}
           </select>
         </div>
       </div>
@@ -578,7 +601,7 @@
     <div class="setting-row" class:muted={!breakReminder}>
       <div class="setting-info"><span class="setting-label">Reminder interval</span><span class="setting-desc">Active time between reminders</span></div>
       <select class="select" bind:value={breakInterval} disabled={!breakReminder} onchange={() => save('breakIntervalMinutes', breakInterval)}>
-        {#each [25, 30, 45, 50, 60, 90] as minutes}<option value={minutes}>{minutes} min</option>{/each}
+        {#each [15, 20, 25, 30, 45, 50, 60, 90, 120, 180, 240] as minutes}<option value={minutes}>{minutes} min</option>{/each}
       </select>
     </div>
   </section>
@@ -594,7 +617,7 @@
         {#if blockProtectionEnabled}
           <label><span>Current password</span><input type="password" bind:value={protectionCurrentPassword} autocomplete="current-password" placeholder="Required to make changes" /></label>
           <label><span>Protect changes</span><select bind:value={blockProtectionScope}><option value="strict">Strict targets only</option><option value="all">All focus targets</option></select></label>
-          <label class="protection-toggle"><span><strong>Protect tray exit</strong><small>Prevent closing while unexpired apps or websites remain on your blocklist. Empty lists and expired timers never prevent exit. Turn this off with your password to allow closing.</small></span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} aria-label="Protect tray exit" /></label>
+          <label class="setting-row protection-toggle"><span class="setting-info"><strong class="setting-label">Protect tray exit</strong><small class="setting-desc">Prevent closing while active apps or websites remain blocked. Empty lists and expired timers always allow exit.</small></span><input type="checkbox" class="toggle" bind:checked={blockExitProtection} aria-label="Protect tray exit" /></label>
         {/if}
         <label><span>{blockProtectionEnabled ? 'New password' : 'Password'}</span><input type="password" bind:value={protectionNewPassword} autocomplete="new-password" placeholder="6–128 characters" /></label>
         <label><span>Confirm password</span><input type="password" bind:value={protectionConfirmPassword} autocomplete="new-password" placeholder="Type it again" /></label>
@@ -621,18 +644,22 @@
     <div class="setting-row">
       <div class="setting-info"><span class="setting-label">Keep activity for</span><span class="setting-desc">Older raw events are automatically removed</span></div>
       <select class="select" bind:value={retentionDays} onchange={() => save('retentionDays', retentionDays)}>
-        {#each [30, 60, 90, 180, 365] as days}<option value={days}>{days} days</option>{/each}
+        {#each [30, 60, 90, 180, 365, 730] as days}<option value={days}>{days} days</option>{/each}
       </select>
     </div>
     <div class="setting-row">
       <div class="setting-info"><span class="setting-label">Local storage used</span><span class="setting-desc">Database, write-ahead log, reminder media, and diagnostics</span></div>
       <code class="path">{fmtSize(dbSizeBytes)}</code>
     </div>
-    <div class="setting-row export-row">
-      <div class="setting-info"><span class="setting-label">Export CSV</span><span class="setting-desc">Download a portable copy of activity</span></div>
-      <div class="button-group">
-        <button class="secondary-btn" onclick={() => exportCsv('today')}><i class="ti ti-download" aria-hidden="true"></i> Today</button>
-        <button class="secondary-btn" onclick={() => exportCsv('30days')}><i class="ti ti-calendar-stats" aria-hidden="true"></i> 30 days</button>
+    <div class="export-builder">
+      <div class="setting-info"><span class="setting-label">Export activity</span><span class="setting-desc">Choose a ready-made period or an exact date range, up to ten years.</span></div>
+      <div class="export-controls">
+        <select class="select" bind:value={exportRange} aria-label="Export period"><option value="today">Today</option><option value="30days">Last 30 days</option><option value="month">Specific month</option><option value="year">Whole year</option><option value="custom">Custom dates</option></select>
+        {#if exportRange === 'month'}<input type="month" bind:value={exportMonth} max={localDate().slice(0,7)} aria-label="Export month" />{/if}
+        {#if exportRange === 'year'}<select class="select" bind:value={exportYear} aria-label="Export year">{#each Array.from({length:10},(_,i)=>new Date().getFullYear()-i) as year}<option value={year}>{year}</option>{/each}</select>{/if}
+        {#if exportRange === 'custom'}<input type="date" bind:value={exportStart} max={exportEnd} aria-label="Export start date" /><span>to</span><input type="date" bind:value={exportEnd} min={exportStart} max={new Date().toISOString().slice(0,10)} aria-label="Export end date" />{/if}
+        <select class="select" bind:value={exportFormat} aria-label="Export format"><option value="csv">CSV</option><option value="json">JSON</option></select>
+        <button class="primary-btn" onclick={exportActivity} disabled={exportRange === 'custom' && (!exportStart || !exportEnd || exportEnd < exportStart)}><i class="ti ti-download"></i>Export</button>
       </div>
     </div>
   </section>
@@ -704,7 +731,7 @@
   .secondary-btn:hover { border-color: var(--md-primary); color: var(--md-primary); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   .path { color: var(--clr-text-sec); font: 11px var(--font-mono); white-space: nowrap; }
-  .pair-code { padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border-radius: var(--shape-sm); font: 700 16px var(--font-mono); letter-spacing: .12em; }
+  .pair-code { height:34px;display:flex;align-items:center;gap:8px;padding: 5px 9px; color: var(--md-primary); background: var(--md-primary-cont); border:1px solid color-mix(in srgb,var(--md-primary) 30%,transparent); border-radius: var(--shape-sm); font: 700 15px var(--font-mono); letter-spacing: .1em;cursor:pointer }
   .privacy-message { padding: 9px 16px 13px; border-top: 1px solid var(--clr-border); color: var(--clr-text-sec); font-size: 11px; }
   .icon-btn { width: 30px; height: 30px; border: 0; color: var(--clr-text-sec); background: transparent; }
   .protection-header { border-bottom: 1px solid var(--clr-border); }
@@ -715,10 +742,7 @@
   .protection-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
   .protection-form label { display: flex; flex-direction: column; gap: 6px; color: var(--clr-text-sec); font-size: 10px; font-weight: 600; }
   .protection-form select { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; outline: none; }
-  .protection-toggle { grid-column: 1 / -1; min-height: 58px; flex-direction: row !important; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--clr-border); border-radius: var(--shape-md); background: color-mix(in srgb, var(--md-primary) 5%, var(--clr-bg-ter)); }
-  .protection-toggle > span { display: grid; gap: 3px; }
-  .protection-toggle strong { color: var(--clr-text-pri); font-size: 12px; }
-  .protection-toggle small { color: var(--clr-text-sec); font-size: 10px; font-weight: 400; line-height: 1.35; }
+  .protection-toggle { grid-column: 1 / -1; margin:0;padding:10px 12px !important;border:1px solid var(--clr-border) !important;border-radius:var(--shape-md);background:var(--clr-bg-ter);flex-direction:row !important }
   .protection-toggle input.toggle { width: 40px; height: 22px; flex: 0 0 40px; padding: 0; border: 0; }
   .protection-form input { height: 38px; padding: 0 11px; color: var(--clr-text-pri); background: var(--clr-bg-ter); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font: 12px var(--font-mono); outline: none; }
   .protection-form input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-primary) 10%, transparent); }
@@ -728,6 +752,7 @@
   .protection-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
   .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .danger-btn:hover { background: var(--md-err-cont); }
+  .export-builder{display:grid;gap:12px;padding:14px 16px;border-top:1px solid var(--clr-border)}.export-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.export-controls input{height:34px;padding:0 9px;border:1px solid var(--clr-border);border-radius:var(--shape-sm);background:var(--clr-bg-ter);color:var(--clr-text-pri);font:11px var(--font-mono)}.export-controls>span{color:var(--clr-text-ter);font-size:10px}
   .release-dialog { width: min(510px, calc(100vw - 32px)); padding: 0; overflow: hidden; border: 1px solid var(--clr-border-strong); border-radius: var(--shape-lg); color: var(--clr-text-pri); background: var(--clr-bg-sec); box-shadow: var(--shadow-lg); }
   .release-dialog::backdrop { background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
   .release-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 20px 15px; border-bottom: 1px solid var(--clr-border); }
@@ -746,7 +771,8 @@
   }
   @media (max-width: 620px) {
     .protection-form { grid-template-columns: 1fr; }
-    .setting-row.export-row { align-items: stretch; flex-direction: column; }
+    .export-controls { align-items: stretch; flex-direction: column; }
+    .export-controls > * { width: 100%; }
     .theme-grid { grid-template-columns: 1fr; }
     .history-settings-grid { grid-template-columns: 1fr; padding: 10px; }
     .setting-group:last-child { grid-column: auto; display: block; }

@@ -148,7 +148,7 @@
         </button>
       {/each}
       {#if selectedTypes.length > 0}
-        <button class="type-chip clear" onclick={() => selectedTypes = []}>Clear</button>
+        <button class="type-chip clear chip-button" onclick={() => selectedTypes = []} aria-label="Clear category filters"><i class="ti ti-x"></i>Clear filters</button>
       {/if}
     </div>
     {#if groupedMode}<button class="mode-btn chip-button" onclick={() => expanded = expanded.size ? new Set() : new Set(tree.flatMap(n => [n.id,...n.children.map(c => c.id)]))}>{expanded.size ? 'Collapse all' : 'Expand all'}</button>{/if}

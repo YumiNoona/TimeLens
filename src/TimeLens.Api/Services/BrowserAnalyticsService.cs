@@ -6,6 +6,8 @@ namespace TimeLens.Api.Services;
 
 public static class BrowserAnalyticsService
 {
+    public sealed record BrowserVisitDetail(string Domain, string Url, string Title, string Browser,
+        string StartedAt, string EndedAt, double ActiveSeconds);
     private sealed record Span(DateTime Start, DateTime End, string App);
     private sealed record Visit(string Domain, string Url, string Title, string Browser, DateTime Start, DateTime End);
     private sealed class Page(string domain, string url, string browser)
@@ -122,5 +124,73 @@ public static class BrowserAnalyticsService
                 g.OrderByDescending(p => p.Seconds).Select(p => new BrowserPageDto(p.Url, p.Title, p.Browser,
                     p.Seconds, p.Sessions, p.LastSeen.ToString("o"), p.HasInput ? p.Keys : null, p.HasInput ? p.Clicks : null)).ToArray()))
             .OrderByDescending(s => s.TotalSeconds).ToArray();
+    }
+
+    public static async Task<BrowserVisitDetail[]> ReadVisitsAsync(SqliteConnection conn, DateTime dayStart, DateTime dayEnd)
+    {
+        var active = new List<Span>();
+        var idle = new List<Span>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT start_time,COALESCE(end_time,start_time),exe_name FROM app_events
+                WHERE session_state='active' AND julianday(start_time)<julianday($end)
+                  AND julianday(COALESCE(end_time,start_time))>julianday($start)
+                """;
+            cmd.Parameters.AddWithValue("$start", dayStart.ToString("o"));
+            cmd.Parameters.AddWithValue("$end", dayEnd.ToString("o"));
+            using (var reader = await cmd.ExecuteReaderAsync())
+                while (await reader.ReadAsync()) active.Add(new(Parse(reader.GetString(0)), Parse(reader.GetString(1)), reader.GetString(2)));
+            cmd.CommandText = """
+                SELECT start_time,COALESCE(end_time,start_time) FROM idle_spans
+                WHERE julianday(start_time)<julianday($end) AND julianday(COALESCE(end_time,start_time))>julianday($start)
+                """;
+            using var idleReader = await cmd.ExecuteReaderAsync();
+            while (await idleReader.ReadAsync()) idle.Add(new(Parse(idleReader.GetString(0)), Parse(idleReader.GetString(1)), ""));
+        }
+        var visits = new List<Visit>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT domain,COALESCE(url,''),COALESCE(title,''),browser,start_time,COALESCE(end_time,start_time)
+                FROM browser_events WHERE julianday(start_time)<julianday($end)
+                  AND julianday(COALESCE(end_time,start_time))>julianday($start)
+                ORDER BY julianday(start_time),id
+                """;
+            cmd.Parameters.AddWithValue("$start", dayStart.ToString("o"));
+            cmd.Parameters.AddWithValue("$end", dayEnd.ToString("o"));
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) visits.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), Parse(reader.GetString(4)), Parse(reader.GetString(5))));
+        }
+        var result = new List<BrowserVisitDetail>();
+        for (var i = 0; i < visits.Count; i++)
+        {
+            var visit = visits[i];
+            var start = visit.Start > dayStart ? visit.Start : dayStart;
+            var end = visit.End < dayEnd ? visit.End : dayEnd;
+            if (i + 1 < visits.Count && visits[i + 1].Start < end) end = visits[i + 1].Start;
+            if (end <= start) continue;
+            double seconds = 0;
+            var cursor = start;
+            foreach (var foreground in active.Where(a => BrowserTrackingService.MatchesForeground(visit.Browser, a.App)).OrderBy(a => a.Start))
+            {
+                var from = foreground.Start > cursor ? foreground.Start : cursor;
+                var to = foreground.End < end ? foreground.End : end;
+                if (to <= from) continue;
+                var idleCursor = from;
+                foreach (var away in idle.Where(a => a.End > from && a.Start < to).OrderBy(a => a.Start))
+                {
+                    var awayStart = away.Start > idleCursor ? away.Start : idleCursor;
+                    var awayEnd = away.End < to ? away.End : to;
+                    if (awayStart > idleCursor) seconds += (awayStart - idleCursor).TotalSeconds;
+                    if (awayEnd > idleCursor) idleCursor = awayEnd;
+                }
+                if (to > idleCursor) seconds += (to - idleCursor).TotalSeconds;
+                cursor = to;
+            }
+            if (seconds > 0) result.Add(new(visit.Domain, visit.Url, visit.Title, visit.Browser,
+                start.ToString("o"), end.ToString("o"), seconds));
+        }
+        return result.OrderByDescending(v => v.StartedAt).ToArray();
     }
 }

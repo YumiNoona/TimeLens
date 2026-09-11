@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fmtPrecise } from '../utils';
-  import type { DashboardData, InputEntry } from '../types';
+  import type { DashboardData } from '../types';
   import { appIcon } from '../appIcons';
   import { showSeconds } from '../stores/settings';
   let { data }: { data: DashboardData } = $props();
@@ -16,7 +16,12 @@
   type SortKey = 'name' | 'time' | 'keys' | 'clicks';
   let sortKey = $state<SortKey>('time');
   let search = $state('');
-  const inputData = $derived(allApps.map(app => ({ exeName: app.name, keystrokes: app.keystrokes, clicks: app.clicks })));
+  const inputData = $derived(data.topApps.filter(app => app.keystrokes > 0 || app.clicks > 0)
+    .filter(app => app.name.toLowerCase().includes(search.toLowerCase()))
+    .toSorted((a,b) => (b.keystrokes+b.clicks)-(a.keystrokes+a.clicks)));
+  const totalKeys = $derived(inputData.reduce((sum,row) => sum+row.keystrokes, 0));
+  const totalClicks = $derived(inputData.reduce((sum,row) => sum+row.clicks, 0));
+  const maxInput = $derived(Math.max(...inputData.map(row => row.keystrokes+row.clicks), 1));
   let uncategorized = $state<{ exe: string; seconds: number }[]>([]);
   let assigningFor = $state<string | null>(null);
   let saving = $state<string | null>(null);
@@ -109,34 +114,33 @@
   </div>
 
   {#if inputData.length > 0}
-    <div class="section">
-      <h2 class="section-title">
-        <i class="ti ti-keyboard" aria-hidden="true"></i>
-        Input activity
-      </h2>
-      <div class="table" role="table">
-        <div class="th input-th" role="row">
-          <span role="columnheader">App</span>
-          <span role="columnheader">Keystrokes</span>
-          <span role="columnheader">Clicks</span>
-        </div>
-        {#each inputData.filter(row => row.exeName.toLowerCase().includes(search.toLowerCase())) as row, i}
-          {@const icon = appIcon(row.exeName || '')}
-          <div class="tr input-tr" role="row" class:alt={i % 2 === 0}>
+    <section class="section input-card">
+      <div class="input-header"><div><h2 class="section-title"><i class="ti ti-keyboard" aria-hidden="true"></i>Input activity</h2><p>Interaction counts only—TimeLens never records what you type.</p></div><span>{inputData.length} active app{inputData.length === 1 ? '' : 's'}</span></div>
+      <div class="input-summary">
+        <div><i class="ti ti-keyboard"></i><span>Keystrokes<strong>{totalKeys.toLocaleString()}</strong></span></div>
+        <div><i class="ti ti-pointer"></i><span>Clicks<strong>{totalClicks.toLocaleString()}</strong></span></div>
+        <div><i class="ti ti-activity"></i><span>Total interactions<strong>{(totalKeys+totalClicks).toLocaleString()}</strong></span></div>
+      </div>
+      <div class="input-list" role="table">
+        <div class="input-labels" role="row"><span>Application</span><span>Activity mix</span><span>Keys</span><span>Clicks</span></div>
+        {#each inputData as row}
+          {@const icon = appIcon(row.name || '')}
+          <div class="input-row" role="row">
             <span class="td-name" role="cell">
               {#if icon}
                 <i class="ti {icon} app-icon-tabler" aria-hidden="true"></i>
               {:else}
-                <span class="app-letter" style="background:{hashColor(row.exeName || '')}">{(row.exeName || '?').charAt(0).toUpperCase()}</span>
+                <span class="app-letter" style="background:{hashColor(row.name || '')}">{(row.name || '?').charAt(0).toUpperCase()}</span>
               {/if}
-              {row.exeName || 'System / Unknown'}
+              <span class="input-app"><strong>{row.name || 'System / Unknown'}</strong><small>{Math.round((row.keystrokes+row.clicks)*100/Math.max(totalKeys+totalClicks,1))}% of interactions</small></span>
             </span>
+            <span class="input-bars"><i style="width:{(row.keystrokes+row.clicks)*100/maxInput}%"><b style="width:{row.keystrokes*100/Math.max(row.keystrokes+row.clicks,1)}%"></b></i></span>
             <span class="td-num" role="cell">{row.keystrokes.toLocaleString()}</span>
             <span class="td-num" role="cell">{row.clicks.toLocaleString()}</span>
           </div>
         {/each}
       </div>
-    </div>
+    </section>
   {/if}
 
   {#if uncategorized.length > 0}
@@ -241,6 +245,13 @@
   .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
   .section { margin-top: var(--sp-4); }
+  .input-card{overflow:hidden;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:var(--shape-md)}
+  .input-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid var(--clr-border)}
+  .input-header .section-title{margin:0}.input-header p{margin-top:4px;color:var(--clr-text-sec);font-size:11px}.input-header>span{padding:5px 9px;border-radius:99px;background:var(--clr-bg-ter);color:var(--clr-text-sec);font-size:10px}
+  .input-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--clr-border);border-bottom:1px solid var(--clr-border)}
+  .input-summary>div{display:flex;align-items:center;gap:10px;padding:13px 18px;background:var(--clr-bg-sec)}.input-summary i{display:grid;place-items:center;width:30px;height:30px;border-radius:8px;color:var(--md-primary);background:var(--md-primary-cont)}.input-summary span{display:grid;color:var(--clr-text-sec);font-size:10px}.input-summary strong{color:var(--clr-text-pri);font:16px var(--font-mono)}
+  .input-list{padding:5px}.input-labels,.input-row{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(140px,1fr) 90px 90px;gap:16px;align-items:center}.input-labels{padding:7px 12px;color:var(--clr-text-ter);font-size:9px;text-transform:uppercase;letter-spacing:.07em}.input-labels span:nth-last-child(-n+2){text-align:right}.input-row{min-height:52px;padding:8px 12px;border-radius:8px}.input-row:hover{background:var(--clr-bg-ter)}
+  .input-app{min-width:0;display:grid}.input-app strong{overflow:hidden;text-overflow:ellipsis;font-size:12px}.input-app small{color:var(--clr-text-ter);font-size:9px}.input-bars i{display:block;width:100%;height:7px;overflow:hidden;border-radius:99px;background:var(--md-secondary)}.input-bars b{display:block;height:100%;background:var(--md-primary)}
   .section-title {
     font-size: 14px;
     font-weight: 500;
@@ -254,6 +265,7 @@
   .th span:nth-child(2),
   .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
   .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; margin-left: var(--sp-3); }
+  @media(max-width:700px){.input-summary{grid-template-columns:1fr}.input-labels{display:none}.input-row{grid-template-columns:minmax(150px,1fr) 70px 70px}.input-bars{display:none}.td-num{width:auto;margin:0}.input-header{align-items:flex-start}}
 
   .section-hint { font-size: 11px; color: var(--clr-text-ter); font-weight: 400; margin-left: var(--sp-2); }
   .uncat-list { display: flex; flex-direction: column; gap: 8px; margin-top: 0; }

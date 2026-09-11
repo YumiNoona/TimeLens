@@ -20,7 +20,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
 - App and domain focus controls with timed targets, target-aware enforcement modes, custom media reminders, and optional password protection
-- User-arranged cards on Today and History, plus configurable density/motion/tracking, themes, reminders, retention, exports, and goals
+- User-arranged cards on Today and History, plus configurable density, motion, tracking, themes, reminders, retention, precise export ranges, and goals
 - Store-managed browser extension installation from Mozilla Add-ons
 - Per-user Windows installer with install-location, startup, desktop-shortcut, and launch options plus a clean uninstaller
 - Built-in updater with SHA-256 verification, verified replacement, automatic restart, and fresh dashboard reload
@@ -55,7 +55,7 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 7 adds one-second desktop checkpoints, precise short-visit totals, complete app lists, per-app input attribution and focused-tab Firefox tracking without the old two-minute cap. History provides searchable website/executable details with durations, click/keystroke counts and CSV export. See the [release notes](docs/releases/7.0.0.md) and [tracking behavior](docs/tracking.md).
+Version 7 adds date-aware browser Visits and Pages views, a clearer Input activity dashboard, custom CSV/JSON exports, a light Paper theme, simpler browser pairing, and more display and retention controls. It retains one-second desktop checkpoints, focused-tab tracking, precise short-visit totals, and per-app input attribution. See the [release notes](docs/releases/7.0.0.md) and [tracking behavior](docs/tracking.md).
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -158,6 +158,6 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
 
-Chrome and Firefox are supported, packaged and release-tested. Pair each through the Privacy center; multiple browser profiles can remain paired. Revoke removes all paired access.
+Chrome and Firefox are supported, packaged and release-tested. In Settings, choose **Connect**, copy the two-minute code, then enter it in the extension popup. Pairing authorizes only that local browser profile to submit activity to TimeLens; no account or internet service is involved. Multiple profiles can remain paired, and **Disconnect all** revokes them together.
 
-TimeLens 5.0.0 refines the dashboard with a cleaner activity heatmap, readable category breakdowns, and a duration-precision preference. See [5.0.0 release notes](docs/releases/5.0.0.md).
+TimeLens 7.0.0 adds browser visit inspection, flexible exports, clearer input analytics, the Paper theme, and streamlined local browser pairing. See [7.0.0 release notes](docs/releases/7.0.0.md).

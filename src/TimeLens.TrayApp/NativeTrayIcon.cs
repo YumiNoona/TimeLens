@@ -56,6 +56,7 @@ public sealed class NativeTrayIcon : IDisposable
     private WndProc? _wndProc;
     private bool _iconAdded;
     private bool _disposed;
+    private readonly object _lifecycleLock = new();
     private ExceptionDispatchInfo? _callbackError;
     private readonly string _iconPath;
     private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
@@ -281,8 +282,11 @@ public sealed class NativeTrayIcon : IDisposable
     public void ShowBalloon(string title, string text, bool warning = false, string? imagePath = null,
         string position = "bottom-left", string mediaLayout = "large")
     {
-        if (_disposed) return;
-        _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, NormalizePosition(position), NormalizeMediaLayout(mediaLayout)));
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _toastQueue.Enqueue(new ToastRequest(title, text, imagePath, NormalizePosition(position), NormalizeMediaLayout(mediaLayout)));
+        }
         var window = _hWnd;
         if (window != IntPtr.Zero) PostMessageW(window, WM_SHOW_TOAST, IntPtr.Zero, IntPtr.Zero);
     }
@@ -291,15 +295,19 @@ public sealed class NativeTrayIcon : IDisposable
     public void Invoke(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (_disposed) throw new ObjectDisposedException(nameof(NativeTrayIcon));
         if (_messageLoopThreadId == Environment.CurrentManagedThreadId)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(NativeTrayIcon));
             action();
             return;
         }
 
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _dispatchQueue.Enqueue(new DispatchRequest(action, completion));
+        lock (_lifecycleLock)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(NativeTrayIcon));
+            _dispatchQueue.Enqueue(new DispatchRequest(action, completion));
+        }
         var window = _hWnd;
         if (window != IntPtr.Zero)
             PostMessageW(window, WM_DISPATCH, IntPtr.Zero, IntPtr.Zero);
@@ -310,8 +318,11 @@ public sealed class NativeTrayIcon : IDisposable
     public void Post(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (_disposed) return;
-        _dispatchQueue.Enqueue(new DispatchRequest(action, null));
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _dispatchQueue.Enqueue(new DispatchRequest(action, null));
+        }
         var window = _hWnd;
         if (window != IntPtr.Zero)
             PostMessageW(window, WM_DISPATCH, IntPtr.Zero, IntPtr.Zero);
@@ -533,11 +544,14 @@ public sealed class NativeTrayIcon : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        while (_dispatchQueue.TryDequeue(out var request))
-            request.Completion?.TrySetException(new ObjectDisposedException(nameof(NativeTrayIcon)));
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            while (_dispatchQueue.TryDequeue(out var request))
+                request.Completion?.TrySetException(new ObjectDisposedException(nameof(NativeTrayIcon)));
+            while (_toastQueue.TryDequeue(out _)) { }
+        }
 
         if (_hWnd != IntPtr.Zero)
         {

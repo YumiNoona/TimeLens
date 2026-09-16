@@ -46,6 +46,8 @@ public sealed class InputMonitor : IDisposable
     public void Start()
     {
         if (_keyboardHook != IntPtr.Zero || _mouseHook != IntPtr.Zero || _flushTimer is not null) return;
+        if (_instance is not null && !ReferenceEquals(_instance, this))
+            throw new InvalidOperationException("Only one input monitor can be active at a time.");
         _instance = this;
         using var curProc = System.Diagnostics.Process.GetCurrentProcess();
         using var mainModule = curProc.MainModule!;
@@ -119,12 +121,12 @@ public sealed class InputMonitor : IDisposable
 
     public void Stop()
     {
-        _flushTimer?.Dispose();
+        _flushTimer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _flushTimer = null;
         if (_keyboardHook != IntPtr.Zero) { UnhookWindowsHookEx(_keyboardHook); _keyboardHook = IntPtr.Zero; }
         if (_mouseHook != IntPtr.Zero) { UnhookWindowsHookEx(_mouseHook); _mouseHook = IntPtr.Zero; }
         Flush();
-        _instance = null;
+        if (ReferenceEquals(_instance, this)) _instance = null;
     }
 
     public void Dispose() => Stop();

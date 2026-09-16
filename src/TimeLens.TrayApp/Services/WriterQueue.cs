@@ -6,6 +6,7 @@ public sealed class WriterQueue : IDisposable
 {
     private readonly SqliteConnection _conn;
     private readonly object _syncLock = new();
+    private readonly object _lifecycleLock = new();
     private readonly System.Threading.Tasks.Task _drainTask;
     private readonly CancellationTokenSource _cts = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<Action<SqliteCommand>> _queue = new();
@@ -13,6 +14,7 @@ public sealed class WriterQueue : IDisposable
     private int _pendingOperations;
     private long _droppedOperations;
     private Timer? _checkpointTimer;
+    private bool _disposed;
 
     public WriterQueue(string dbPath)
     {
@@ -27,6 +29,8 @@ public sealed class WriterQueue : IDisposable
         {
             try
             {
+                lock (_lifecycleLock)
+                    if (_disposed) return;
                 lock (_syncLock)
                 {
                     DrainAll();
@@ -41,15 +45,19 @@ public sealed class WriterQueue : IDisposable
 
     public void Enqueue(Action<SqliteCommand> op)
     {
-        if (Interlocked.Increment(ref _pendingOperations) > MaxQueuedOperations)
+        lock (_lifecycleLock)
         {
-            Interlocked.Decrement(ref _pendingOperations);
-            var dropped = Interlocked.Increment(ref _droppedOperations);
-            if (dropped == 1 || dropped % 100 == 0)
-                RuntimeDiagnostics.Write($"Writer queue full; dropped operations: {dropped}");
-            return;
+            if (_disposed) return;
+            if (Interlocked.Increment(ref _pendingOperations) > MaxQueuedOperations)
+            {
+                Interlocked.Decrement(ref _pendingOperations);
+                var dropped = Interlocked.Increment(ref _droppedOperations);
+                if (dropped == 1 || dropped % 100 == 0)
+                    RuntimeDiagnostics.Write($"Writer queue full; dropped operations: {dropped}");
+                return;
+            }
+            _queue.Enqueue(op);
         }
-        _queue.Enqueue(op);
     }
 
     public void ExecuteSync(Action<SqliteConnection> op)
@@ -170,12 +178,21 @@ public sealed class WriterQueue : IDisposable
 
     public void Dispose()
     {
-        _checkpointTimer?.Dispose();
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
+        _checkpointTimer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _checkpointTimer = null;
         _cts.Cancel();
         try { _drainTask.GetAwaiter().GetResult(); } catch { }
-        DrainAll();
-        _conn.Close();
-        _conn.Dispose();
+        lock (_syncLock)
+        {
+            DrainAll();
+            _conn.Close();
+            _conn.Dispose();
+        }
         _cts.Dispose();
     }
 }

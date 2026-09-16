@@ -3,7 +3,14 @@ using Microsoft.Data.Sqlite;
 using TimeLens.Api.Services;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
+using Xunit;
 
+[Collection("Tracking integration")]
+public sealed class TrackingRegressionTests
+{
+[Fact]
+public async Task TrackingApiAndLocalDayRegressions()
+{
 var root = Path.Combine(Path.GetTempPath(), "TimeLens-tracking-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
@@ -500,6 +507,9 @@ static double Scalar(string path, string sql)
     using var cmd = c.CreateCommand(); cmd.CommandText = sql; return Convert.ToDouble(cmd.ExecuteScalar());
 }
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+}
+}
+
 sealed class FakeClock(DateTime now) : TimeProvider
 {
     public DateTime Now = now;

@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:dotnet": "dotnet test --solution src/TimeLens.sln -c Release",
     "web:dev": "npm run dev --prefix web",
     "web:build": "npm run build --prefix web"
   }

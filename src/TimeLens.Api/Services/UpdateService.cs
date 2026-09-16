@@ -123,6 +123,7 @@ public sealed class UpdateService : IDisposable
                 if (!actualHash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("The update checksum does not match the release.");
             }
+            AuthenticodeVerifier.EnsureTrustedUpdate(executablePath, temporaryPath);
 
             File.Move(temporaryPath, stagedPath, overwrite: true);
             StartReplacementProcess(stagedPath, executablePath);

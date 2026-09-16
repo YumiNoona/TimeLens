@@ -860,6 +860,14 @@ internal static class Program
         finally
         {
             idleTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            apiCts.Cancel();
+            // Release queued cross-thread dispatches before joining Kestrel; an
+            // in-flight settings request may otherwise wait on a message loop
+            // that has already exited.
+            trayDispose.Dispose();
+            try { apiTask.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { RuntimeDiagnostics.Write($"Local API shutdown: {ex}"); }
             winWatcher.Dispose();
             sessionWatcher.Dispose();
             inputMonitor.Dispose();

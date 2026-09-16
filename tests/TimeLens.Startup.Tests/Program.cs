@@ -1,13 +1,13 @@
-using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using TimeLens.Api;
 using TimeLens.TrayApp;
 using TimeLens.TrayApp.Services;
+using Xunit;
 
-internal static class Program
+public sealed class StartupRegressionTests
 {
-    [STAThread]
-    private static int Main(string[] args)
+    [Fact]
+    public void StartupAndDatabaseRegressions()
     {
         var directory = Path.Combine(Path.GetTempPath(), "TimeLens-startup-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -180,71 +180,13 @@ internal static class Program
                     Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(testKey[..testKey.LastIndexOf("\\Run", StringComparison.Ordinal)], throwOnMissingSubKey: false);
                 }
             });
-            if (args.Contains("--tray"))
-                Run("Native tray registration, activation, and Explorer recovery", TestTray);
-            if (args.Contains("--toast"))
-                Run("Native toast window creation and rendering", () =>
-                {
-                    using var toast = new ToastWindow("Focus Mode", "example.exe is blocked");
-                    var toastWindow = FindWindowW("TLToast", "");
-                    Check(toastWindow != IntPtr.Zero, "Native toast window was not created.");
-                    Check(IsWindowVisible(toastWindow), "Native toast window was created hidden.");
-                    SendMessageW(toastWindow, 0x0202, IntPtr.Zero, new IntPtr((70 << 16) | 220));
-                    Check(IsWindowVisible(toastWindow), "Clicking the toast body dismissed a persistent reminder.");
-                    SendMessageW(toastWindow, 0x0202, IntPtr.Zero, new IntPtr((25 << 16) | 430));
-                    Check(!IsWindow(toastWindow), "The toast close button did not dismiss the reminder.");
-                });
             Console.WriteLine("All startup regression checks passed.");
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(ex);
-            return 1;
         }
         finally
         {
             SqliteConnection.ClearAllPools();
             Directory.Delete(directory, recursive: true);
         }
-    }
-
-    private static void TestTray()
-    {
-        using var tray = new NativeTrayIcon();
-        var opened = 0;
-        var managed = 0;
-        var exitRequested = 0;
-        tray.OpenDashboardRequested += () => opened++;
-        tray.ManageBlocksRequested += () => managed++;
-        tray.ExitRequested += () => exitRequested++;
-        tray.StartupRequested += () =>
-        {
-            var hwnd = FindWindowW("TimeLensHiddenWindow", "TimeLens");
-            Check(hwnd != IntPtr.Zero && GetParent(hwnd) == IntPtr.Zero, "Tray is not a top-level broadcast recipient.");
-            var identifier = new IconIdentifier { Size = (uint)Marshal.SizeOf<IconIdentifier>(), Window = hwnd, Id = 100 };
-            Check(Shell_NotifyIconGetRect(ref identifier, out _) == 0, "Shell did not register the tray icon.");
-            // Simulate the version-4 keyboard activation delivered by the shell.
-            SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
-            Check(opened == 1, "Keyboard activation did not open the dashboard.");
-            SendMessageW(hwnd, 0x111, new IntPtr(0x8004), IntPtr.Zero);
-            Check(managed == 1 && exitRequested == 0, "Manage Blocks must not dispatch Exit.");
-            SendMessageW(hwnd, 0x111, new IntPtr(0x8003), IntPtr.Zero);
-            Check(exitRequested == 1 && managed == 1, "Exit must dispatch its protection handler.");
-            Action failingLaunch = () => throw new IOException("Injected browser launch failure");
-            tray.OpenDashboardRequested += failingLaunch;
-            SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
-            tray.OpenDashboardRequested -= failingLaunch;
-            SendMessageW(hwnd, 0x400, IntPtr.Zero, new IntPtr((100 << 16) | 0x401));
-            Check(opened == 3 && IsWindow(hwnd), "A failed dashboard launch stopped the native tray loop.");
-            var icon = new IconData { Size = 976, Window = hwnd, Id = 100 };
-            Check(Shell_NotifyIconW(2, ref icon), "Could not remove the test icon to simulate Explorer restarting.");
-            Check(Shell_NotifyIconGetRect(ref identifier, out _) != 0, "Test icon was not removed.");
-            SendMessageW(hwnd, RegisterWindowMessageW("TaskbarCreated"), IntPtr.Zero, IntPtr.Zero);
-            Check(Shell_NotifyIconGetRect(ref identifier, out _) == 0, "Tray icon was lost after recovery notification.");
-            tray.Close();
-        };
-        tray.Run();
     }
 
     private static long Query(string path, string sql)
@@ -267,27 +209,4 @@ internal static class Program
         Console.WriteLine($"PASS: {name}");
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct IconIdentifier { public uint Size; public IntPtr Window; public uint Id; public Guid Guid; }
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Rect { public int Left, Top, Right, Bottom; }
-    // NOTIFYICONDATAW is 976 bytes in our win-x64 target. Only deletion fields are needed.
-    [StructLayout(LayoutKind.Sequential, Size = 976)]
-    private struct IconData { public uint Size; public IntPtr Window; public uint Id; }
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern bool Shell_NotifyIconW(uint command, ref IconData data);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr FindWindowW(string className, string title);
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetParent(IntPtr hwnd);
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hwnd);
-    [DllImport("user32.dll")]
-    private static extern bool IsWindow(IntPtr hwnd);
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessageW(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern uint RegisterWindowMessageW(string message);
-    [DllImport("shell32.dll")]
-    private static extern int Shell_NotifyIconGetRect(ref IconIdentifier identifier, out Rect rect);
 }

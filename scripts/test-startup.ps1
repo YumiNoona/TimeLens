@@ -135,8 +135,14 @@ try {
     $migratedExplorer = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -TimeoutSec 5
     if ($migratedExplorer.focusBlocklist -notmatch '"a":"hide"') { throw 'Legacy desktop Notify did not migrate to Hide.' }
     $unsafeExplorer = @{ focusBlocklist = '[{"i":"explorer.exe","m":"u","a":"kill"}]' } | ConvertTo-Json -Compress
-    $unsafeResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $unsafeExplorer -SkipHttpErrorCheck -TimeoutSec 5
-    if ($unsafeResponse.StatusCode -ne 400) { throw 'Destructive File Explorer blocking was not rejected.' }
+    $unsafeStatus = 0
+    try {
+        $unsafeResponse = Invoke-WebRequest 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $unsafeExplorer -TimeoutSec 5
+        $unsafeStatus = [int]$unsafeResponse.StatusCode
+    } catch {
+        if ($_.Exception.Response) { $unsafeStatus = [int]$_.Exception.Response.StatusCode }
+    }
+    if ($unsafeStatus -ne 400) { throw "Destructive File Explorer blocking was not rejected (status $unsafeStatus)." }
 
     $resetBlockSettings = @{ focusMode = $false; blockAction = 'hide'; focusBlocklist = '[]' } | ConvertTo-Json -Compress
     $null = Invoke-RestMethod 'http://127.0.0.1:47821/api/settings' -Method Post -ContentType 'application/json' -Body $resetBlockSettings -TimeoutSec 5

@@ -38,6 +38,13 @@ export function installerAssetName() {
   return process.env.GITHUB_DOWNLOAD_ASSET || 'TimeLens-Setup.exe';
 }
 
+export function publicDownloadUrl(configuredOrigin = process.env.TIMELENS_PUBLIC_ORIGIN || 'https://timelens.venusapp.in') {
+  const origin = new URL(configuredOrigin);
+  if (origin.protocol !== 'https:' || origin.username || origin.password)
+    throw new Error('TIMELENS_PUBLIC_ORIGIN must be an HTTPS origin without credentials.');
+  return new URL('/api/app-download', origin.origin).toString();
+}
+
 function stableVersion(tagName) {
   const value = String(tagName || '').replace(/^v/i, '');
   if (!/^\d+\.\d+\.\d+$/.test(value)) return null;

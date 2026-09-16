@@ -24,6 +24,7 @@ bld/
 # Native AOT publish
 publish/
 artifacts/
+/.artifacts/
 TestResults/
 coverage/
 

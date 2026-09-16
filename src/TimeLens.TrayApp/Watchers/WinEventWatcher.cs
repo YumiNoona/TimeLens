@@ -19,6 +19,7 @@ public sealed class WinEventWatcher : IDisposable
 
     public void Start()
     {
+        if (_fgHook != IntPtr.Zero || _nameHook != IntPtr.Zero) return;
         _fgHook = Win32.SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
             IntPtr.Zero, _hookDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -28,7 +29,14 @@ public sealed class WinEventWatcher : IDisposable
             IntPtr.Zero, _hookDelegate, 0, 0, WINEVENT_OUTOFCONTEXT);
 
         if (_fgHook == IntPtr.Zero)
+        {
+            if (_nameHook != IntPtr.Zero)
+            {
+                Win32.UnhookWinEvent(_nameHook);
+                _nameHook = IntPtr.Zero;
+            }
             throw new InvalidOperationException("Failed to install foreground hook.");
+        }
 
         // Fire initial event for the current foreground window
         var hwnd = Win32.GetForegroundWindow();
@@ -59,7 +67,15 @@ public sealed class WinEventWatcher : IDisposable
 
     public void Dispose()
     {
-        if (_fgHook != IntPtr.Zero) Win32.UnhookWinEvent(_fgHook);
-        if (_nameHook != IntPtr.Zero) Win32.UnhookWinEvent(_nameHook);
+        if (_fgHook != IntPtr.Zero)
+        {
+            Win32.UnhookWinEvent(_fgHook);
+            _fgHook = IntPtr.Zero;
+        }
+        if (_nameHook != IntPtr.Zero)
+        {
+            Win32.UnhookWinEvent(_nameHook);
+            _nameHook = IntPtr.Zero;
+        }
     }
 }

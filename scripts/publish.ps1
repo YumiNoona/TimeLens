@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $dashboardDir = "$root\src\TimeLens.Dashboard"
 $trayAppDir = "$root\src\TimeLens.TrayApp"
-$publishDir = "$trayAppDir\bin\$Config\net9.0\win-x64\publish"
+$publishDir = "$trayAppDir\bin\$Config\net10.0\win-x64\publish"
 $exePath = "$publishDir\TimeLens.TrayApp.exe"
 $rootExePath = "$root\TimeLens.exe"
 $installerScript = "$root\installer\TimeLens.iss"
@@ -92,10 +92,8 @@ if ($LASTEXITCODE -ne 0) { throw "Browser extension regression checks failed" }
 
 # --- Publish .NET ---
 & $header "=== Checking database startup regressions ==="
-dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release --self-contained true
-if ($LASTEXITCODE -ne 0) { throw "Startup regression checks failed" }
-dotnet run --project "$root\tests\TimeLens.Tracking.Tests" -c Release --self-contained true -r win-x64
-if ($LASTEXITCODE -ne 0) { throw "Tracking regression checks failed" }
+dotnet test --solution "$root\src\TimeLens.sln" -c Release
+if ($LASTEXITCODE -ne 0) { throw "Regression checks failed" }
 
 & $header "=== Publishing TimeLens (Native AOT, $Config) ==="
 try {
@@ -133,8 +131,8 @@ Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 & $ok "Standalone root TimeLens.exe ready"
 
 Remove-Item -LiteralPath $chromeExtensionPath, $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path "$root\src\browser-extensions\firefox\*" -DestinationPath $firefoxExtensionPath
-Compress-Archive -Path "$root\src\browser-extensions\chrome\*" -DestinationPath $chromeExtensionPath
+& "$root\scripts\package-extensions.ps1" -OutputDirectory $root
+if ($LASTEXITCODE -ne 0) { throw "Browser extension packaging failed" }
 & $ok "Chrome and Firefox extension packages ready"
 
 # --- Build installer ---

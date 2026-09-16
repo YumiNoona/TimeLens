@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-const source = readFileSync(new URL('../src/browser-extensions/firefox/background.js', import.meta.url), 'utf8');
+const sharedSource = readFileSync(new URL('../src/browser-extensions/shared/background.js', import.meta.url), 'utf8');
 
-for (const family of ['firefox']) test(`${family}: focus, navigation, private tabs, recovery`, async () => {
+for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, private tabs, recovery`, async () => {
+  const source = sharedSource;
   const calls = [];
   const event = () => ({ addListener(fn) { this.listener = fn; } });
   let focused = true;
@@ -15,7 +16,7 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.4.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '7.5.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -79,28 +80,29 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   assert.equal(stored.timelens_pending_input_v1.length, 0, 'A preserved pending batch must drain after update');
 });
 
-test('Firefox package contains the canonical scripts and resources', () => {
-  for (const family of ['firefox']) {
+test('browser packages contain the canonical scripts and resources', () => {
+  for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.4.0');
-    assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
-    assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
-    assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
-      ['browsingActivity', 'websiteActivity']);
-    assert.equal(readFileSync(new URL('content.js', root), 'utf8'), readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8'));
+    assert.equal(manifest.version, '7.5.0');
+    if (family === 'firefox') {
+      assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
+      assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
+      assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
+        ['browsingActivity', 'websiteActivity']);
+    }
     assert.deepEqual(manifest.content_scripts[0].matches, ['http://*/*', 'https://*/*']);
     for (const file of ['popup.html', 'popup.js', 'blocked.html', 'blocked.js']) assert.ok(readFileSync(new URL(file, root), 'utf8').length);
     for (const icon of Object.values(manifest.icons)) assert.ok(readFileSync(new URL(icon, root)).length);
   }
-  assert.doesNotMatch(source, /storage\.local\.remove\(['"]timelens_queue/, 'Startup must not delete prior extension state');
+  assert.doesNotMatch(sharedSource, /storage\.local\.remove\(['"]timelens_queue/, 'Startup must not delete prior extension state');
 });
 
 
 test('content input counts trusted focused events only and retries stable batches', async () => {
   const listeners = {}, sent = [];
   let timer, focused = true, now = Date.now(), retry = false;
-  const content = readFileSync(new URL('../src/browser-extensions/firefox/content.js', import.meta.url), 'utf8');
+  const content = readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8');
   const addEventListener = (name, fn) => { listeners[name] = fn; };
   const sandbox = { chrome: { runtime: { sendMessage: async msg => { sent.push(structuredClone(msg)); if (retry) { retry = false; return { retry: true }; } return { accepted: true }; } } },
     document: { hasFocus: () => focused, visibilityState: 'visible', title: 'Test', addEventListener },

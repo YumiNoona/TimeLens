@@ -4,12 +4,15 @@ namespace TimeLens.TrayApp.Watchers;
 
 public sealed class SessionWatcher : IDisposable
 {
+    private bool _started;
     public event Action<string>? StateChanged;
 
     public void Start()
     {
+        if (_started) return;
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        _started = true;
     }
 
     private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
@@ -41,7 +44,9 @@ public sealed class SessionWatcher : IDisposable
 
     public void Dispose()
     {
+        if (!_started) return;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _started = false;
     }
 }

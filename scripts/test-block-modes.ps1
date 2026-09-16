@@ -16,7 +16,7 @@ dotnet build "$root\tests\TimeLens.BlockProbe\TimeLens.BlockProbe.csproj" -c Rel
 if ($LASTEXITCODE -ne 0) { throw 'The block probe failed to build.' }
 
 $exe = (Resolve-Path -LiteralPath $ExePath).Path
-$probePath = (Resolve-Path "$root\tests\TimeLens.BlockProbe\bin\Release\net9.0-windows\TimeLensBlockProbe.exe").Path
+$probePath = (Resolve-Path "$root\tests\TimeLens.BlockProbe\bin\Release\net10.0-windows\TimeLensBlockProbe.exe").Path
 $testRoot = Join-Path $root "artifacts\block-modes-$([Guid]::NewGuid().ToString('N'))"
 $dataDir = Join-Path $testRoot 'fresh-user'
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null

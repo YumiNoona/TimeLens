@@ -252,6 +252,10 @@ try
     var inputBatch = new TimeLens.Api.Dtos.BrowserInputDto(Guid.NewGuid().ToString(), "https://b.example/", "B", "firefox", new DateTimeOffset(clock.Now), 7, 3);
     Check(inputTracker.RecordInput(inputBatch) && inputTracker.RecordInput(inputBatch), "Input delivery retries must be accepted idempotently");
     Check(Scalar(accuracyPath, "SELECT SUM(keystrokes) FROM browser_input_batches") == 7, "A retry must not double input counts");
+    var preservedBatch = inputBatch with { BatchId = Guid.NewGuid().ToString(), ObservedAt = new DateTimeOffset(clock.Now.AddDays(-5)), Keystrokes = 4, Clicks = 2 };
+    Check(inputTracker.RecordInput(preservedBatch), "Input queued before a disable or extension update must remain recordable within retention");
+    var expiredBatch = preservedBatch with { BatchId = Guid.NewGuid().ToString(), ObservedAt = new DateTimeOffset(clock.Now.AddDays(-91)) };
+    Check(!inputTracker.RecordInput(expiredBatch), "Pending extension input older than retention must not be restored");
     TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { TrackInput = false };
     Check(!inputTracker.RecordInput(inputBatch with { BatchId = Guid.NewGuid().ToString() }), "Disabled input must not be stored");
     TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { TrackInput = true };

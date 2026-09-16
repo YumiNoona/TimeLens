@@ -14,12 +14,73 @@ const AUDIBLE_API = ROOT + '/api/audible-status';
 const DASHBOARD = ROOT + '/';
 const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
 const EXTENSION_VERSION = api.runtime.getManifest().version;
+const INPUT_QUEUE_KEY = 'timelens_pending_input_v1';
 
 let trackingEnabled = true;
+let inputTrackingEnabled = true;
 let blockingEnabled = false;
+let browserUrlMode = 'domain';
+let browserStoreTitles = false;
 let pairToken = '';
 let imageDataCache = { url: '', data: '' };
 const notifiedTabs = new Set();
+let inputQueue = [];
+let inputQueueReady = null;
+let drainingInput = false;
+
+function loadInputQueue() {
+  if (inputQueueReady) return inputQueueReady;
+  inputQueueReady = api.storage.local.get(INPUT_QUEUE_KEY).then(function(saved) {
+    inputQueue = Array.isArray(saved && saved[INPUT_QUEUE_KEY])
+      ? saved[INPUT_QUEUE_KEY].filter(function(batch) { return batch && typeof batch.batchId === 'string'; })
+      : [];
+  }).catch(function() { inputQueue = []; });
+  return inputQueueReady;
+}
+
+function saveInputQueue() {
+  return api.storage.local.set({ [INPUT_QUEUE_KEY]: inputQueue });
+}
+
+function privacySafeInput(batch) {
+  const parsed = new URL(batch.url);
+  const url = browserUrlMode === 'full' ? parsed.href
+    : browserUrlMode === 'path' ? parsed.origin + parsed.pathname
+      : parsed.origin + '/';
+  return { ...batch, url: url, title: browserStoreTitles ? String(batch.title || '') : '' };
+}
+
+async function drainInputQueue() {
+  await loadInputQueue();
+  if (drainingInput || !pairToken || !trackingEnabled || !inputTrackingEnabled) return;
+  drainingInput = true;
+  try {
+    while (inputQueue.length && pairToken && trackingEnabled && inputTrackingEnabled) {
+      const batch = inputQueue[0];
+      const response = await checkedFetch(ROOT + '/api/browser-input', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(privacySafeInput(batch))
+      });
+      const result = await response.json();
+      // Keep rejected batches: tracking may have been paused between collection and delivery.
+      if (!result || result.accepted !== true) break;
+      inputQueue.shift();
+      await saveInputQueue();
+    }
+  } catch (_) {
+    // The queue remains on disk and is retried after reconnect, restart, enable, or upgrade.
+  } finally {
+    drainingInput = false;
+  }
+}
+
+async function enqueueInput(batch) {
+  await loadInputQueue();
+  if (!inputQueue.some(function(item) { return item.batchId === batch.batchId; })) {
+    inputQueue.push(batch);
+    await saveInputQueue();
+  }
+  void drainInputQueue();
+}
 
 function checkedFetch(url, options) {
   if (!pairToken) return Promise.reject(new Error('TimeLens is not paired'));
@@ -74,7 +135,10 @@ function fetchSettings() {
   if (!pairToken) return Promise.resolve(null);
   return checkedFetch(SETTINGS_API).then(function(response) { return response.json(); }).then(function(settings) {
     trackingEnabled = settings.trackBrowser !== false;
+    inputTrackingEnabled = settings.trackInput !== false;
     blockingEnabled = settings.focusMode === true;
+    browserUrlMode = settings.browserUrlMode === 'full' || settings.browserUrlMode === 'path' ? settings.browserUrlMode : 'domain';
+    browserStoreTitles = settings.browserStoreTitles === true;
     return settings;
   }).catch(function() {});
 }
@@ -267,7 +331,7 @@ function applyBlockResponse(tabId, originalUrl, response) {
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-input') return false;
-  if (!sender.tab || sender.tab.incognito || !trackingEnabled) { sendResponse({ accepted: false }); return false; }
+  if (!sender.tab || sender.tab.incognito || !trackingEnabled || !inputTrackingEnabled) { sendResponse({ accepted: false }); return false; }
   const batch = message.batch;
   try {
     const topUrl = new URL(sender.tab.url);
@@ -275,11 +339,10 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     // Inputs in embedded frames belong to the selected top-level website.
     const pageUrl = sender.frameId === 0 ? new URL(batch.url) : topUrl;
     if (sender.frameId === 0 && pageUrl.origin !== topUrl.origin) throw new Error('Navigation changed origin');
-    const body = { ...batch, url: pageUrl.href, browser: BROWSER };
-    checkedFetch(ROOT + '/api/browser-input', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(response => response.json()).then(sendResponse)
-      .catch(() => sendResponse({ retry: true }));
+    const body = privacySafeInput({ ...batch, url: pageUrl.href, browser: BROWSER });
+    enqueueInput(body)
+      .then(function() { sendResponse({ accepted: true, queued: true }); })
+      .catch(function() { sendResponse({ retry: true }); });
   } catch (_) { sendResponse({ accepted: false }); }
   return true;
 });
@@ -375,18 +438,17 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
 api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
 function initialize() {
-  return api.storage.local.get('timelens_pair_token').then(function(saved) {
+  return Promise.all([api.storage.local.get('timelens_pair_token'), loadInputQueue()]).then(function(results) {
+    const saved = results[0];
     pairToken = saved && saved.timelens_pair_token || '';
     if (!pairToken) return null;
     sendHeartbeat();
-    return fetchSettings().then(sampleFocusedTab);
+    return fetchSettings().then(function() { void drainInputQueue(); return sampleFocusedTab(); });
   });
 }
 api.runtime.onStartup.addListener(initialize);
 api.runtime.onInstalled.addListener(initialize);
 
-// Remove v6's undated replay queue: it cannot establish historical intervals.
-api.storage.local.remove('timelens_queue');
 initialize();
 // Best-effort five-second samples while the worker lives; alarms recover after
 // suspension/restart. Chrome 120+ supports a 30-second minimum alarm period.
@@ -397,7 +459,7 @@ if (api.alarms) {
     if (alarm.name === 'timelens-heartbeat') {
       if (!pairToken) return;
       sendHeartbeat();
-      fetchSettings().then(sampleFocusedTab);
+      fetchSettings().then(function() { void drainInputQueue(); return sampleFocusedTab(); });
     }
   });
 }

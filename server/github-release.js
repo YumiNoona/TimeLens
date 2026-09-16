@@ -38,21 +38,36 @@ export function installerAssetName() {
   return process.env.GITHUB_DOWNLOAD_ASSET || 'TimeLens-Setup.exe';
 }
 
+function stableVersion(tagName) {
+  const value = String(tagName || '').replace(/^v/i, '');
+  if (!/^\d+\.\d+\.\d+$/.test(value)) return null;
+  const parts = value.split('.').map(Number);
+  return parts.every(Number.isSafeInteger) ? parts : null;
+}
+
+export function selectLatestRelease(releases, assetName = applicationAssetName()) {
+  const requiredAssets = [applicationAssetName(), installerAssetName(), assetName, 'SHA256SUMS.txt'];
+  return releases
+    .filter((candidate) => {
+      const version = stableVersion(candidate.tag_name);
+      const assetNames = new Set((candidate.assets || []).map((asset) => asset.name));
+      return !candidate.draft && !candidate.prerelease && version && version[0] >= minimumReleaseMajor &&
+        requiredAssets.every((name) => assetNames.has(name));
+    })
+    .sort((left, right) => {
+      const a = stableVersion(left.tag_name);
+      const b = stableVersion(right.tag_name);
+      for (let index = 0; index < 3; index++) {
+        if (a[index] !== b[index]) return b[index] - a[index];
+      }
+      return 0;
+    })[0];
+}
+
 export async function getLatestRelease(assetName = applicationAssetName()) {
   const response = await githubFetch(`${githubApi}/repos/${repository()}/releases?per_page=50`);
   const releases = await response.json();
-  const release = releases.find((candidate) => {
-    const version = String(candidate.tag_name || '').replace(/^v/i, '');
-    const assetNames = new Set((candidate.assets || []).map((asset) => asset.name));
-    const major = Number(version.split('.')[0]);
-    return !candidate.draft && !candidate.prerelease &&
-      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) &&
-      Number.isInteger(major) && major >= minimumReleaseMajor &&
-      assetNames.has(applicationAssetName()) &&
-      assetNames.has(installerAssetName()) &&
-      assetNames.has(assetName) &&
-      assetNames.has('SHA256SUMS.txt');
-  });
+  const release = selectLatestRelease(releases, assetName);
   if (!release) throw new Error(`No production TimeLens release v${minimumReleaseMajor} or later contains the required assets.`);
 
   const asset = release.assets.find((candidate) => candidate.name === assetName);
@@ -88,7 +103,7 @@ export async function assetRedirectUrl(asset) {
 
 export function releaseVersion(tagName) {
   const version = String(tagName || '').replace(/^v/i, '');
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error('The latest release tag is not a supported semantic version.');
   }
   return version;

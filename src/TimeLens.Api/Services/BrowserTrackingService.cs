@@ -113,8 +113,9 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
     {
         if (!LiveStatusStore.Settings.TrackBrowser || !LiveStatusStore.Settings.TrackInput) return false;
         var now = _clock.GetUtcNow();
+        var oldestRetainedInput = now.AddDays(-Math.Clamp(LiveStatusStore.Settings.RetentionDays, 1, 3650));
         if (!Guid.TryParse(input.BatchId, out _) || input.Keystrokes is < 0 or > 1000 || input.Clicks is < 0 or > 1000 ||
-            input.ObservedAt > now.AddSeconds(5) || input.ObservedAt < now.AddMinutes(-2) ||
+            input.ObservedAt > now.AddSeconds(5) || input.ObservedAt < oldestRetainedInput ||
             !Uri.TryCreate(input.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
             input.Url.Length > 16384 || input.Title is null || input.Title.Length > 4096 ||
             input.Browser != "firefox") return false;

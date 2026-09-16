@@ -12,21 +12,30 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   let offline = false;
   let blockAction = 'none';
   const injections = [], redirects = [];
+  const messageListeners = [];
+  const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.2.0' }), getURL: p => `extension://${p}`,
-      onMessage: event(), onStartup: event(), onInstalled: event() },
+    runtime: { id: 'test', getManifest: () => ({ version: '7.4.0' }), getURL: p => `extension://${p}`,
+      onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
     tabs: { query: async query => { assert.equal(query.windowId, 7); return [tab]; },
       onActivated: event(), onUpdated: event(), onRemoved: event(), executeScript: async (id, options) => { injections.push(options.code); }, update: async (id, options) => { redirects.push(options.url); } },
-    storage: { local: { remove() {}, get: async () => ({ timelens_pair_token: 'test-token' }), set: async () => {} } }, scripting: { executeScript: async options => { injections.push(options.func.name); } },
+    storage: { local: {
+      remove(key) { delete stored[key]; },
+      get: async key => typeof key === 'string' ? { [key]: stored[key] } : { ...stored },
+      set: async values => { Object.assign(stored, structuredClone(values)); }
+    } }, scripting: { executeScript: async options => { injections.push(options.func.name); } },
     alarms: { create() {}, onAlarm: event() }
   };
   const sandbox = { [family === 'firefox' ? 'browser' : 'chrome']: api, navigator: { userAgent: 'Chrome' }, URL, Date, AbortSignal,
     setInterval() {}, clearInterval() {}, fetch: async (url, options) => {
       if (offline) throw new Error('offline');
       calls.push({ url, body: options?.body ? JSON.parse(options.body) : null, headers: options?.headers || {} });
-      return { ok: true, json: async () => url.endsWith('/api/extension/settings') ? { trackBrowser: true, focusMode: true } : { action: blockAction, presentation: { target: 'example.com' } } };
+      return { ok: true, json: async () => url.endsWith('/api/extension/settings')
+        ? { trackBrowser: true, trackInput: true, focusMode: true }
+        : url.endsWith('/api/browser-input') ? { accepted: true }
+          : { action: blockAction, presentation: { target: 'example.com' } } };
     } };
   vm.runInNewContext(source, sandbox);
   const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(setImmediate); };
@@ -53,13 +62,27 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   assert.ok(injections.some(text => text.includes('mountNotifyToast')), 'Notify must inject a reminder');
   blockAction = 'strict'; api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.ok(redirects.some(url => url.startsWith('extension://blocked.html?')), 'Strict must redirect to the blocked page');
+
+  offline = true;
+  const queued = await new Promise(resolve => {
+    for (const listener of messageListeners) {
+      const handled = listener({ type: 'timelens-input', batch: { batchId: crypto.randomUUID(), url: tab.url,
+        title: tab.title, observedAt: new Date().toISOString(), keystrokes: 2, clicks: 1 } }, { tab, frameId: 0 }, resolve);
+      if (handled) break;
+    }
+  });
+  assert.equal(queued.queued, true);
+  assert.equal(stored.timelens_pending_input_v1.length, 1, 'Pending input must survive extension shutdown or upgrade');
+  offline = false;
+  api.runtime.onInstalled.listener({ reason: 'update', previousVersion: '7.3.0' }); await settle();
+  assert.equal(stored.timelens_pending_input_v1.length, 0, 'A preserved pending batch must drain after update');
 });
 
 test('Firefox package contains the canonical scripts and resources', () => {
   for (const family of ['firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.3.0');
+    assert.equal(manifest.version, '7.4.0');
     assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
     assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
     assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
@@ -69,6 +92,7 @@ test('Firefox package contains the canonical scripts and resources', () => {
     for (const file of ['popup.html', 'popup.js', 'blocked.html', 'blocked.js']) assert.ok(readFileSync(new URL(file, root), 'utf8').length);
     for (const icon of Object.values(manifest.icons)) assert.ok(readFileSync(new URL(icon, root)).length);
   }
+  assert.doesNotMatch(source, /storage\.local\.remove\(['"]timelens_queue/, 'Startup must not delete prior extension state');
 });
 
 

@@ -55,7 +55,6 @@ npm run web:build
 
 ### Startup regression checks
 
-Version 7 adds one-second desktop checkpoints, precise short-visit totals, complete app lists, per-app input attribution and focused-tab Firefox tracking without the old two-minute cap. History provides searchable website/executable details with durations, click/keystroke counts and CSV export. See the [release notes](docs/releases/7.0.0.md) and [tracking behavior](docs/tracking.md).
 
 ```powershell
 dotnet run --project tests/TimeLens.Startup.Tests -c Release
@@ -81,13 +80,13 @@ TimeLens/
 │   ├── TimeLens.Api/            # local Kestrel API and updater
 │   ├── TimeLens.Dashboard/      # embedded Svelte dashboard
 │   ├── TimeLens.TrayApp/        # Win32 tray host, watchers, and services
-│   └── browser-extensions/      # Firefox companion (legacy Chrome sources remain for reference)
+│   └── browser-extensions/      # Chrome and Firefox companions
 ├── scripts/                     # local publish/install helpers
 ├── .github/workflows/release.yml
 └── vercel.json                  # builds only web/ and exposes api/
 ```
 
-The release includes the Firefox extension package alongside the desktop binaries. The Firefox Add-ons listing remains the recommended signed installation; release packages are useful for review and developer installation.
+The release includes Chrome and Firefox extension packages alongside the desktop binaries. The Firefox Add-ons listing remains the recommended signed installation; release packages are useful for review and developer installation.
 
 ## Website and Vercel
 
@@ -101,7 +100,7 @@ Set these Vercel environment variables:
 | `GITHUB_REPOSITORY` | `YumiNoona/TimeLens` |
 | `GITHUB_RELEASE_ASSET` | `TimeLens.exe` |
 | `GITHUB_DOWNLOAD_ASSET` | `TimeLens-Setup.exe` |
-| `GITHUB_RELEASE_MAJOR` | `5` for the production-v5 update channel; stale lower values are safely raised to the current production minimum |
+| `GITHUB_RELEASE_MAJOR` | `5`, the oldest supported release major accepted by the update feed; stale lower values are raised to this minimum |
 
 All non-secret values above already have these defaults in the server code. With a public repository the download works without configuring any variables. Add `GITHUB_TOKEN` if the repository becomes private or if anonymous GitHub API rate limits are too low for the site traffic.
 

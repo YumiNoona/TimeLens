@@ -43,6 +43,7 @@ public sealed class NativeTrayIcon : IDisposable
     private const uint ID_OPEN_DASHBOARD = WM_APP + 1;
     private const uint ID_INSTALL_EXTENSION = WM_APP + 2;
     private const uint ID_EXIT = WM_APP + 3;
+    private const uint ID_MANAGE_BLOCKS = WM_APP + 4;
 
     private const uint WM_STARTUP = WM_APP + 100;
     private const uint WM_SHOW_TOAST = WM_APP + 101;
@@ -75,6 +76,8 @@ public sealed class NativeTrayIcon : IDisposable
     public event Action? OpenDashboardRequested;
     public event Action? InstallExtensionRequested;
     public event Action? ExitRequested;
+    public event Action? ManageBlocksRequested;
+    public Func<bool>? IsExitProtected { get; set; }
     public event Action? StartupRequested;
     public event Action<Exception>? ToastFailed;
 
@@ -166,6 +169,9 @@ public sealed class NativeTrayIcon : IDisposable
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool AppendMenuW(IntPtr hMenu, uint uFlags, uint uIDNewItem, string lpNewItem);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool ModifyMenuW(IntPtr hMenu, uint item, uint flags, UIntPtr newItem, string text);
+
     [DllImport("user32.dll")]
     private static extern IntPtr TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
 
@@ -252,6 +258,8 @@ public sealed class NativeTrayIcon : IDisposable
         _hMenu = CreatePopupMenu();
         AppendMenuW(_hMenu, MF_STRING, ID_OPEN_DASHBOARD, "Open Dashboard");
         AppendMenuW(_hMenu, MF_STRING, ID_INSTALL_EXTENSION, "Install Browser Extension");
+        AppendMenuW(_hMenu, MF_STRING, ID_MANAGE_BLOCKS, "Manage Blocks");
+        AppendMenuW(_hMenu, 0x0800, 0, ""); // MF_SEPARATOR
         AppendMenuW(_hMenu, MF_STRING, ID_EXIT, "Exit");
 
         // Post startup message — processed inside the message loop so watchers
@@ -429,6 +437,8 @@ public sealed class NativeTrayIcon : IDisposable
                     InstallExtensionRequested?.Invoke();
                 else if (cmdId == ID_EXIT)
                     ExitRequested?.Invoke();
+                else if (cmdId == ID_MANAGE_BLOCKS)
+                    ManageBlocksRequested?.Invoke();
                 return IntPtr.Zero;
 
             case WM_TIMER when unchecked((ulong)wParam.ToInt64()) == TrayRetryTimerId.ToUInt64():
@@ -489,6 +499,9 @@ public sealed class NativeTrayIcon : IDisposable
 
     private void ShowContextMenu()
     {
+        // Refresh on each opening: removing a target or timer expiry takes effect immediately.
+        ModifyMenuW(_hMenu, ID_EXIT, MF_STRING, new UIntPtr(ID_EXIT),
+            IsExitProtected?.Invoke() == true ? "Exit (password protected)" : "Exit TimeLens");
         SetForegroundWindow(_hWnd);
         GetCursorPos(out var pt);
         TrackPopupMenu(_hMenu, TPM_LEFTALIGN | TPM_BOTTOMALIGN, pt.x, pt.y, 0, _hWnd, IntPtr.Zero);

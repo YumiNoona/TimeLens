@@ -12,7 +12,7 @@
     <a class="skip" href="#docs-content">Skip to documentation</a>
     <header class="docs-topbar">
       <a class="wordmark" href="/" aria-label="TimeLens home"><span class="mark" aria-hidden="true"><i></i></span><span>TIMELENS</span></a>
-      <span class="docs-label">DOCUMENTATION / PRODUCTION</span>
+      <span class="docs-label">DOCUMENTATION / VERSION 7.2</span>
       <a class="download" href="/api/download">DOWNLOAD SETUP <i data-lucide="download" aria-hidden="true"></i></a>
     </header>
 
@@ -41,8 +41,8 @@
 
         <article id="overview" data-search="overview local tracker system tray dashboard getting started">
           <header><span>01</span><div><p>GET STARTED</p><h2>What TimeLens does</h2></div></header>
-          <p class="lead">TimeLens records meaningful foreground work, separates idle spans from app time, recognizes audible media, and—when the extension is installed—records browser domains only while that browser is in front.</p>
-          <div class="note"><strong>It counts activity, not content.</strong><p>Keyboard and mouse input are stored as totals in one-minute buckets. TimeLens does not record the keys you press, your messages, passwords, document contents, or screenshots.</p></div>
+          <p class="lead">TimeLens observes foreground applications, separates idle and away spans from active time, recognizes selected audible media, and—when a paired extension is installed—attributes browser time to the focused normal tab.</p>
+          <div class="note"><strong>It counts activity, not content.</strong><p>Keyboard and mouse activity is stored as aggregate counts with capture timestamps. TimeLens does not record key values, typed text, messages, passwords, document contents, or screenshots.</p></div>
           <div class="feature-grid">
             <div><b>Tray application</b><p>Runs quietly in the Windows notification area and owns the local tracking service.</p></div>
             <div><b>Local dashboard</b><p>Served only from <code>127.0.0.1:47821</code> while TimeLens is running.</p></div>
@@ -67,14 +67,14 @@
           <p>The desktop app works without an extension, but browser activity will appear only as the browser executable. Install the companion to see domains, visits, audible media, and enforce website blocks.</p>
           <div class="split">
             <section><p class="mini">OFFICIAL ADD-ON</p><h3>Install from Firefox Add-ons</h3><ol><li>Right-click the TimeLens tray icon.</li><li>Choose <em>Install Browser Extension</em>.</li><li>Select <em>Add to Firefox</em> on the official listing.</li><li>Keep the TimeLens desktop app running while you browse.</li></ol><p><a href="https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/" target="_blank" rel="noopener noreferrer">Open the TimeLens Tracker listing →</a></p></section>
-            <section><p class="mini">CONNECTION</p><h3>Desktop + browser</h3><ol><li>Launch TimeLens.exe first.</li><li>Install the published browser extension.</li><li>Open or reload a browser tab.</li><li>Check the Browser tab in the dashboard for domain activity.</li></ol></section>
+            <section><p class="mini">CONNECTION</p><h3>Pair this browser</h3><ol><li>Launch TimeLens and open Settings → Privacy center.</li><li>Choose <em>Connect</em>; the two-minute pairing code is copied when the browser permits it.</li><li>Open the extension popup, enter the code, and choose <em>Pair</em>.</li><li>Pair each browser profile separately. <em>Disconnect all</em> revokes every saved profile.</li></ol></section>
           </div>
           <div class="note"><strong>Use the signed add-on when possible.</strong><p>The Firefox listing is the normal install path. Versioned Chrome and Firefox packages are also attached to each GitHub release for review and developer installation.</p></div>
         </article>
 
         <article id="today" data-search="today active time focus score keystrokes clicks idle top apps categories cards drag layout">
           <header><span>04</span><div><p>DASHBOARD</p><h2>Today</h2></div></header>
-          <p>The Today tab is a live summary of the current date. Active time excludes idle periods and Windows shell surfaces, Focus score estimates how concentrated the day was, and input totals show counts—not typed content.</p>
+          <p>The Today tab is a live summary of the current date. Active time excludes idle and away periods, Focus score estimates how concentrated the day was, and input totals show counts—not typed content.</p>
           <dl><div><dt>Active time</dt><dd>Foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>A compact signal based on switching patterns and category balance; use it as context, not a grade.</dd></div><div><dt>Top apps</dt><dd>Applications ranked by tracked active duration.</dd></div><div><dt>Categories</dt><dd>Time grouped using built-in and custom Rules.</dd></div></dl>
           <div class="tip"><strong>Arrange the dashboard.</strong><p>Hover a movable card and drag its grip. TimeLens remembers card order separately for each page. Use <kbd>Alt</kbd> + an arrow key while the grip is focused for keyboard reordering.</p></div>
         </article>
@@ -93,7 +93,7 @@
 
         <article id="browser" data-search="browser domains visits audible media extension sites hourly browsing">
           <header><span>07</span><div><p>DASHBOARD</p><h2>Browser</h2></div></header>
-          <p>Browser is distinct from Apps: it uses extension events to rank domains, show visit counts, track audible media, and reveal when browsing happened during the day. A browser executable can have active time even when no domain event is available.</p>
+          <p>Browser is distinct from Apps: it uses paired extension events for the selected date. Overview ranks domains and shows hourly use; Visits lists each focused interval with start time, duration, browser, title, URL and known input counts; Pages aggregates matching page records. A browser executable can have active time even when no domain event is available.</p>
           <div class="tip"><strong>No sites listed?</strong><p>Check that the extension is installed in the browser you are actively using and that the tray app was running when the tab changed.</p></div>
         </article>
 
@@ -107,12 +107,12 @@
           <header><span>09</span><div><p>CONTROL</p><h2>Block & Focus Mode</h2></div></header>
           <p>Add an exact executable name such as <code>discord.exe</code> or a domain such as <code>youtube.com</code>, choose how long it should remain blocked, and enable Focus Mode to enforce the list.</p>
           <div class="mode-grid">
-            <div><span>01</span><i data-lucide="bell-ring" aria-hidden="true"></i><b>Notify</b><p>Shows the saved reminder. Websites keep a repeating toast on the left while remaining usable.</p></div>
+            <div><span>01</span><i data-lucide="bell-ring" aria-hidden="true"></i><b>Notify</b><p>Shows the saved reminder in your selected screen corner while the website remains usable.</p></div>
             <div><span>02</span><i data-lucide="eye-off" aria-hidden="true"></i><b>Hide</b><p>Minimizes a matching desktop application window.</p></div>
             <div><span>03</span><i data-lucide="octagon-x" aria-hidden="true"></i><b>Kill</b><p>Terminates a matching desktop process immediately.</p></div>
             <div><span>04</span><i data-lucide="shield-check" aria-hidden="true"></i><b>Strict</b><p>Stops desktop relaunches or shows the custom full-page website screen.</p></div>
           </div>
-          <ol class="steps compact"><li><span>1</span><div><b>Choose App or Website</b><p>Apps offer Hide, Kill, and Strict; websites offer Notify and Strict.</p></div></li><li><span>2</span><div><b>Pick a mode and target</b><p>Search running executables or paste a website URL.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Use a timed block or keep it active until manually removed.</p></div></li><li><span>4</span><div><b>Enable protection</b><p>Choose Strict targets only or all focus targets, then require a password before protected entries can be removed.</p></div></li></ol>
+          <ol class="steps compact"><li><span>1</span><div><b>Choose App or Website</b><p>Apps offer Hide, Kill, and Strict; websites offer Notify and Strict.</p></div></li><li><span>2</span><div><b>Pick a mode and target</b><p>Search running executables or paste a website URL.</p></div></li><li><span>3</span><div><b>Set the duration</b><p>Choose a preset, enter a custom number of minutes, hours, or days, or keep the target active until manually removed.</p></div></li><li><span>4</span><div><b>Enable protection</b><p>Choose Strict targets only or all focus targets, then require a password before protected entries can be removed.</p></div></li></ol>
           <div class="warning"><strong>Use Kill and Strict carefully.</strong><p>Unsaved work in a terminated application can be lost. Never target Windows shells, security software, or TimeLens itself.</p></div>
         </article>
 
@@ -138,7 +138,7 @@
             <section><h3>Tracking</h3><p>Toggle browser, input, and audio signals and set the idle threshold. Disabling a signal stops future collection; it does not delete existing rows.</p></section>
             <section><h3>Timeline & history</h3><p>Choose grouped or flat default timeline, show or hide window titles, filter quick switches, set the heatmap range, time format, and refresh interval.</p></section>
             <section><h3>Focus & reminders</h3><p>Configure break reminders and Focus Mode from one place. Block password options choose Strict-only or all-target protection and control protected tray exit.</p></section>
-            <section><h3>Data & storage</h3><p>Choose retention from 30 to 365 days, inspect database size, and export today or the last 30 days as CSV.</p></section>
+            <section><h3>Data & storage</h3><p>Choose retention from 30 days to two years, inspect local storage size, and export today, the last 30 days, a month, a year, or up to ten custom years as CSV or JSON. Last 30 days is selected by default.</p></section>
             <section><h3>Goals</h3><p>Create minimum or maximum daily targets for an app or category. Goals provide context and reminders; they do not modify raw activity.</p></section>
             <section><h3>Card layout</h3><p>Reset a rearranged page or restore every dashboard page to its original card order.</p></section>
           </div>
@@ -148,14 +148,14 @@
           <header><span>13</span><div><p>REFERENCE</p><h2>Privacy & local data</h2></div></header>
           <p>TimeLens has no account system, remote profile, analytics SDK, advertising identifier, or cloud synchronization. The dashboard listens on the loopback address rather than the public network.</p>
           <div class="path-card"><span>DATABASE</span><code>%LOCALAPPDATA%\TimeLens\activity.db</code></div>
-          <ul class="check-list"><li>Use Settings → Data & storage to control automatic retention.</li><li>CSV export creates a portable copy; treat it as personal data.</li><li>Window-title tracking can expose document or page titles, so enable it only when useful.</li><li>Back up the TimeLens folder before reinstalling Windows if you want to retain history.</li></ul>
+          <ul class="check-list"><li>Use Settings → Data & storage to control automatic retention.</li><li>CSV and JSON exports create portable copies; treat them as personal data.</li><li>Browser page-title storage can be disabled in Privacy center; timeline title visibility is a separate display setting.</li><li>Back up the TimeLens folder before reinstalling Windows if you want to retain history.</li></ul>
         </article>
 
         <article id="troubleshooting" data-search="troubleshooting dashboard not open extension disconnected blocks not working tray port antivirus reset">
           <header><span>14</span><div><p>REFERENCE</p><h2>Troubleshooting</h2></div></header>
           <div class="faq">
             <details><summary>The dashboard does not open</summary><p>Confirm the tray icon is running, then open <code>http://127.0.0.1:47821/</code>. The address intentionally remains local to your PC. If another TimeLens instance exists, close all copies and launch the newest EXE once.</p></details>
-            <details><summary>The extension says disconnected</summary><p>Keep the tray app running, reload the extension from Firefox Add-ons, and open a new tab. Confirm that <code>http://127.0.0.1:47821</code> opens while TimeLens is running.</p></details>
+            <details><summary>The extension says disconnected</summary><p>Keep the tray app running, confirm that <code>http://127.0.0.1:47821</code> opens, then generate a fresh code in Settings → Privacy center and pair from the extension popup. Codes expire after two minutes.</p></details>
             <details><summary>Website blocking does not work</summary><p>Website enforcement requires the extension. Confirm Focus Mode is enabled, the entry is a domain rather than a full URL, and the current browser has the TimeLens extension loaded.</p></details>
             <details><summary>An app is categorized incorrectly</summary><p>Open Rules, look for a custom rule that is too broad, and replace it with an exact executable or domain match.</p></details>
             <details><summary>Cards are in the wrong order</summary><p>Open Settings → Card layout, choose the affected page, and reset it. You can also reset all saved layouts.</p></details>

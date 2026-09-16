@@ -14,10 +14,7 @@
   import SettingsView from './lib/components/SettingsView.svelte';
   import BlockView from './lib/components/BlockView.svelte';
   import HistoryView from './lib/components/HistoryView.svelte';
-  import TopSites from './lib/components/TopSites.svelte';
-  import SiteTimeCard from './lib/components/SiteTimeCard.svelte';
-  import BrowserHourlyCard from './lib/components/BrowserHourlyCard.svelte';
-  import MediaCard from './lib/components/MediaCard.svelte';
+  import BrowserActivityView from './lib/components/BrowserActivityView.svelte';
   import type { BrowserEntry, AudioEntry } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
@@ -164,12 +161,18 @@
 
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-  onMount(async () => {
-    await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
-
-    document.addEventListener('visibilitychange', onVisibility);
-    if (!document.hidden) startPoll();
-    return () => { stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
+  onMount(() => {
+    let disposed = false;
+    void (async () => {
+      await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
+      if (disposed) return;
+      const requestedView = new URLSearchParams(window.location.search).get('view');
+      if (requestedView && ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'].includes(requestedView))
+        goTo(requestedView);
+      document.addEventListener('visibilitychange', onVisibility);
+      if (!document.hidden) startPoll();
+    })();
+    return () => { disposed = true; stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
   });
 
   function onVisibility() {
@@ -321,27 +324,7 @@
         </div>
       </div>
       <div class="content">
-        <div class="stat-row">
-          <StatCard label="Unique sites" value={browserSites.length} />
-          <StatCard label="Recorded sessions" value={browserSites.reduce((a, b) => a + b.visits, 0)} />
-          <StatCard label="Browse time" value={fmtPrecise(browseTimeSeconds, $showSeconds)} />
-        </div>
-        {#if browserSites.length === 0 && browserTime.length === 0}
-          <div class="empty-view">
-            <i class="ti ti-world-off" aria-hidden="true"></i>
-            <span>No browsing data yet</span>
-            <span class="empty-hint">Install the browser extension to start tracking</span>
-          </div>
-        {:else}
-          <div class="two-col">
-           <TopSites sites={browserSites} />
-             <SiteTimeCard {browserTime} />
-           </div>
-            <div class="browser-detail-grid">
-              <BrowserHourlyCard {browserHourly} />
-              <MediaCard {audioSessions} />
-            </div>
-        {/if}
+        <BrowserActivityView sites={browserSites} {browserTime} {browserHourly} {audioSessions} />
       </div>
     {:else if view === 'apps' && $data}
       <div class="topbar">
@@ -386,7 +369,7 @@
           <h1 class="page-title">Settings</h1>
           <p class="page-purpose">Configure tracking, privacy, appearance, reminders, and storage.</p>
         </div>
-        <a class="page-docs" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-book-2" aria-hidden="true"></i>Docs</a>
+        <div class="page-actions"><a class="page-docs" href="https://timelens.venusapp.in/docs" target="_blank" rel="noopener noreferrer"><i class="ti ti-book-2" aria-hidden="true"></i>Docs</a><a class="page-docs page-donate" href="https://timelens.venusapp.in/#donate" target="_blank" rel="noopener noreferrer"><i class="ti ti-heart-handshake" aria-hidden="true"></i>Donate</a></div>
       </div>
       <div class="content"><SettingsView
         ontheme={applyTheme}
@@ -580,8 +563,10 @@
   }
 
   .page-heading { min-width: 0; }
+  .page-actions { flex: 0 0 auto; display:flex; align-items:center; gap:8px; }
   .page-docs { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; color: var(--clr-text-sec); background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-sm); font-size: 12px; text-decoration: none; transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast); }
   .page-docs:hover { color: var(--md-primary); border-color: var(--md-primary); background: var(--md-primary-cont); }
+  .page-donate { color:var(--md-primary); }
   .page-eyebrow {
     color: var(--md-primary);
     font-size: var(--type-page-eyebrow);
@@ -597,18 +582,6 @@
     flex-direction: column;
     gap: var(--space-4);
     padding-bottom: var(--space-10);
-  }
-
-  .stat-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-3);
-  }
-
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
   }
 
   /* ── Error banner ── */
@@ -627,7 +600,6 @@
     gap: var(--space-5);
   }
 
-  .browser-detail-grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
 
   .error-banner span { display: flex; align-items: center; gap: var(--space-2); }
   .error-banner button {
@@ -654,31 +626,6 @@
     opacity: 0.4;
   }
 
-  .empty-view {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 0;
-    gap: var(--space-2);
-    color: var(--clr-text-ter);
-  }
-
-  .empty-view i {
-    font-size: 36px;
-    color: var(--clr-text-ter);
-    opacity: 0.5;
-  }
-
-  .empty-view span {
-    font-size: var(--text-base);
-  }
-
-  .empty-hint {
-    font-size: var(--text-xs) !important;
-    opacity: 0.5;
-  }
-
   @media (max-width: 1050px) {
     .today-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -691,14 +638,13 @@
     }
     .today-header { align-items: flex-start; gap: var(--space-4); }
     .today-date { font-size: var(--text-xl); }
-    .today-grid, .two-col { grid-template-columns: 1fr; }
-    .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .today-grid { grid-template-columns: 1fr; }
     .error-banner { margin-inline: 0; }
   }
 
   @media (max-width: 520px) {
     .today-header { flex-direction: column; }
-    .today-hero, .stat-row { grid-template-columns: 1fr; }
+    .today-hero { grid-template-columns: 1fr; }
     .main { padding-inline: 10px; }
     .card { padding-inline: var(--space-4); }
   }

@@ -266,6 +266,11 @@ const iconMap: Record<string, string> = {
   'shellexperiencehost.exe':'ti-layout-dashboard',
   'searchapp.exe':       'ti-search',
   'screenclippinghost.exe':'ti-scissors',
+  'searchhost.exe':      'ti-search',
+  'openwith.exe':        'ti-external-link',
+  'startmenuexperiencehost.exe':'ti-layout-grid',
+  'textinputhost.exe':   'ti-keyboard',
+  'securityhealthsystray.exe':'ti-shield-check',
 
   // ── Remote & FTP ──
   'anydesk.exe':         'ti-screen-share',
@@ -279,6 +284,9 @@ const iconMap: Record<string, string> = {
   // ── AI & LLM ──
   'chatgpt.exe':         'ti-brand-openai',
   'copilot.exe':         'ti-brand-github-copilot',
+  'r5apex_dx12.exe':     'ti-device-gamepad-2',
+  'r5apex.exe':          'ti-device-gamepad-2',
+  'start_protected_game.exe': 'ti-shield-check',
 
   // ── Monitoring & Tracking ──
   'timelens.exe':        'ti-clock-hour-4',
@@ -301,6 +309,14 @@ const iconMap: Record<string, string> = {
 
   // ── Domains (partial match fallbacks) ──
   'github.com':          'ti-brand-github',
+  'x.com':               'ti-brand-x',
+  'twitter.com':         'ti-brand-x',
+  'reddit.com':          'ti-brand-reddit',
+  'linkedin.com':        'ti-brand-linkedin',
+  'play.google.com':     'ti-brand-google-play',
+  'accounts.google.com': 'ti-brand-google',
+  'web.telegram.org':    'ti-brand-telegram',
+  'web.whatsapp.com':    'ti-brand-whatsapp',
   'gitlab.com':          'ti-brand-gitlab',
   'bitbucket.org':       'ti-brand-bitbucket',
   'stackoverflow.com':   'ti-brand-stackoverflow',

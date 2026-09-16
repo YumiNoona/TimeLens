@@ -21,6 +21,7 @@ $rootExePath = "$root\TimeLens.exe"
 $installerScript = "$root\installer\TimeLens.iss"
 $installerOutput = "$root\installer\output\TimeLens-Setup.exe"
 $rootInstallerPath = "$root\TimeLens-Setup.exe"
+$chromeExtensionPath = "$root\TimeLens-Chrome-Extension.zip"
 $firefoxExtensionPath = "$root\TimeLens-Firefox-Extension.zip"
 
 $header = { Write-Host "`n$($args[0])" -ForegroundColor Cyan }
@@ -131,9 +132,10 @@ if (-not $SkipInstaller) {
 Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
 & $ok "Standalone root TimeLens.exe ready"
 
-Remove-Item -LiteralPath $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $chromeExtensionPath, $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path "$root\src\browser-extensions\firefox\*" -DestinationPath $firefoxExtensionPath
-& $ok "Firefox extension package ready"
+Compress-Archive -Path "$root\src\browser-extensions\chrome\*" -DestinationPath $chromeExtensionPath
+& $ok "Chrome and Firefox extension packages ready"
 
 # --- Build installer ---
 if (-not $SkipInstaller) {
@@ -147,6 +149,13 @@ if (-not $SkipInstaller) {
 } else {
     Write-Host "  Skipping installer build (--SkipInstaller)" -ForegroundColor DarkGray
 }
+
+$releaseAssets = @($rootExePath, $chromeExtensionPath, $firefoxExtensionPath)
+if (-not $SkipInstaller) { $releaseAssets += $rootInstallerPath }
+$checksums = foreach ($asset in $releaseAssets) {
+    "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant(), (Split-Path -Leaf $asset)
+}
+$checksums | Set-Content -Encoding ascii "$root\SHA256SUMS.txt"
 
 # --- Summary ---
 & $header "=== Build summary ==="

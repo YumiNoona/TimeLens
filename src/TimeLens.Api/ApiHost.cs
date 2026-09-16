@@ -228,14 +228,15 @@ public static class ApiHost
             var origin = ctx.Request.Headers.Origin.ToString();
             var localOrigin = $"http://127.0.0.1:{port}";
             var localHostOrigin = $"http://localhost:{port}";
-            var isFirefoxOrigin = origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase);
-            if (!string.IsNullOrEmpty(origin) && origin != localOrigin && origin != localHostOrigin && !isFirefoxOrigin)
+            var isExtensionOrigin = origin.StartsWith("moz-extension://", StringComparison.OrdinalIgnoreCase) ||
+                origin.StartsWith("chrome-extension://", StringComparison.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(origin) && origin != localOrigin && origin != localHostOrigin && !isExtensionOrigin)
             {
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
 
-            if (isFirefoxOrigin)
+            if (isExtensionOrigin)
             {
                 ctx.Response.Headers.AccessControlAllowOrigin = origin;
                 ctx.Response.Headers.Vary = "Origin";
@@ -245,7 +246,7 @@ public static class ApiHost
 
             if (HttpMethods.IsOptions(ctx.Request.Method))
             {
-                if (!isFirefoxOrigin)
+                if (!isExtensionOrigin)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
@@ -272,7 +273,7 @@ public static class ApiHost
 
             if (path.Equals("/api/pair/exchange", StringComparison.OrdinalIgnoreCase))
             {
-                if (!isFirefoxOrigin)
+                if (!isExtensionOrigin)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
@@ -465,7 +466,7 @@ public static class ApiHost
 
         app.MapPost("/api/app/exit", async (HttpContext ctx) =>
         {
-            if (BlockProtectionService.IsEnabled(dbPath) && LiveStatusStore.Settings.BlockExitProtection && !HasBlockUnlock(ctx))
+            if (BlockExitPolicy.RequiresUnlock(LiveStatusStore.Settings) && BlockProtectionService.IsEnabled(dbPath) && !HasBlockUnlock(ctx))
             {
                 ctx.Response.StatusCode = StatusCodes.Status423Locked;
                 await ctx.Response.WriteAsync("{\"error\":\"Password required to exit while blocks are protected\",\"code\":\"block_locked\"}");
@@ -606,7 +607,7 @@ public static class ApiHost
                 return;
             }
             if (properties.Any(prop => prop.Name == "retentionDays" &&
-                prop.Value.GetRawText() is not ("30" or "60" or "90" or "180" or "365")))
+                prop.Value.GetRawText() is not ("30" or "60" or "90" or "180" or "365" or "730")))
             {
                 ctx.Response.StatusCode = 400;
                 await ctx.Response.WriteAsync("{\"error\":\"Invalid retention period\"}");
@@ -645,7 +646,7 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Idle threshold must be between 15 and 3600 seconds\"}");
                     return;
                 }
-                if (prop.Name == "retentionDays" && value is not ("30" or "60" or "90" or "180" or "365"))
+                if (prop.Name == "retentionDays" && value is not ("30" or "60" or "90" or "180" or "365" or "730"))
                 {
                     ctx.Response.StatusCode = 400;
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid retention period\"}");
@@ -665,7 +666,7 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Polling interval must be between 5 and 300 seconds\"}");
                     return;
                 }
-                if (prop.Name == "theme" && value is not ("default" or "terminal" or "copper" or "arctic" or "moss" or "crimson" or "gold" or "ember" or "rose" or "clay" or "sunset"))
+                if (prop.Name == "theme" && value is not ("default" or "terminal" or "copper" or "arctic" or "moss" or "crimson" or "gold" or "ember" or "rose" or "clay" or "sunset" or "paper"))
                 {
                     ctx.Response.StatusCode = 400;
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid theme\"}");
@@ -773,7 +774,7 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid timeline threshold\"}");
                     return;
                 }
-                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "273" or "365"))
+                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "182" or "273" or "365"))
                 {
                     ctx.Response.StatusCode = 400;
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid heatmap range\"}");
@@ -1532,6 +1533,29 @@ public static class ApiHost
             json.WriteEndArray(); await json.FlushAsync();
         });
 
+        app.MapGet("/api/browser-visits", async (HttpContext ctx) =>
+        {
+            if (!TryParseLocalDay(ctx.Request.Query["date"].FirstOrDefault(), out var local))
+            { ctx.Response.StatusCode = 400; return; }
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            using var snapshot = conn.BeginTransaction(deferred: true);
+            var visits = await BrowserAnalyticsService.ReadVisitsAsync(conn, local.ToUniversalTime(), local.AddDays(1).ToUniversalTime());
+            ctx.Response.ContentType = "application/json";
+            using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartArray();
+            foreach (var visit in visits)
+            {
+                json.WriteStartObject();
+                json.WriteString("domain", visit.Domain); json.WriteString("url", visit.Url);
+                json.WriteString("title", visit.Title); json.WriteString("browser", visit.Browser);
+                json.WriteString("startedAt", visit.StartedAt); json.WriteString("endedAt", visit.EndedAt);
+                json.WriteNumber("activeSeconds", Math.Round(visit.ActiveSeconds));
+                json.WriteEndObject();
+            }
+            json.WriteEndArray(); await json.FlushAsync();
+        });
+
         app.MapGet("/api/app-icon", async (HttpContext ctx) =>
         {
             var name = ctx.Request.Query["name"].FirstOrDefault();
@@ -1772,23 +1796,47 @@ public static class ApiHost
             var range = ctx.Request.Query["range"].FirstOrDefault() ?? "today";
             if (format is not ("csv" or "json"))
             { ctx.Response.StatusCode = 400; return; }
+            var today = DateTime.Today;
+            DateTime localStart = today, localEnd = today.AddDays(1);
+            switch (range)
+            {
+                case "today": localStart = today; localEnd = today.AddDays(1); break;
+                case "30days": localStart = today.AddDays(-29); localEnd = today.AddDays(1); break;
+                case "month":
+                    var requestedMonth = ctx.Request.Query["month"].FirstOrDefault();
+                    if (!string.IsNullOrEmpty(requestedMonth) && !DateTime.TryParseExact(requestedMonth, "yyyy-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out localStart))
+                    { ctx.Response.StatusCode = 400; return; }
+                    if (string.IsNullOrEmpty(requestedMonth)) localStart = new(today.Year, today.Month, 1);
+                    localEnd = localStart.AddMonths(1); break;
+                case "year":
+                    var requestedYear = ctx.Request.Query["year"].FirstOrDefault();
+                    var year = today.Year;
+                    if (!string.IsNullOrEmpty(requestedYear) && (!int.TryParse(requestedYear, out year) || year is < 2000 or > 9998))
+                    { ctx.Response.StatusCode = 400; return; }
+                    localStart = new(year, 1, 1);
+                    localEnd = localStart.AddYears(1); break;
+                case "custom":
+                    if (!TryParseLocalDay(ctx.Request.Query["start"].FirstOrDefault(), out localStart) ||
+                        !TryParseLocalDay(ctx.Request.Query["end"].FirstOrDefault(), out var lastDay) || lastDay < localStart ||
+                        (lastDay - localStart).TotalDays > 3660)
+                    { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsync("Invalid export date range"); return; }
+                    localEnd = lastDay.AddDays(1); break;
+                default:
+                    if (!TryParseLocalDay(range, out localStart))
+                    { ctx.Response.StatusCode = 400; return; }
+                    localEnd = localStart.AddDays(1); break;
+            }
+            var rangeStart = localStart.ToUniversalTime();
+            var rangeEnd = localEnd.ToUniversalTime();
+            if (rangeEnd > DateTime.UtcNow) rangeEnd = DateTime.UtcNow;
+            var label = range == "custom" ? $"{localStart:yyyy-MM-dd}-to-{localEnd.AddDays(-1):yyyy-MM-dd}" :
+                range == "month" ? localStart.ToString("yyyy-MM") : range == "year" ? localStart.ToString("yyyy") : range;
             ctx.Response.ContentType = format == "json" ? "application/json" : "text/csv";
-            var label = range == "30days" ? "30days" : range == "today" ? "today" : range;
             ctx.Response.Headers.Append("Content-Disposition", $"attachment; filename=timelens-{label}.{format}");
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             using var cmd = conn.CreateCommand();
-            var exportDay = DateTime.Today;
-            if (range != "today" && range != "30days")
-            {
-                if (!TryParseLocalDay(range, out var selectedDay))
-                { ctx.Response.StatusCode = 400; return; }
-                exportDay = selectedDay;
-            }
-            var rangeStart = (range == "30days" ? exportDay.AddDays(-29) : exportDay).ToUniversalTime();
-            var rangeEnd = exportDay.AddDays(1).ToUniversalTime();
-            if (rangeEnd > DateTime.UtcNow) rangeEnd = DateTime.UtcNow;
             cmd.CommandText = """
                 SELECT start_time, exe_name, window_title, category, session_state,
                     MAX(0, MIN(julianday(COALESCE(end_time, $end)), julianday($end)) -

@@ -1,3 +1,4 @@
+using TimeLens.Api;
 using Microsoft.Data.Sqlite;
 using TimeLens.Api.Services;
 using TimeLens.TrayApp.Services;
@@ -7,6 +8,26 @@ var root = Path.Combine(Path.GetTempPath(), "TimeLens-tracking-" + Guid.NewGuid(
 Directory.CreateDirectory(root);
 try
 {
+    {
+        var settings = new AppSettings { BlockProtectionEnabled = true, BlockExitProtection = true };
+        Check(!BlockExitPolicy.RequiresUnlock(settings), "A saved password must not protect an empty blocklist.");
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = "[ ]" }), "Whitespace-only lists must allow exit.");
+        var app = new BlockEntry("game.exe", "u", null);
+        var site = new BlockEntry("example.com", "u", null, "notify");
+        var expired = new BlockEntry("expired.com", "t", DateTime.UtcNow.AddHours(-1).ToString("o"));
+        var timed = new BlockEntry("timer.com", "t", DateTime.UtcNow.AddHours(1).ToString("o"));
+        foreach (var entry in new[] { app, site, timed })
+        {
+            var blocked = settings with { FocusBlocklist = BlockEntryHelper.Serialize([expired, entry]) };
+            Check(BlockExitPolicy.RequiresUnlock(blocked), "A remaining app, site or future timer must protect exit, even with focus off.");
+            Check(!BlockExitPolicy.RequiresUnlock(blocked with { BlockExitProtection = false }), "Exit option must be respected.");
+            Check(!BlockExitPolicy.RequiresUnlock(blocked with { BlockProtectionEnabled = false }), "Unprotected blocks must allow exit.");
+        }
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = BlockEntryHelper.Serialize([expired]) }), "Expired timers must not prevent exit.");
+        Check(BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = "[\"game.exe\"]" }), "Legacy blocklists must still protect exit.");
+        Check(!BlockExitPolicy.RequiresUnlock(settings with { FocusBlocklist = BlockEntryHelper.Serialize([new("timelens.exe", "u", null)]) }), "Excluded system targets must not prevent exit.");
+    }
+    Console.WriteLine("PASS: exit protection follows remaining block targets.");
     TimeLens.TrayApp.RuntimeDiagnostics.Initialize(root);
     using (var watcher = new WinEventWatcher())
     using (var input = new InputMonitor())
@@ -273,6 +294,17 @@ try
         TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { BrowserUrlMode = "full", BrowserStoreTitles = true };
     }
     Console.WriteLine("PASS: corroborated website time, legacy overlap repair at query time, idle union, input deduplication and missing-data semantics.");
+    var chromePath = Path.Combine(root, "chrome.db");
+    DatabaseInitializer.Initialize(chromePath);
+    clock.Now = start;
+    TimeLens.Api.LiveStatusStore.CurrentApp = "chrome.exe";
+    var chromeTracker = new BrowserTrackingService(chromePath, clock);
+    chromeTracker.Observe(new TimeLens.Api.Dtos.BrowserEventDto("example.com", "https://example.com/", "Chrome", "chrome", false, 1));
+    clock.Now = start.AddSeconds(3);
+    chromeTracker.Tick();
+    Check(Scalar(chromePath, "SELECT count(*) FROM browser_events") == 1, "Chrome observations must be accepted after pairing support is restored");
+    Check(chromeTracker.RecordInput(new TimeLens.Api.Dtos.BrowserInputDto(Guid.NewGuid().ToString(), "https://example.com/", "Chrome", "chrome", new DateTimeOffset(clock.Now), 2, 1)), "Chrome input must be accepted");
+    TimeLens.Api.LiveStatusStore.CurrentApp = "firefox.exe";
     // Run real HTTP routes on a free loopback port, without touching an installed tracker.
     var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
     listener.Start();
@@ -317,6 +349,40 @@ try
         using var leave = new StringContent("{\"browser\":\"firefox\",\"tabId\":20}", System.Text.Encoding.UTF8, "application/json");
         (await client.PostAsync("/api/browser-leave", leave)).EnsureSuccessStatusCode();
         Check(Scalar(browserPath, "SELECT COUNT(*) FROM browser_events WHERE tab_id=20") == 1, "HTTP heartbeat shares the event writer and does not inflate visits");
+        using (var visitResponse = await client.GetAsync($"/api/browser-visits?date={start.ToLocalTime():yyyy-MM-dd}"))
+        {
+            visitResponse.EnsureSuccessStatusCode();
+            using var visitJson = System.Text.Json.JsonDocument.Parse(await visitResponse.Content.ReadAsStringAsync());
+            Check(visitJson.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array,
+                "Browser visit details must return a stable array payload.");
+        }
+        using (var exportResponse = await client.GetAsync($"/api/export?format=json&range=custom&start={start.ToLocalTime():yyyy-MM-dd}&end={start.ToLocalTime().AddDays(1):yyyy-MM-dd}"))
+        {
+            exportResponse.EnsureSuccessStatusCode();
+            Check(exportResponse.Content.Headers.ContentDisposition?.FileName?.Contains("-to-") == true,
+                "Custom exports must identify their inclusive date range.");
+        }
+        Check((await client.GetAsync("/api/export?format=csv&range=custom&start=2026-02-02&end=2026-01-01")).StatusCode == System.Net.HttpStatusCode.BadRequest,
+            "Reverse custom export ranges must be rejected.");
+        foreach (var rangeUrl in new[] { "/api/export?format=csv&range=month&month=2026-02", "/api/export?format=json&range=year&year=2025" })
+            (await client.GetAsync(rangeUrl)).EnsureSuccessStatusCode();
+        // The test host has no shutdown callback: exercise real exit responses safely.
+        var originalSettings = TimeLens.Api.LiveStatusStore.Settings;
+        using var passwordBody = new StringContent("{\"password\":\"exit-policy-test\"}", System.Text.Encoding.UTF8, "application/json");
+        (await client.PostAsync("/api/block/protection/setup", passwordBody)).EnsureSuccessStatusCode();
+        var protectedSettings = TimeLens.Api.LiveStatusStore.Settings with { BlockExitProtection = true };
+        try
+        {
+            foreach (var blocklist in new[] { "[]", "[\"game.exe\"]", "[\"example.com\"]",
+                TimeLens.Api.BlockEntryHelper.Serialize([new("example.com", "t", DateTime.UtcNow.AddHours(-1).ToString("o"))]), "[]" })
+            {
+                TimeLens.Api.LiveStatusStore.Settings = protectedSettings with { FocusBlocklist = blocklist };
+                using var exitResponse = await client.PostAsync("/api/app/exit", null);
+                var expected = blocklist.Contains("game.exe") || blocklist == "[\"example.com\"]" ? 423 : 200;
+                Check((int)exitResponse.StatusCode == expected, "HTTP exit must protect existing targets and immediately allow empty or expired lists.");
+            }
+        }
+        finally { TimeLens.Api.LiveStatusStore.Settings = originalSettings; }
     }
     finally { stopApi.Cancel(); await host; }
     Console.WriteLine("PASS: isolated HTTP browser ingestion, heartbeat, leave, long-visit totals and midnight boundaries.");
@@ -346,6 +412,10 @@ try
         using (var invalidRetention = new StringContent("{\"retentionDays\":-1}", System.Text.Encoding.UTF8, "application/json"))
             Check((await dashboard.PostAsync("/api/settings", invalidRetention)).StatusCode == System.Net.HttpStatusCode.BadRequest,
                 "Invalid retention must be rejected before it can delete history");
+        using (var longestRetention = new StringContent("{\"retentionDays\":730}", System.Text.Encoding.UTF8, "application/json"))
+            (await dashboard.PostAsync("/api/settings", longestRetention)).EnsureSuccessStatusCode();
+        Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='retention_days' AND value='730'") == 1,
+            "Every retention period offered by Settings must be accepted and persisted");
         using (var invalidBatch = new StringContent("{\"theme\":\"terminal\",\"retentionDays\":-1}", System.Text.Encoding.UTF8, "application/json"))
             Check((await dashboard.PostAsync("/api/settings", invalidBatch)).StatusCode == System.Net.HttpStatusCode.BadRequest,
                 "A rejected settings batch must not partially apply earlier values");
@@ -361,6 +431,9 @@ try
         Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='show_seconds' AND value='true'") == 1 &&
               TimeLens.Api.LiveStatusStore.Settings.ShowSeconds,
             "Duration precision preference was not saved and applied live");
+        using (var paperTheme = new StringContent("{\"theme\":\"paper\"}", System.Text.Encoding.UTF8, "application/json"))
+            (await dashboard.PostAsync("/api/settings", paperTheme)).EnsureSuccessStatusCode();
+        Check(TimeLens.Api.LiveStatusStore.Settings.Theme == "paper", "Paper theme must be accepted and applied live");
         using var codeResponse = await dashboard.PostAsync("/api/pair/code", null);
         codeResponse.EnsureSuccessStatusCode();
         using var codeDoc = System.Text.Json.JsonDocument.Parse(await codeResponse.Content.ReadAsStringAsync());
@@ -393,6 +466,26 @@ try
         var storedToken = securityCmd.ExecuteScalar()?.ToString();
         Check(storedToken?.Length == 64 && storedToken != token,
             "The Firefox bearer token must never be stored in plaintext");
+        using var nextCodeResponse = await dashboard.PostAsync("/api/pair/code", null);
+        using var nextCodeDoc = System.Text.Json.JsonDocument.Parse(await nextCodeResponse.Content.ReadAsStringAsync());
+        using var chromeExchange = new HttpRequestMessage(HttpMethod.Post, "/api/pair/exchange") {
+            Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(new { code = nextCodeDoc.RootElement.GetProperty("code").GetString() }), System.Text.Encoding.UTF8, "application/json") };
+        chromeExchange.Headers.Add("Origin", "chrome-extension://test-profile");
+        using var chromeResponse = await anonymous.SendAsync(chromeExchange);
+        chromeResponse.EnsureSuccessStatusCode();
+        using var chromeDoc = System.Text.Json.JsonDocument.Parse(await chromeResponse.Content.ReadAsStringAsync());
+        foreach (var pairedToken in new[] { token, chromeDoc.RootElement.GetProperty("token").GetString() })
+        {
+            using var pairedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/extension/settings");
+            pairedRequest.Headers.Add("X-TimeLens-Extension", pairedToken);
+            (await anonymous.SendAsync(pairedRequest)).EnsureSuccessStatusCode();
+        }
+        using var revoke = await dashboard.PostAsync("/api/pair/revoke", null);
+        revoke.EnsureSuccessStatusCode();
+        using var revokedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/extension/settings");
+        revokedRequest.Headers.Add("X-TimeLens-Extension", token);
+        Check((await anonymous.SendAsync(revokedRequest)).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Revocation must invalidate paired browser tokens");
+
     }
     finally { stopSecureApi.Cancel(); await secureHost; }
     Console.WriteLine("PASS: localhost API session isolation and one-time Firefox pairing.");

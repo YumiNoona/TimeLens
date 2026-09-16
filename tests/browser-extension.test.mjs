@@ -41,6 +41,7 @@ for (const family of ['firefox']) test(`${family}: focus, navigation, private ta
   const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(setImmediate); };
   const observations = () => calls.filter(x => x.url.endsWith('/api/browser-event'));
   await settle();
+  await assert.rejects(sandbox.checkedFetch('https://example.net/private'), /Non-local/);
   assert.equal(observations().at(-1).body.tabId, 1);
   assert.ok(observations().at(-1).body.observedAt);
   assert.equal(observations().at(-1).headers['X-TimeLens-Extension'], 'test-token');

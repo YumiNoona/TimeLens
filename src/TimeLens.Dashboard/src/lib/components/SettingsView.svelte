@@ -30,6 +30,11 @@
   let pairCode = $state('');
   let pairMessage = $state('');
   let pairCopied = $state(false);
+  type PairState = 'checking' | 'not-paired' | 'connecting' | 'connected' | 'paired-offline' | 'outdated' | 'error';
+  type ExtensionStatus = { paired: boolean; connected: boolean; compatible: boolean; browser: string; version: string; ageSeconds: number; minimumVersion: string };
+  let pairState: PairState = $state('checking');
+  let extensionStatus: ExtensionStatus | null = $state(null);
+  let pairPoll: ReturnType<typeof setInterval> | null = null;
   let privacyBusy = $state(false);
   let idleMinutes = $state(3);
   let theme = $state('default');
@@ -47,7 +52,7 @@
   let defaultView = $state('today');
   let density = $state('comfortable');
   let motionEnabled = $state(true);
-  let heatmapDays = $state(273);
+  let heatmapDays = $state(365);
   let blockProtectionEnabled = $state(false);
   let blockProtectionScope = $state<'strict' | 'all'>('strict');
   let blockExitProtection = $state(true);
@@ -83,9 +88,6 @@
     message: 'Check for a newer production release.'
   });
   let updateBusy = $state(false);
-  let releaseDialog: HTMLDialogElement | undefined = $state();
-  let releaseDialogVersion = $state('');
-  let releaseDialogNotes = $state('');
 
   const API = '/api/settings';
   const themes = [
@@ -143,7 +145,7 @@
       defaultView = s.defaultView ?? 'today';
       density = s.density ?? 'comfortable';
       motionEnabled = s.motionEnabled ?? true;
-      heatmapDays = s.heatmapDays ?? 273;
+      heatmapDays = s.heatmapDays ?? 365;
       blockProtectionEnabled = s.blockProtectionEnabled ?? false;
       blockProtectionScope = s.blockProtectionScope === 'all' ? 'all' : 'strict';
       blockExitProtection = s.blockExitProtection ?? true;
@@ -214,11 +216,38 @@
       if (!response.ok) throw new Error();
       const result = await response.json();
       pairCode = result.code;
+      pairState = 'connecting';
       try { await navigator.clipboard.writeText(pairCode); pairCopied = true; setTimeout(() => pairCopied = false, 1500); }
       catch { }
       pairMessage = 'Code ready and copied when browser permissions allow. Open the TimeLens extension, choose Pair, and paste it within two minutes.';
     } catch { pairMessage = 'Could not create a pairing code.'; }
     finally { privacyBusy = false; }
+  }
+
+  async function loadExtensionStatus() {
+    try {
+      const response = await fetch('/api/extension-status?light=true', { cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      extensionStatus = await response.json();
+      if (extensionStatus?.connected && !extensionStatus.compatible) pairState = 'outdated';
+      else if (extensionStatus?.connected) {
+        pairState = 'connected';
+        pairCode = '';
+        pairMessage = `${extensionStatus.browser || 'Browser'} extension connected and reporting activity.`;
+      } else if (pairCode) pairState = 'connecting';
+      else if (extensionStatus?.paired) pairState = 'paired-offline';
+      else pairState = 'not-paired';
+    } catch { pairState = 'error'; }
+  }
+
+  function pairStateLabel(): string {
+    if (pairState === 'connected') return 'Connected';
+    if (pairState === 'connecting') return 'Connecting…';
+    if (pairState === 'paired-offline') return 'Paired · browser offline';
+    if (pairState === 'outdated') return 'Extension update required';
+    if (pairState === 'checking') return 'Checking…';
+    if (pairState === 'error') return 'Status unavailable';
+    return 'Not connected';
   }
 
   async function revokeBrowsers() {
@@ -227,6 +256,8 @@
       const response = await fetch('/api/pair/revoke', { method: 'POST' });
       if (!response.ok) throw new Error();
       pairCode = '';
+      pairState = 'not-paired';
+      extensionStatus = null;
       pairMessage = 'All paired browser access revoked. Pair again to resume browser tracking.';
     } catch { pairMessage = 'Could not revoke browser extension access.'; }
     finally { privacyBusy = false; }
@@ -250,7 +281,6 @@
       const response = await fetch('/api/update/status', { cache: 'no-store' });
       if (!response.ok) throw new Error();
       updateStatus = await response.json();
-      showCompletedUpdate(updateStatus);
     } catch {
       updateStatus = {
         currentVersion: __APP_VERSION__,
@@ -275,8 +305,6 @@
       if (!response.ok) throw new Error(result.error || 'Update failed');
       updateStatus = result;
       if (result.restarting) {
-        sessionStorage.setItem('timelens.updatedTo', result.latestVersion ?? '');
-        sessionStorage.setItem('timelens.updatedFrom', result.currentVersion ?? updateStatus.currentVersion);
         void waitForUpdatedDashboard(result.latestVersion);
       }
     } catch (error) {
@@ -314,18 +342,6 @@
       error: 'TimeLens did not return after the update. Open it again from Start or run the installer.'
     };
     updateBusy = false;
-  }
-
-  function showCompletedUpdate(status: UpdateStatus) {
-    const updatedTo = sessionStorage.getItem('timelens.updatedTo');
-    if (!updatedTo || updatedTo !== status.currentVersion) return;
-    const updatedFrom = sessionStorage.getItem('timelens.updatedFrom');
-    sessionStorage.removeItem('timelens.updatedTo');
-    sessionStorage.removeItem('timelens.updatedFrom');
-    releaseDialogVersion = status.currentVersion;
-    releaseDialogNotes = status.releaseNotes?.trim() || 'TimeLens has been updated successfully.';
-    if (updatedFrom) releaseDialogNotes = `Updated from ${updatedFrom} to ${status.currentVersion}.\n\n${releaseDialogNotes}`;
-    releaseDialog?.showModal();
   }
 
   function clearProtectionFields() {
@@ -399,7 +415,11 @@
     } finally { protectionBusy = false; }
   }
 
-  onMount(() => { void load(); void checkUpdates(); });
+  onMount(() => {
+    void load(); void checkUpdates(); void loadExtensionStatus();
+    pairPoll = setInterval(() => void loadExtensionStatus(), 4_000);
+    return () => { if (pairPoll) clearInterval(pairPoll); };
+  });
 </script>
 
 <div class="settings">
@@ -504,7 +524,7 @@
         <input type="checkbox" class="toggle" checked={browserStoreTitles} onchange={(e) => setToggle('browserStoreTitles', e, value => browserStoreTitles = value)} />
       </label>
       <div class="setting-row pair-row">
-        <div class="setting-info"><span class="setting-label">Connect browser extension</span><span class="setting-desc">Pairing lets the extension send the active site and interaction counts only to this PC. It prevents other local apps from writing fake browser history.</span></div>
+        <div class="setting-info"><span class="setting-label">Browser extension</span><span class="pair-status {pairState}"><i aria-hidden="true"></i>{pairStateLabel()}</span><span class="setting-desc">Pair once per browser. The secure connection is remembered across browser, app, and PC restarts.</span>{#if extensionStatus?.paired && extensionStatus.browser !== 'unknown'}<span class="pair-meta">{extensionStatus.browser} · v{extensionStatus.version}{extensionStatus.ageSeconds >= 0 ? ` · last seen ${extensionStatus.ageSeconds < 60 ? 'just now' : Math.floor(extensionStatus.ageSeconds / 60) + 'm ago'}` : ''}</span>{/if}</div>
         <div class="browser-actions">
           <div class="button-group download-actions">
             <button class="secondary-btn" type="button" title="Download the Firefox extension package" onclick={() => window.open('https://github.com/YumiNoona/TimeLens/releases/latest/download/TimeLens-Firefox-Extension.zip','_blank')}><i class="ti ti-brand-firefox"></i>Get Firefox ZIP</button>
@@ -512,8 +532,8 @@
           </div>
           <div class="button-group connection-actions">
             {#if pairCode}<button class="pair-code" type="button" title="Copy pairing code" onclick={copyPairCode}>{pairCode}<i class="ti {pairCopied ? 'ti-check' : 'ti-copy'}"></i></button>{/if}
-            <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy}>{pairCode ? 'New code' : 'Connect'}</button>
-            <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy}>Disconnect all</button>
+            <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy || pairState === 'checking' || pairState === 'connected'}>{pairState === 'connected' ? 'Connected' : pairState === 'connecting' ? 'New code' : pairState === 'paired-offline' ? 'Reconnect' : 'Connect'}</button>
+            <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy || (!extensionStatus?.paired && pairState !== 'connecting')}>Disconnect all</button>
           </div>
         </div>
       </div>
@@ -566,7 +586,7 @@
         <div class="setting-row">
           <div class="setting-info"><span class="setting-label">Heatmap range</span><span class="setting-desc">Default period shown in History</span></div>
           <select class="select wide" bind:value={heatmapDays} onchange={() => { save('heatmapDays', heatmapDays); heatmapDaysStore.set(heatmapDays); }}>
-            <option value={28}>4 weeks</option><option value={91}>3 months</option><option value={182}>6 months</option><option value={273}>9 months</option><option value={365}>12 months</option>
+            <option value={91}>3 months</option><option value={182}>6 months</option><option value={365}>12 months</option>
           </select>
         </div>
         <label class="setting-row">
@@ -670,15 +690,6 @@
 
 </div>
 
-<dialog class="release-dialog" bind:this={releaseDialog} aria-labelledby="release-dialog-title">
-  <div class="release-dialog-head">
-    <div><span class="release-kicker">UPDATE COMPLETE</span><h2 id="release-dialog-title">TimeLens {releaseDialogVersion} is ready</h2></div>
-    <button class="icon-btn" type="button" aria-label="Close update details" onclick={() => releaseDialog?.close()}><i class="ti ti-x" aria-hidden="true"></i></button>
-  </div>
-  <p class="release-dialog-copy">{releaseDialogNotes}</p>
-  <div class="release-dialog-actions"><button class="primary-btn" type="button" onclick={() => releaseDialog?.close()}>Continue</button></div>
-</dialog>
-
 <style>
   .settings { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
   .card, .card-wide, .warning { grid-column: 1; }
@@ -706,6 +717,15 @@
   .setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .setting-label { color: var(--clr-text-pri); font-size: 13px; font-weight: 500; }
   .setting-desc { color: var(--clr-text-sec); font-size: 11px; line-height: 1.35; }
+  .pair-status { width:max-content; display:inline-flex; align-items:center; gap:6px; margin:3px 0 2px; color:var(--clr-text-sec); font-size:10px; font-weight:650; }
+  .pair-status i { width:7px; height:7px; border-radius:50%; background:var(--clr-text-ter); box-shadow:0 0 0 3px color-mix(in srgb,var(--clr-text-ter) 12%,transparent); }
+  .pair-status.connected { color:var(--md-primary); }
+  .pair-status.connected i { background:var(--md-primary); box-shadow:0 0 0 3px color-mix(in srgb,var(--md-primary) 15%,transparent); }
+  .pair-status.connecting i, .pair-status.checking i { background:var(--md-primary); animation:pair-pulse 1.2s ease-in-out infinite; }
+  .pair-status.outdated { color:var(--md-error); }
+  .pair-status.outdated i { background:var(--md-error); }
+  .pair-meta { color:var(--clr-text-ter); font:9px var(--font-mono); text-transform:capitalize; }
+  @keyframes pair-pulse { 50% { opacity:.35; transform:scale(.72); } }
   .timeline-history-card .card-header { padding-bottom: 15px; border-bottom: 1px solid var(--clr-border); }
   .timeline-history-card .card-header p { display: block; }
   .history-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; background: color-mix(in srgb, var(--clr-bg-ter) 35%, transparent); }
@@ -759,13 +779,6 @@
   .danger-btn { height: 34px; padding: 0 12px; color: var(--md-error); background: transparent; border: 1px solid color-mix(in srgb, var(--md-error) 40%, var(--clr-border)); border-radius: var(--shape-sm); font: 12px inherit; cursor: pointer; }
   .danger-btn:hover { background: var(--md-err-cont); }
   .export-builder{display:grid;grid-template-columns:minmax(230px,1fr) auto;align-items:center;gap:24px;padding:14px 16px;border-top:1px solid var(--clr-border)}.export-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.export-controls input{height:34px;padding:0 9px;border:1px solid var(--clr-border);border-radius:var(--shape-sm);background:var(--clr-bg-ter);color:var(--clr-text-pri);font:11px var(--font-mono)}.export-controls>span{color:var(--clr-text-ter);font-size:10px}
-  .release-dialog { width: min(510px, calc(100vw - 32px)); padding: 0; overflow: hidden; border: 1px solid var(--clr-border-strong); border-radius: var(--shape-lg); color: var(--clr-text-pri); background: var(--clr-bg-sec); box-shadow: var(--shadow-lg); }
-  .release-dialog::backdrop { background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
-  .release-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 20px 15px; border-bottom: 1px solid var(--clr-border); }
-  .release-kicker { display: block; margin-bottom: 6px; color: var(--md-primary); font: 10px var(--font-mono); letter-spacing: .09em; }
-  .release-dialog h2 { margin: 0; font-size: 18px; }
-  .release-dialog-copy { max-height: 280px; margin: 0; padding: 18px 20px; overflow: auto; color: var(--clr-text-sec); font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
-  .release-dialog-actions { display: flex; justify-content: flex-end; padding: 14px 20px 20px; border-top: 1px solid var(--clr-border); }
   @media (max-width: 960px) {
     .compact-card { grid-template-columns: 1fr; }
     .compact-card .setting-row:nth-child(odd) { border-left: 0; }

@@ -15,6 +15,7 @@
   import BlockView from './lib/components/BlockView.svelte';
   import HistoryView from './lib/components/HistoryView.svelte';
   import BrowserActivityView from './lib/components/BrowserActivityView.svelte';
+  import ReleaseNotice from './lib/components/ReleaseNotice.svelte';
   import type { BrowserEntry, AudioEntry, WebMediaSummary } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
@@ -190,6 +191,7 @@
 </script>
 
 <div class="shell">
+  <ReleaseNotice />
   <NavRail active={view} onselect={goTo} />
 
   <main class="main">

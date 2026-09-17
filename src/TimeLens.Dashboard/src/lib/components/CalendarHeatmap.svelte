@@ -3,327 +3,98 @@
   import { fmtPrecise } from '../utils';
   import { heatmapDays, showSeconds } from '../stores/settings';
 
-  let {
-    entries,
-    selectedDate = '',
-    onselect
-  }: {
-    entries: HeatmapEntry[];
-    selectedDate?: string;
-    onselect?: (date: string) => void;
-  } = $props();
-
-  // A square-root scale gives low-activity days a useful visual distinction.
-  function intensity(v: number, max: number): string {
-    if (v === 0) return 'var(--heat-0)';
-    const pct = Math.sqrt(v / max);
-    if (pct <= 0.28) return 'var(--heat-1)';
-    if (pct <= 0.50) return 'var(--heat-2)';
-    if (pct <= 0.72) return 'var(--heat-3)';
-    return 'var(--heat-4)';
-  }
-
+  let { entries, selectedDate = '', onselect }: { entries: HeatmapEntry[]; selectedDate?: string; onselect?: (date: string) => void } = $props();
   let range = $state(0);
-  let inspected = $state<HeatmapEntry | null>(null);
-  const availableDays = $derived.by(() => {
-    const first = entries.findIndex(e => e.value > 0);
-    return first < 0 ? 28 : entries.length - first;
-  });
-  const days = $derived(range || Math.min($heatmapDays, availableDays <= 28 ? 28 : availableDays <= 91 ? 91 : $heatmapDays));
+  const days = $derived(range || $heatmapDays);
   const visibleEntries = $derived(entries.slice(-days));
-  const activeDays = $derived(visibleEntries.filter(e => e.value > 0));
-  const totalMinutes = $derived(visibleEntries.reduce((sum, e) => sum + e.value, 0));
-  const peak = $derived([...visibleEntries].sort((a,b) => b.value-a.value)[0]);
-  const detail = $derived(inspected ?? visibleEntries.find(e => e.date === selectedDate) ?? visibleEntries.at(-1));
-  const maxVal = $derived(Math.max(...visibleEntries.map(e => e.value), 1));
-  const rangeLabel = $derived(
-    days === 28 ? 'Last 4 weeks' :
-    days === 91 ? 'Last 3 months' :
-    days === 273 ? 'Last 9 months' : 'Last 12 months'
-  );
-
-  // Build week-based grid
-  const weeks = $derived.by((): (HeatmapEntry | null)[][] => {
-    if (visibleEntries.length === 0) return [];
-    const first = new Date(visibleEntries[0].date + 'T00:00:00');
-    const startDay = first.getDay(); // 0=Sun, 6=Sat
-
+  const totalMinutes = $derived(visibleEntries.reduce((sum, entry) => sum + entry.value, 0));
+  const activeDays = $derived(visibleEntries.filter(entry => entry.value > 0).length);
+  const thresholds = $derived.by(() => {
+    const values = visibleEntries.map(entry => entry.value).filter(Boolean).sort((a, b) => a - b);
+    if (!values.length) return [1, 1, 1];
+    const at = (fraction: number) => values[Math.min(values.length - 1, Math.floor((values.length - 1) * fraction))];
+    return [at(.25), at(.5), at(.75)];
+  });
+  const weeks = $derived.by(() => {
+    if (!visibleEntries.length) return [] as (HeatmapEntry | null)[][];
     const result: (HeatmapEntry | null)[][] = [];
-    let week: (HeatmapEntry | null)[] = [];
-
-    // Pad first week
-    for (let i = 0; i < startDay; i++) week.push(null);
-
-    for (const e of visibleEntries) {
-      week.push(e);
-      if (week.length === 7) {
-        result.push(week);
-        week = [];
-      }
+    let week: (HeatmapEntry | null)[] = Array(new Date(`${visibleEntries[0].date}T00:00:00`).getDay()).fill(null);
+    for (const entry of visibleEntries) {
+      week.push(entry);
+      if (week.length === 7) { result.push(week); week = []; }
     }
-    // Pad last week
-    if (week.length > 0) {
-      while (week.length < 7) week.push(null);
-      result.push(week);
-    }
+    if (week.length) { while (week.length < 7) week.push(null); result.push(week); }
     return result;
   });
-
-  // Month labels on columns
-  const monthLabels = $derived.by((): { text: string; col: number }[] => {
-    if (visibleEntries.length === 0) return [];
+  const monthLabels = $derived.by(() => {
     const labels: { text: string; col: number }[] = [];
-    const firstDate = new Date(visibleEntries[0].date + 'T00:00:00');
-    labels.push({ text: firstDate.toLocaleString('en-US', { month: 'short' }), col: 0 });
-
-    for (let i = 1; i < visibleEntries.length; i++) {
-      const d = new Date(visibleEntries[i].date + 'T00:00:00');
-      if (d.getDate() === 1 || (i === 1 && d.getMonth() !== firstDate.getMonth())) {
-        const startDayOfWeek = new Date(visibleEntries[0].date + 'T00:00:00').getDay();
-        const col = Math.floor((startDayOfWeek + i) / 7);
-        labels.push({ text: d.toLocaleString('en-US', { month: 'short' }), col });
+    let lastColumn = -5;
+    weeks.forEach((week, column) => {
+      const first = week.find(Boolean);
+      if (!first) return;
+      const date = new Date(`${first.date}T00:00:00`);
+      const previous = column > 0 ? weeks[column - 1].filter(Boolean).at(-1) : null;
+      const previousMonth = previous ? new Date(`${previous.date}T00:00:00`).getMonth() : -1;
+      if ((column === 0 || date.getMonth() !== previousMonth) && column - lastColumn >= 3) {
+        labels.push({ text: date.toLocaleString('en-US', { month: 'short' }), col: column });
+        lastColumn = column;
       }
-    }
-    // Deduplicate adjacent same-month labels
-    return labels.filter((l, i, a) => i === 0 || l.text !== a[i - 1].text);
+    });
+    return labels;
   });
 
-  function fmtDate(d: string): string {
-    const date = new Date(d + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  function level(value: number): number {
+    if (value <= 0) return 0;
+    if (value <= thresholds[0]) return 1;
+    if (value <= thresholds[1]) return 2;
+    if (value <= thresholds[2]) return 3;
+    return 4;
   }
-
-  function fmtActivity(minutes: number): string {
-    return minutes <= 0 ? 'No recorded activity' : `${fmtPrecise(minutes * 60, $showSeconds)} active`;
-  }
+  function dateLabel(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }); }
+  function activityLabel(value: number) { return value <= 0 ? 'No recorded activity' : `${fmtPrecise(value * 60, $showSeconds)} active`; }
 </script>
 
-<div class="heatmap-card" class:short-range={days <= 28} class:medium-range={days > 28 && days <= 91}>
-  <div class="hm-header">
-    <div class="hm-heading"><span class="hm-title"><i class="ti ti-calendar" aria-hidden="true"></i>Activity</span><small>Consistency over time</small></div>
-    <div class="hm-ranges" aria-label="Activity range">{#each [28,91,273,365] as option}<button class:chosen={days === option} onclick={() => range = option}>{option === 28 ? '4w' : option === 91 ? '3m' : option === 273 ? '9m' : '1y'}</button>{/each}</div>
-  </div>
-
-  <div class="hm-summary">
-    <span><small>Recorded</small><strong>{fmtPrecise(totalMinutes * 60, $showSeconds)}</strong></span>
-    <span><small>Active days</small><strong>{activeDays.length}</strong></span>
-    <span><small>Daily average</small><strong>{fmtPrecise(activeDays.length ? totalMinutes * 60 / activeDays.length : 0, $showSeconds)}</strong></span>
-  </div>
-  <div class="hm-chart-surface"><div class="hm-overflow">
-    <div class="hm-content">
-      <div class="hm-body">
-        <div class="hm-day-labels" aria-hidden="true">
-          <span></span>
-          <span>Mon</span>
-          <span></span>
-          <span>Wed</span>
-          <span></span>
-          <span>Fri</span>
-          <span></span>
-        </div>
-
-        <div class="hm-scroll">
-          <div class="hm-month-row" style="grid-template-columns: repeat({weeks.length}, var(--hm-cell))">
-            {#each monthLabels as ml}
-              <span class="hm-month" style="grid-column: {ml.col + 1}; overflow:visible">{ml.text}</span>
-            {/each}
-          </div>
-
-          {#if days <= 28}<div class="hm-weekdays" aria-hidden="true">{#each ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as day}<span>{day}</span>{/each}</div>{/if}
-          <div class="hm-grid" role="group" aria-label="Activity heatmap">
-            {#each weeks as week}
-              {#each week as cell}
-                {#if cell}
-                  <button
-                    type="button"
-                    class="hm-cell"
-                    class:selected={cell.date === selectedDate}
-                    style="background: {intensity(cell.value, maxVal)}; color: {cell.value / maxVal > .5 ? '#142015' : 'var(--md-on-surf)'}"
-                    title="{fmtDate(cell.date)}: {fmtActivity(cell.value)}"
-                    aria-label="{fmtDate(cell.date)}: {fmtActivity(cell.value)}"
-                    aria-pressed={cell.date === selectedDate}
-                    onmouseenter={() => inspected = cell}
-                    onfocus={() => inspected = cell}
-                    onclick={() => { inspected = cell; onselect?.(cell.date); }}
-                  >{#if days <= 28}<span class="hm-date-number">{Number(cell.date.slice(-2))}</span>{/if}</button>
-                {:else}
-                  <div class="hm-cell empty"></div>
-                {/if}
-              {/each}
-            {/each}
-          </div>
-        </div>
-      </div>
-
-      <div class="hm-legend" aria-label="Activity intensity from less to more">
-        <span class="hm-leg-label">Less</span>
-        <div class="hm-cell" style="background:var(--heat-0)"></div>
-        <div class="hm-cell" style="background:var(--heat-1)"></div>
-        <div class="hm-cell" style="background:var(--heat-2)"></div>
-        <div class="hm-cell" style="background:var(--heat-3)"></div>
-        <div class="hm-cell" style="background:var(--heat-4)"></div>
-        <span class="hm-leg-label">More</span>
+<section class="heatmap-card" aria-labelledby="contributions-title">
+  <header>
+    <div><h2 id="contributions-title">Activity contributions</h2><p>{activeDays} active days · {fmtPrecise(totalMinutes * 60, $showSeconds)} recorded</p></div>
+    <div class="ranges" aria-label="Contribution range">
+      {#each [{v:91,l:'3m'},{v:182,l:'6m'},{v:365,l:'1y'}] as option}
+        <button type="button" class:chosen={days === option.v} onclick={() => range = option.v}>{option.l}</button>
+      {/each}
+    </div>
+  </header>
+  <div class="chart-scroll"><div class="chart">
+    <div class="day-labels" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
+    <div class="calendar">
+      <div class="months" style="grid-template-columns:repeat({weeks.length},var(--cell))">{#each monthLabels as label}<span style="grid-column:{label.col + 1}">{label.text}</span>{/each}</div>
+      <div class="grid" role="grid" aria-label="Daily activity contributions">
+        {#each weeks as week}{#each week as cell}
+          {#if cell}<button type="button" class="cell level-{level(cell.value)}" class:selected={cell.date === selectedDate} title="{dateLabel(cell.date)}: {activityLabel(cell.value)}" aria-label="{dateLabel(cell.date)}: {activityLabel(cell.value)}" aria-pressed={cell.date === selectedDate} onclick={() => onselect?.(cell.date)}></button>
+          {:else}<span class="cell blank" aria-hidden="true"></span>{/if}
+        {/each}{/each}
       </div>
     </div>
   </div></div>
-  <div class="hm-detail" aria-live="polite"><span>{#if detail}<strong>{fmtDate(detail.date)}</strong> · {fmtActivity(detail.value)}{/if}</span><span>{rangeLabel}{#if peak?.value} · Peak {fmtPrecise(peak.value * 60, $showSeconds)} on {fmtDate(peak.date)}{/if}</span></div>
-</div>
+  <footer><span>{days === 365 ? 'Last 12 months' : days === 182 ? 'Last 6 months' : 'Last 3 months'}</span><div class="legend" aria-label="Less to more activity"><span>Less</span>{#each [0,1,2,3,4] as n}<i class="cell level-{n}"></i>{/each}<span>More</span></div></footer>
+</section>
 
 <style>
-  .heatmap-card {
-    --heat-0: color-mix(in srgb, var(--md-primary) 4%, var(--clr-bg-ter));
-    --heat-1: color-mix(in srgb, var(--md-primary) 22%, var(--clr-bg-ter));
-    --heat-2: color-mix(in srgb, var(--md-primary) 45%, var(--clr-bg-ter));
-    --heat-3: color-mix(in srgb, var(--md-primary) 70%, var(--clr-bg-ter));
-    --heat-4: color-mix(in srgb, var(--md-primary) 94%, var(--clr-bg-ter));
-  }
-
-  .heatmap-card {
-    --hm-cell: clamp(14px, 1.55vw, 19px);
-    width: 100%;
-    min-height: 300px;
-    max-width: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    background: var(--md-surface-1);
-    border-radius: var(--shape-lg);
-    border: 1px solid var(--md-outline);
-    padding: 18px 20px 15px;
-    overflow: hidden;
-  }
-
-  .medium-range { --hm-cell: clamp(17px, 2vw, 23px); }
-  .hm-ranges { display:flex; gap:3px; padding:3px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:9px; }
-  .hm-ranges button { border:0; background:transparent; color:var(--md-on-surf-var); padding:5px 8px; border-radius:6px; cursor:pointer; font-size:11px; }
-  .hm-ranges button.chosen { background:var(--clr-bg-ter); color:var(--md-primary); box-shadow:0 1px 2px color-mix(in srgb, #000 25%, transparent); }
-  .hm-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:14px; }
-  .hm-summary span { display:flex; flex-direction:column; gap:4px; padding:9px 10px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:9px; }
-  .hm-summary small { color:var(--md-on-surf-var); font-size:9px; text-transform:uppercase; letter-spacing:.07em; }
-  .hm-summary strong { color:var(--md-on-surf); font:600 13px var(--font-mono); font-variant-numeric:tabular-nums; }
-  .hm-detail { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:12px; font-size:10px; color:var(--md-on-surf-var); }
-  .hm-detail strong { color:var(--md-on-surf); }
-  button:focus-visible { outline:2px solid var(--md-primary); outline-offset:3px; }
-  .hm-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px; color:var(--md-on-surf-var); font-size:10px; text-align:center; }
-  .short-range .hm-content, .short-range .hm-scroll { width:100%; }
-  .short-range .hm-day-labels, .short-range .hm-month-row { display:none; }
-  .short-range .hm-grid { grid-auto-flow:row; grid-template-columns:repeat(7,minmax(24px,1fr)); grid-template-rows:none; grid-auto-rows:30px; gap:4px; }
-  .short-range .hm-grid .hm-cell { width:100%; height:30px; border-radius:5px; }
-  .hm-date-number { font:10px var(--font-mono); color:inherit; }
-  .short-range button.hm-cell:hover { transform:none; }
-  .hm-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 13px;
-  }
-  .hm-heading { display:flex; flex-direction:column; gap:2px; }
-  .hm-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--md-on-surf); }
-  .hm-heading small { color:var(--md-on-surf-var); font-size:10px; }
-  .hm-header i { color: var(--md-on-surf-var); font-size: 15px; }
-
-  .hm-chart-surface { flex:1; min-height:0; display:flex; background:color-mix(in srgb, var(--clr-bg-sec) 58%, transparent); border:1px solid var(--clr-border); border-radius:11px; }
-  .hm-overflow {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    overflow-x: auto;
-    padding: 12px 14px;
-    scrollbar-gutter: stable;
-  }
-  .hm-content { width: max-content; margin: auto; padding-right: 4px; }
-
-  .hm-body {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-  }
-  .hm-day-labels {
-    display: grid;
-    grid-template-rows: repeat(7, var(--hm-cell));
-    gap: 4px;
-    padding-top: 17px;
-    width: 24px;
-    flex-shrink: 0;
-  }
-  .hm-day-labels span {
-    font-size: 9px;
-    color: var(--md-on-surf-var);
-    line-height: var(--hm-cell);
-    text-align: right;
-  }
-
-  .hm-scroll { min-width: 0; }
-
-  .hm-month-row {
-    display: grid;
-    grid-auto-columns: var(--hm-cell);
-    gap: 4px;
-    margin-bottom: 4px;
-    height: 13px;
-  }
-
-  .hm-month-row .hm-month {
-    font-size: 9px;
-    color: var(--md-on-surf-var);
-    font-weight: 500;
-    white-space: nowrap;
-    align-self: end;
-  }
-
-  .hm-grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(7, var(--hm-cell));
-    gap: 3px;
-    grid-auto-columns: var(--hm-cell);
-  }
-
-  .hm-cell {
-    border-radius: 4px;
-    width: var(--hm-cell);
-    height: var(--hm-cell);
-  }
-  button.hm-cell {
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-    transition: transform var(--duration-fast), box-shadow var(--duration-fast);
-  }
-  button.hm-cell:hover { transform: scale(1.2); box-shadow: 0 0 0 1px var(--md-on-surf); z-index: 2; }
-  button.hm-cell.selected {
-    box-shadow: 0 0 0 1px var(--clr-bg-pri), 0 0 0 2px var(--md-primary);
-    z-index: 1;
-  }
-  .hm-cell.empty {
-    background: transparent !important;
-  }
-
-  .hm-legend {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    margin-top: 10px;
-    padding-right: 2px;
-    justify-content: flex-end;
-  }
-  .hm-leg-label {
-    font-size: 9px;
-    color: var(--md-on-surf-var);
-  }
-  .hm-legend .hm-cell {
-    width: 10px;
-    height: 10px;
-  }
-  @media (max-width: 560px) {
-    .heatmap-card { padding:14px 12px 12px; min-height:0; }
-    .hm-summary { grid-template-columns:1fr; gap:5px; }
-    .hm-summary span { flex-direction:row; justify-content:space-between; align-items:center; padding:7px 9px; }
-    .hm-header { align-items:flex-start; }
-    .hm-ranges button { padding:5px 6px; }
-    .hm-chart-surface { min-height:190px; }
-    .hm-overflow { padding:10px; }
-    .hm-detail { line-height:1.45; }
-  }
+  .heatmap-card { --cell:12px; --gap:3px; --heat-0:color-mix(in srgb,var(--clr-border) 56%,var(--clr-bg-ter)); --heat-1:color-mix(in srgb,var(--md-primary) 24%,var(--clr-bg-ter)); --heat-2:color-mix(in srgb,var(--md-primary) 46%,var(--clr-bg-ter)); --heat-3:color-mix(in srgb,var(--md-primary) 70%,var(--clr-bg-ter)); --heat-4:var(--md-primary); width:100%; box-sizing:border-box; overflow:hidden; padding:18px 20px 14px; background:var(--md-surface-1); border:1px solid var(--md-outline); border-radius:var(--shape-lg); }
+  header, footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  h2 { margin:0; color:var(--md-on-surf); font-size:13px; font-weight:650; }
+  header p { margin:3px 0 0; color:var(--md-on-surf-var); font-size:10px; }
+  .ranges { display:flex; padding:3px; gap:2px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:8px; }
+  .ranges button { height:25px; min-width:31px; padding:0 7px; border:0; border-radius:5px; color:var(--md-on-surf-var); background:transparent; font:10px var(--font-mono); cursor:pointer; }
+  .ranges button.chosen { color:var(--md-primary); background:var(--clr-bg-ter); }
+  .chart-scroll { margin-top:17px; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
+  .chart { width:max-content; min-width:100%; display:flex; justify-content:center; gap:8px; padding:0 1px 5px; }
+  .day-labels { width:23px; flex:none; display:grid; grid-template-rows:repeat(7,var(--cell)); gap:var(--gap); padding-top:18px; }
+  .day-labels span { color:var(--md-on-surf-var); font-size:8px; line-height:var(--cell); text-align:right; }
+  .calendar { width:max-content; }.months { height:14px; display:grid; grid-auto-columns:var(--cell); gap:var(--gap); margin-bottom:4px; }.months span { overflow:visible; white-space:nowrap; color:var(--md-on-surf-var); font-size:9px; }
+  .grid { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,var(--cell)); grid-auto-columns:var(--cell); gap:var(--gap); }
+  .cell { width:var(--cell); height:var(--cell); box-sizing:border-box; display:block; padding:0; border:1px solid color-mix(in srgb,var(--clr-border) 55%,transparent); border-radius:2px; background:var(--heat-0); }
+  button.cell { cursor:pointer; transition:transform 90ms ease,box-shadow 90ms ease; }button.cell:hover { transform:scale(1.35); box-shadow:0 0 0 1px var(--md-on-surf); z-index:2; }button.cell:focus-visible,button.cell.selected{outline:none;box-shadow:0 0 0 1px var(--clr-bg-pri),0 0 0 2px var(--md-primary);z-index:2}
+  .level-1{background:var(--heat-1)}.level-2{background:var(--heat-2)}.level-3{background:var(--heat-3)}.level-4{background:var(--heat-4)}.blank{visibility:hidden}
+  footer { margin-top:10px; color:var(--md-on-surf-var); font-size:9px; }.legend{display:flex;align-items:center;gap:3px}.legend .cell{width:10px;height:10px}
+  @media(max-width:600px){.heatmap-card{padding:15px 12px 12px}.chart{justify-content:flex-start}.chart-scroll{margin-top:14px}}
 </style>

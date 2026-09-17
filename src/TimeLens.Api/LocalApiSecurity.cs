@@ -44,6 +44,9 @@ public sealed class LocalApiSecurity
     public bool IsDashboard(HttpContext context) =>
         FixedEquals(context.Request.Cookies[DashboardCookieName], _dashboardToken);
 
+    public bool HasPairedExtension =>
+        !string.IsNullOrWhiteSpace(Volatile.Read(ref _extensionTokenHash));
+
     public bool IsExtension(HttpContext context)
     {
         var presented = context.Request.Headers[ExtensionHeaderName].FirstOrDefault();

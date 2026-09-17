@@ -520,6 +520,9 @@ try
         var storedToken = securityCmd.ExecuteScalar()?.ToString();
         Check(storedToken?.Length == 64 && storedToken != token,
             "The Firefox bearer token must never be stored in plaintext");
+        using (var statusDoc = System.Text.Json.JsonDocument.Parse(await dashboard.GetStringAsync("/api/extension-status")))
+            Check(statusDoc.RootElement.GetProperty("paired").GetBoolean(),
+                "Extension status must preserve the paired state even without a current heartbeat");
         using var nextCodeResponse = await dashboard.PostAsync("/api/pair/code", null);
         using var nextCodeDoc = System.Text.Json.JsonDocument.Parse(await nextCodeResponse.Content.ReadAsStringAsync());
         using var chromeExchange = new HttpRequestMessage(HttpMethod.Post, "/api/pair/exchange") {
@@ -536,9 +539,22 @@ try
         }
         using var revoke = await dashboard.PostAsync("/api/pair/revoke", null);
         revoke.EnsureSuccessStatusCode();
+        using (var revokedStatus = System.Text.Json.JsonDocument.Parse(await dashboard.GetStringAsync("/api/extension-status")))
+            Check(!revokedStatus.RootElement.GetProperty("paired").GetBoolean() && !revokedStatus.RootElement.GetProperty("connected").GetBoolean(),
+                "Revoking browsers must clear the durable paired state");
         using var revokedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/extension/settings");
         revokedRequest.Headers.Add("X-TimeLens-Extension", token);
         Check((await anonymous.SendAsync(revokedRequest)).StatusCode == System.Net.HttpStatusCode.Unauthorized, "Revocation must invalidate paired browser tokens");
+
+        var settingsService = new SettingsService(browserPath);
+        settingsService.Save("release_notice_pending", "true");
+        settingsService.Save("release_notice_version", "7.6.0");
+        using (var notice = System.Text.Json.JsonDocument.Parse(await dashboard.GetStringAsync("/api/release-notice")))
+            Check(notice.RootElement.GetProperty("pending").GetBoolean() && notice.RootElement.GetProperty("version").GetString() == "7.6.0",
+                "Release notice must survive dashboard sessions until acknowledged");
+        (await dashboard.PostAsync("/api/release-notice/dismiss", null)).EnsureSuccessStatusCode();
+        Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='release_notice_pending' AND value='false'") == 1,
+            "Release notice acknowledgement must persist");
 
     }
     finally { stopSecureApi.Cancel(); await secureHost; }

@@ -126,7 +126,7 @@ public sealed class UpdateService : IDisposable
             AuthenticodeVerifier.EnsureTrustedUpdate(executablePath, temporaryPath);
 
             File.Move(temporaryPath, stagedPath, overwrite: true);
-            StartReplacementProcess(stagedPath, executablePath);
+            StartReplacementProcess(stagedPath, executablePath, current, manifest.Version);
             return new UpdateStatusDto
             {
                 CurrentVersion = current,
@@ -226,7 +226,7 @@ public sealed class UpdateService : IDisposable
 
     private static string PowerShellLiteral(string value) => $"'{value.Replace("'", "''")}'";
 
-    private static void StartReplacementProcess(string stagedPath, string executablePath)
+    private static void StartReplacementProcess(string stagedPath, string executablePath, string fromVersion, string toVersion)
     {
         var updateDirectory = Path.GetDirectoryName(stagedPath)!;
         var scriptPath = Path.Combine(updateDirectory, $"apply-{Guid.NewGuid():N}.ps1");
@@ -236,6 +236,7 @@ public sealed class UpdateService : IDisposable
         var target = PowerShellLiteral(executablePath);
         var script = PowerShellLiteral(scriptPath);
         var backup = PowerShellLiteral(backupPath);
+        var updateArguments = PowerShellLiteral($"--updated --updated-from {fromVersion} --updated-to {toVersion}");
         var content = $$"""
             $ErrorActionPreference = 'Stop'
             for ($i = 0; $i -lt 120; $i++) {
@@ -260,7 +261,7 @@ public sealed class UpdateService : IDisposable
             }
             "$(Get-Date -Format o) Replacement complete" | Set-Content -LiteralPath (Join-Path {{PowerShellLiteral(updateDirectory)}} 'last-update.log') -Encoding utf8
             try {
-              $updatedProcess = Start-Process -FilePath {{target}} -ArgumentList '--updated' -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}} -PassThru
+              $updatedProcess = Start-Process -FilePath {{target}} -ArgumentList {{updateArguments}} -WorkingDirectory {{PowerShellLiteral(Path.GetDirectoryName(executablePath)!)}} -PassThru
               Start-Sleep -Seconds 5
               if ($updatedProcess.HasExited) { throw 'Updated process exited during startup' }
             } catch {

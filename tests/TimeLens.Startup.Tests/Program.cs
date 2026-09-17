@@ -17,7 +17,7 @@ public sealed class StartupRegressionTests
             {
                 var path = Path.Combine(directory, "new.db");
                 var settings = DatabaseInitializer.Initialize(path);
-                Check(settings.RetentionDays == 90 && settings.TrackInput && settings.HeatmapDays == 273, "Fresh defaults were not loaded.");
+                Check(settings.RetentionDays == 90 && settings.TrackInput && settings.HeatmapDays == 365, "Fresh defaults were not loaded.");
                 Check(settings.BlockTitle == BlockNotification.DefaultTitle &&
                       settings.BlockMessage == BlockNotification.DefaultMessage &&
                       settings.BlockImageVersion == "" && settings.BlockMediaType == "" &&

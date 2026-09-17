@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TimeLens Tracker",
-  "version": "7.5.1",
+  "version": "7.6.0",
   "description": "Privately tracks browser activity and provides TimeLens website focus modes after local pairing",
   "permissions": [
     "tabs",

@@ -434,6 +434,41 @@ public static class ApiHost
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
 
+        app.MapGet("/api/release-notice", async (HttpContext ctx) =>
+        {
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            await using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync(ctx.RequestAborted);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT key,value FROM settings WHERE key IN ('release_notice_pending','release_notice_version','release_notice_from','release_notice_kind')";
+            await using var reader = await cmd.ExecuteReaderAsync(ctx.RequestAborted);
+            while (await reader.ReadAsync(ctx.RequestAborted)) values[reader.GetString(0)] = reader.GetString(1);
+            ctx.Response.ContentType = "application/json";
+            await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartObject();
+            json.WriteBoolean("pending", values.GetValueOrDefault("release_notice_pending") == "true");
+            json.WriteString("version", values.GetValueOrDefault("release_notice_version") ?? "");
+            json.WriteString("fromVersion", values.GetValueOrDefault("release_notice_from") ?? "");
+            json.WriteString("kind", values.GetValueOrDefault("release_notice_kind") ?? "update");
+            json.WriteEndObject();
+            await json.FlushAsync(ctx.RequestAborted);
+        });
+
+        app.MapPost("/api/release-notice/dismiss", async (HttpContext ctx) =>
+        {
+            if (saveSetting is not null) saveSetting("release_notice_pending", "false");
+            else
+            {
+                await using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                await conn.OpenAsync(ctx.RequestAborted);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO settings(key,value) VALUES('release_notice_pending','false') ON CONFLICT(key) DO UPDATE SET value='false'";
+                await cmd.ExecuteNonQueryAsync(ctx.RequestAborted);
+            }
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync("{\"ok\":true}", ctx.RequestAborted);
+        });
+
         app.MapGet("/api/update/status", async (HttpContext ctx) =>
         {
             if (updateService is null)
@@ -781,7 +816,7 @@ public static class ApiHost
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid timeline threshold\"}");
                     return;
                 }
-                if (prop.Name == "heatmapDays" && value is not ("28" or "91" or "182" or "273" or "365"))
+                if (prop.Name == "heatmapDays" && value is not ("91" or "182" or "365"))
                 {
                     ctx.Response.StatusCode = 400;
                     await ctx.Response.WriteAsync("{\"error\":\"Invalid heatmap range\"}");
@@ -1456,25 +1491,32 @@ public static class ApiHost
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
             var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
                              extensionVersion >= new Version(7, 5, 1);
-            var localStart = DateTime.SpecifyKind(DateTime.Now.Date, DateTimeKind.Local).ToUniversalTime();
-            var nowUtc = DateTime.UtcNow;
-            using var coverageConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-            await coverageConn.OpenAsync();
-            var foreground = await ActivityIntervalService.ReadExclusiveAsync(coverageConn, localStart, nowUtc);
-            var focusedBrowserSeconds = foreground.Where(x =>
-                    BrowserTrackingService.MatchesForeground("firefox", x.ExeName) ||
-                    BrowserTrackingService.MatchesForeground("chrome", x.ExeName) ||
-                    BrowserTrackingService.MatchesForeground("edge", x.ExeName) ||
-                    BrowserTrackingService.MatchesForeground("opera", x.ExeName))
-                .Sum(x => x.Seconds);
-            var attributedSeconds = (await BrowserAnalyticsService.ReadAsync(coverageConn, localStart, nowUtc))
-                .Sum(x => x.TotalSeconds);
+            double focusedBrowserSeconds = 0;
+            double attributedSeconds = 0;
+            if (!string.Equals(ctx.Request.Query["light"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                var localStart = DateTime.SpecifyKind(DateTime.Now.Date, DateTimeKind.Local).ToUniversalTime();
+                var nowUtc = DateTime.UtcNow;
+                using var coverageConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                await coverageConn.OpenAsync();
+                var foreground = await ActivityIntervalService.ReadExclusiveAsync(coverageConn, localStart, nowUtc);
+                focusedBrowserSeconds = foreground.Where(x =>
+                        BrowserTrackingService.MatchesForeground("firefox", x.ExeName) ||
+                        BrowserTrackingService.MatchesForeground("chrome", x.ExeName) ||
+                        BrowserTrackingService.MatchesForeground("edge", x.ExeName) ||
+                        BrowserTrackingService.MatchesForeground("opera", x.ExeName))
+                    .Sum(x => x.Seconds);
+                attributedSeconds = (await BrowserAnalyticsService.ReadAsync(coverageConn, localStart, nowUtc))
+                    .Sum(x => x.TotalSeconds);
+            }
             var coveragePercent = focusedBrowserSeconds < 1 ? 100 :
                 Math.Clamp((int)Math.Round(attributedSeconds / focusedBrowserSeconds * 100), 0, 100);
             ctx.Response.ContentType = "application/json";
             await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            var paired = apiSecurity.HasPairedExtension;
             json.WriteStartObject();
-            json.WriteBoolean("connected", ageSeconds >= 0 && ageSeconds <= 75);
+            json.WriteBoolean("paired", paired);
+            json.WriteBoolean("connected", paired && ageSeconds >= 0 && ageSeconds <= 75);
             json.WriteNumber("ageSeconds", ageSeconds);
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);

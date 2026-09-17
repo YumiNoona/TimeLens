@@ -35,6 +35,13 @@ internal static class Program
         }
         var startupRequested = args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         var updatedRequested = args.Any(arg => string.Equals(arg, "--updated", StringComparison.OrdinalIgnoreCase));
+        string? ArgumentValue(string name)
+        {
+            var index = Array.FindIndex(args, arg => string.Equals(arg, name, StringComparison.OrdinalIgnoreCase));
+            return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+        }
+        var updatedFrom = ArgumentValue("--updated-from");
+        var updatedTo = ArgumentValue("--updated-to");
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
         var mutexName = smokeTest ? $"{MutexName}-Smoke-{Environment.ProcessId}" : MutexName;
@@ -60,7 +67,7 @@ internal static class Program
             var iconPath = EnsureRuntimeFile(dataDir, "runtime/TimeLens.ico", "TimeLens.ico");
             NativeLibrary.Load(sqlitePath);
 
-            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested, updatedRequested, apiPort);
+            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested, updatedRequested, updatedFrom, updatedTo, apiPort);
         }
         catch (Exception ex)
         {
@@ -122,7 +129,7 @@ internal static class Program
     }
 
     private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest,
-        bool startupRequested, bool updatedRequested, int apiPort)
+        bool startupRequested, bool updatedRequested, string? updatedFrom, string? updatedTo, int apiPort)
     {
         var dbPath = Path.Combine(dataDir, "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -631,6 +638,17 @@ internal static class Program
             firstRunDone = frCmd.ExecuteScalar() is not null;
         }
 
+        if (!smokeTest && (!firstRunDone || updatedRequested))
+        {
+            var assemblyVersion = typeof(Program).Assembly.GetName().Version ?? new Version(7, 6, 0);
+            var currentVersion = $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(0, assemblyVersion.Build)}";
+            settingsSvc.Save("release_notice_pending", "true");
+            settingsSvc.Save("release_notice_version", string.IsNullOrWhiteSpace(updatedTo) ? currentVersion : updatedTo);
+            settingsSvc.Save("release_notice_from", updatedFrom ?? "");
+            settingsSvc.Save("release_notice_kind", updatedRequested ? "update" : "install");
+        }
+        var openWelcomeDashboard = !smokeTest && !startupRequested && !firstRunDone;
+
         void CompleteFirstRun()
         {
             if (firstRunDone || smokeTest) return;
@@ -812,6 +830,19 @@ internal static class Program
             sessionWatcher.Start();
             if (settings.TrackInput) inputMonitor.Start();
             if (settings.TrackAudio) audioMonitor.Start();
+
+            if (openWelcomeDashboard)
+            {
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(700, apiCts.Token);
+                        OpenDashboard();
+                    }
+                    catch (OperationCanceledException) { }
+                }, apiCts.Token);
+            }
 
             _ = System.Threading.Tasks.Task.Run(async () =>
             {

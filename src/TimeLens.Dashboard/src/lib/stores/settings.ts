@@ -4,4 +4,4 @@ export const timeFormat = writable<'12h' | '24h'>('12h');
 export const showSeconds = writable(false);
 export const settingsLoaded = writable(false);
 export const timelineMinSegmentSeconds = writable(60);
-export const heatmapDays = writable(273);
+export const heatmapDays = writable(365);

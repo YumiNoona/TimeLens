@@ -57,7 +57,7 @@ public sealed class SettingsService
             Density = ReadChoice(dict, "density", "comfortable", "comfortable", "compact"),
             MotionEnabled = dict.GetValueOrDefault("motion_enabled", "true") == "true",
             TimelineMinSegmentSeconds = int.Parse(ReadChoice(dict, "timeline_min_segment_seconds", "60", "30", "60", "120", "300")),
-            HeatmapDays = int.Parse(ReadChoice(dict, "heatmap_days", "273", "28", "91", "273", "365")),
+            HeatmapDays = int.Parse(ReadChoice(dict, "heatmap_days", "365", "91", "182", "365")),
             BlockProtectionEnabled = dict.GetValueOrDefault("block_protection_enabled", "false") == "true",
             BlockProtectionScope = dict.GetValueOrDefault("block_protection_scope", "strict") == "all" ? "all" : "strict",
             BlockExitProtection = dict.GetValueOrDefault("block_exit_protection", "true") != "false",

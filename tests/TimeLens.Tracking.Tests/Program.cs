@@ -1,6 +1,7 @@
 using TimeLens.Api;
 using Microsoft.Data.Sqlite;
 using TimeLens.Api.Services;
+using TimeLens.Api.Dtos;
 using TimeLens.TrayApp.Services;
 using TimeLens.TrayApp.Watchers;
 using Xunit;
@@ -97,6 +98,52 @@ try
     Check(first.Categories.Single().Minutes == 60 && second.Categories.Single().Minutes == 120, "Categories must agree with summary");
     Check(second.Heatmap.Last().Value == 120, "Heatmap must agree with summary");
     Check(second.Timeline.Any(x => x.StartHour == 0 && x.EndHour == 2), "Timeline must clip a session that started yesterday");
+
+    var ledgerPath = Path.Combine(root, "exclusive-ledger.db");
+    DatabaseInitializer.Initialize(ledgerPath);
+    var ledgerDay = DateTime.SpecifyKind(DateTime.Now.Date.AddDays(-10), DateTimeKind.Local);
+    var ledgerStart = ledgerDay.ToUniversalTime();
+    using (var c = new SqliteConnection($"Data Source={ledgerPath}"))
+    {
+        c.Open();
+        void AddApp(string exe, string category, double fromHours, double toHours)
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "INSERT INTO app_events(exe_name,category,start_time,end_time,session_state) VALUES($exe,$cat,$start,$end,'active')";
+            cmd.Parameters.AddWithValue("$exe", exe); cmd.Parameters.AddWithValue("$cat", category);
+            cmd.Parameters.AddWithValue("$start", ledgerStart.AddHours(fromHours).ToString("o"));
+            cmd.Parameters.AddWithValue("$end", ledgerStart.AddHours(toHours).ToString("o"));
+            cmd.ExecuteNonQuery();
+        }
+        AddApp("Code.exe", "development", 0, 4); // stale row that was never closed
+        AddApp("youtube.exe", "entertainment", 2, 2.5);
+        AddApp("Code.exe", "development", 2.5, 3);
+    }
+    var ledger = await new AnalyticsService(ledgerPath).GetDashboardAsync(ledgerDay);
+    Check(ledger.Summary.ActiveSeconds == 10800, "Exclusive foreground ledger must truncate stale overlaps");
+    Check(Math.Abs(ledger.TopApps.Single(x => x.Name == "Code.exe").Minutes - 150) < .01 &&
+          Math.Abs(ledger.TopApps.Single(x => x.Name == "youtube.exe").Minutes - 30) < .01,
+        "Switching to a video and back must not charge the video interval to the prior app");
+    Check(ledger.TopApps.Sum(x => x.Minutes) <= 24 * 60,
+        "A day's primary app totals must never exceed the length of a day");
+
+    var mediaClock = new FakeClock(ledgerStart.AddHours(5));
+    TimeLens.Api.LiveStatusStore.Settings = TimeLens.Api.LiveStatusStore.Settings with { TrackAudio = true, TrackBrowser = true };
+    var mediaTracker = new MediaTrackingService(ledgerPath, mediaClock);
+    var media = new MediaStateDto("video-1", "https://youtube.com/watch?v=test", "Tutorial", "chrome", 7,
+        "video", true, true, false, false, "background", "media-element", mediaClock.GetUtcNow());
+    Check(mediaTracker.Observe(media), "Background web media state should be accepted");
+    mediaClock.Now = mediaClock.Now.AddSeconds(15);
+    Check(mediaTracker.Observe(media with { PictureInPicture = true, Visibility = "pip", ObservedAt = mediaClock.GetUtcNow() }),
+        "PiP transition should be accepted");
+    mediaClock.Now = mediaClock.Now.AddSeconds(15);
+    mediaTracker.Observe(media with { PictureInPicture = true, Visibility = "pip", ObservedAt = mediaClock.GetUtcNow() });
+    var mediaSummary = await new AnalyticsService(ledgerPath).GetDashboardAsync(ledgerDay);
+    Check(mediaSummary.WebMedia.PlaybackSeconds == 30 && mediaSummary.WebMedia.BackgroundSeconds == 15 &&
+          mediaSummary.WebMedia.PictureInPictureSeconds == 15,
+        "Background and PiP playback durations must be measured without entering active-work totals");
+    Check(mediaSummary.Summary.ActiveSeconds == ledger.Summary.ActiveSeconds,
+        "Concurrent playback must never inflate primary active time");
 
     long inputAge = 0;
     var idle = new IdleMonitor(() => inputAge);

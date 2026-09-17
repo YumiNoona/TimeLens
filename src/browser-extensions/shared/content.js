@@ -50,3 +50,81 @@
   // Embedded frames remain dormant until actual input occurs.
   if (window === window.top) { collect(0, 0); scheduleFlush(250); }
 })();
+
+// Media state is a separate, concurrent signal. It is never treated as keyboard/
+// pointer activity and never inflates the exclusive foreground-app clock.
+(() => {
+  if (!document.querySelectorAll || typeof MutationObserver === 'undefined') return;
+  const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
+  const ids = new WeakMap();
+  const known = new Set();
+  let heartbeatTimer = 0;
+
+  function idFor(media) {
+    let id = ids.get(media);
+    if (!id) { id = crypto.randomUUID(); ids.set(media, id); }
+    return id;
+  }
+  function isPlaying(media) {
+    return !media.paused && !media.ended && media.readyState >= 2;
+  }
+  function pipFor(media) {
+    try { return document.pictureInPictureElement === media; } catch (_) { return false; }
+  }
+  function visibilityFor(media) {
+    if (pipFor(media)) return 'pip';
+    return document.visibilityState === 'visible' && document.hasFocus() ? 'foreground' : 'background';
+  }
+  function snapshot(media, forcePlaying) {
+    const playing = forcePlaying === undefined ? isPlaying(media) : forcePlaying;
+    return {
+      mediaId: idFor(media), url: location.href, title: document.title.slice(0, 4096),
+      kind: media.tagName && media.tagName.toLowerCase() === 'audio' ? 'audio' : 'video',
+      playing, audible: playing && !media.muted && media.volume > 0,
+      muted: !!media.muted || media.volume === 0, pictureInPicture: pipFor(media),
+      visibility: visibilityFor(media), confidence: 'media-element',
+      observedAt: new Date().toISOString()
+    };
+  }
+  function report(media, forcePlaying) {
+    if (!/^https?:\/\//.test(location.href)) return;
+    const state = snapshot(media, forcePlaying);
+    if (state.playing) known.add(media); else known.delete(media);
+    try { void runtime.sendMessage({ type: 'timelens-media-state', state }); } catch (_) {}
+    updateHeartbeat();
+  }
+  function heartbeat() {
+    heartbeatTimer = 0;
+    for (const media of [...known]) {
+      if (!media.isConnected || !isPlaying(media)) report(media, false);
+      else report(media);
+    }
+    updateHeartbeat();
+  }
+  function updateHeartbeat() {
+    if (known.size && !heartbeatTimer) heartbeatTimer = window.setTimeout(heartbeat, 15000);
+    if (!known.size && heartbeatTimer) { window.clearTimeout(heartbeatTimer); heartbeatTimer = 0; }
+  }
+  function register(media) {
+    if (!media || (media.tagName !== 'AUDIO' && media.tagName !== 'VIDEO')) return;
+    if (isPlaying(media)) report(media);
+  }
+  function scan(node) {
+    register(node);
+    if (node && node.querySelectorAll) for (const media of node.querySelectorAll('audio,video')) register(media);
+  }
+
+  for (const type of ['play', 'playing', 'pause', 'ended', 'emptied', 'volumechange',
+    'enterpictureinpicture', 'leavepictureinpicture'])
+    document.addEventListener(type, event => {
+      const media = event.target;
+      if (!media || (media.tagName !== 'AUDIO' && media.tagName !== 'VIDEO')) return;
+      report(media, type === 'pause' || type === 'ended' || type === 'emptied' ? false : undefined);
+    }, true);
+  document.addEventListener('visibilitychange', () => { for (const media of known) report(media); });
+  window.addEventListener('pagehide', () => { for (const media of [...known]) report(media, false); });
+  new MutationObserver(records => {
+    for (const record of records) for (const node of record.addedNodes) scan(node);
+  }).observe(document.documentElement || document, { childList: true, subtree: true });
+  scan(document);
+})();

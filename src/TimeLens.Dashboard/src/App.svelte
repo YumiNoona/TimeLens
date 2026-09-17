@@ -15,7 +15,7 @@
   import BlockView from './lib/components/BlockView.svelte';
   import HistoryView from './lib/components/HistoryView.svelte';
   import BrowserActivityView from './lib/components/BrowserActivityView.svelte';
-  import type { BrowserEntry, AudioEntry } from './lib/types';
+  import type { BrowserEntry, AudioEntry, WebMediaSummary } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
   import { timeFormat as timeFormatStore, showSeconds, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
@@ -24,6 +24,7 @@
   let browserSites = $state<BrowserEntry[]>([]);
   let browserTime = $state<{domain: string; totalMinutes: number; totalSeconds?: number}[]>([]);
   let audioSessions = $state<AudioEntry[]>([]);
+  let webMedia = $state<WebMediaSummary>({ playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] });
   let browserHourlyRaw = $state<{hour: number; totalSeconds: number}[]>([]);
   let browserHourly = $derived.by(() => {
     const map = new Map(browserHourlyRaw.map(h => [h.hour, h.totalSeconds]));
@@ -107,16 +108,18 @@
   let refreshInFlight = $state(false);
 
   async function loadCompanionData(): Promise<void> {
-    const [sites, time, audio, hours] = await Promise.allSettled([
+    const [sites, time, audio, media, hours] = await Promise.allSettled([
       fetchJson<BrowserEntry[]>('/api/browser-summary'),
       fetchJson<{domain: string; totalMinutes: number; totalSeconds?: number}[]>('/api/browser-time-summary'),
       fetchJson<AudioEntry[]>('/api/audio-summary'),
+      fetchJson<WebMediaSummary>('/api/media-summary'),
       getBrowserHourly()
     ]);
 
     if (sites.status === 'fulfilled') browserSites = sites.value;
     if (time.status === 'fulfilled') browserTime = time.value;
     if (audio.status === 'fulfilled') audioSessions = audio.value;
+    if (media.status === 'fulfilled') webMedia = media.value;
     if (hours.status === 'fulfilled') browserHourlyRaw = hours.value;
   }
 
@@ -324,7 +327,7 @@
         </div>
       </div>
       <div class="content">
-        <BrowserActivityView sites={browserSites} {browserTime} {browserHourly} {audioSessions} />
+        <BrowserActivityView sites={browserSites} {browserTime} {browserHourly} {audioSessions} {webMedia} />
       </div>
     {:else if view === 'apps' && $data}
       <div class="topbar">

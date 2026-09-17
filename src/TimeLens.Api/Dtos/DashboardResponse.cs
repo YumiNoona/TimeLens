@@ -8,7 +8,8 @@ public sealed record DashboardResponse(
     CategoryEntryDto[] Categories,
     LiveStatusDto Live,
     BrowserEntryDto[] BrowserSites,
-    AudioSessionDto[] AudioSessions
+    AudioSessionDto[] AudioSessions,
+    WebMediaSummaryDto WebMedia
 );
 
 public sealed record SummaryDto(
@@ -46,7 +47,27 @@ public sealed record BrowserPageDto(string Url, string Title, string Browser, do
 public sealed record AudioSessionDto(
     string ExeName,
     int Sessions,
-    string FirstSeen
+    string FirstSeen,
+    int PlaybackSeconds = 0
+);
+
+public sealed record WebMediaEntryDto(
+    string Domain,
+    string Title,
+    string Browser,
+    string Kind,
+    int PlaybackSeconds,
+    int BackgroundSeconds,
+    int PictureInPictureSeconds,
+    int Sessions,
+    string Confidence
+);
+
+public sealed record WebMediaSummaryDto(
+    int PlaybackSeconds,
+    int BackgroundSeconds,
+    int PictureInPictureSeconds,
+    WebMediaEntryDto[] Entries
 );
 
 public sealed record TimelineBlockDto(

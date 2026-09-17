@@ -59,6 +59,7 @@ public sealed class NativeTrayIcon : IDisposable
     private readonly object _lifecycleLock = new();
     private ExceptionDispatchInfo? _callbackError;
     private readonly string _iconPath;
+    private readonly string _windowTitle;
     private readonly System.Collections.Concurrent.ConcurrentQueue<ToastRequest> _toastQueue = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<DispatchRequest> _dispatchQueue = new();
     private readonly List<(ToastWindow Window, string Position)> _activeToasts = [];
@@ -67,11 +68,12 @@ public sealed class NativeTrayIcon : IDisposable
     private sealed record ToastRequest(string Title, string Text, string? ImagePath, string Position, string MediaLayout);
     private sealed record DispatchRequest(Action Action, TaskCompletionSource<bool>? Completion);
 
-    public NativeTrayIcon(string? iconPath = null)
+    public NativeTrayIcon(string? iconPath = null, string windowTitle = "TimeLens")
     {
         _iconPath = iconPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TimeLens", "runtime", "TimeLens.ico");
+        _windowTitle = windowTitle;
     }
 
     public event Action? OpenDashboardRequested;
@@ -241,7 +243,7 @@ public sealed class NativeTrayIcon : IDisposable
         // A message-only window never receives the TaskbarCreated broadcast. Use an
         // invisible top-level tool window so Explorer restarts restore our icon.
         _hWnd = CreateWindowExW(
-            WS_EX_TOOLWINDOW, WindowClass, "TimeLens",
+            WS_EX_TOOLWINDOW, WindowClass, _windowTitle,
             0, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
         if (_hWnd == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create hidden window.");

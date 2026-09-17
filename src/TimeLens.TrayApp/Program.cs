@@ -25,11 +25,20 @@ internal static class Program
         // prompts, and no registry changes. Normal launches always use LocalAppData.
         var smokeTestIndex = Array.IndexOf(args, "--smoke-test");
         var smokeTest = smokeTestIndex >= 0;
+        var apiPort = TimeLens.Api.ApiHost.DefaultPort;
+        var apiPortIndex = Array.IndexOf(args, "--api-port");
+        if (apiPortIndex >= 0)
+        {
+            if (!smokeTest || apiPortIndex + 1 >= args.Length ||
+                !int.TryParse(args[apiPortIndex + 1], out apiPort) || apiPort is < 1024 or > 65535)
+                throw new ArgumentException("--api-port is only valid with --smoke-test and requires a port from 1024 to 65535.");
+        }
         var startupRequested = args.Any(arg => string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase));
         var updatedRequested = args.Any(arg => string.Equals(arg, "--updated", StringComparison.OrdinalIgnoreCase));
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TimeLens");
-        using var instanceMutex = new Mutex(true, MutexName, out var isFirstInstance);
+        var mutexName = smokeTest ? $"{MutexName}-Smoke-{Environment.ProcessId}" : MutexName;
+        using var instanceMutex = new Mutex(true, mutexName, out var isFirstInstance);
         if (!isFirstInstance)
             return;
 
@@ -51,7 +60,7 @@ internal static class Program
             var iconPath = EnsureRuntimeFile(dataDir, "runtime/TimeLens.ico", "TimeLens.ico");
             NativeLibrary.Load(sqlitePath);
 
-            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested, updatedRequested);
+            MainImpl(dataDir, categoriesPath, iconPath, smokeTest, startupRequested, updatedRequested, apiPort);
         }
         catch (Exception ex)
         {
@@ -112,7 +121,8 @@ internal static class Program
         return CryptographicOperations.FixedTimeEquals(embeddedHash, installedHash);
     }
 
-    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest, bool startupRequested, bool updatedRequested)
+    private static void MainImpl(string dataDir, string builtinCsvPath, string iconPath, bool smokeTest,
+        bool startupRequested, bool updatedRequested, int apiPort)
     {
         var dbPath = Path.Combine(dataDir, "activity.db");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -561,7 +571,9 @@ internal static class Program
         // audible-status endpoint, so skip Core Audio logging to avoid duplicate entries.
         var browserAudioExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "firefox.exe", "zen.exe", "floorp.exe", "waterfox.exe", "librewolf.exe"
+            "firefox.exe", "zen.exe", "floorp.exe", "waterfox.exe", "librewolf.exe",
+            "chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe", "opera.exe",
+            "arc.exe", "thorium.exe"
         };
 
         // Watchers will be started inside the message loop via StartupRequested
@@ -596,6 +608,18 @@ internal static class Program
             catch (Exception ex) { LogCrash($"tracking heartbeat: {ex}"); }
             finally { Monitor.Exit(trackingLock); }
         }, null, 1_000, 1_000);
+
+        // Core Audio emits edges, while this low-frequency checkpoint bounds an
+        // unclean shutdown without polling audio samples or waking the GPU.
+        using var audioCheckpointTimer = new Timer(_ =>
+        {
+            if (!LiveStatusStore.Settings.TrackAudio) return;
+            foreach (var session in audioMonitor.ActiveSessions)
+            {
+                if (browserAudioExes.Contains(session.Exe)) continue;
+                writer.InsertAudioActivity(session.Pid, session.Exe, true);
+            }
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
 
         // First-run: ask about auto-start, then wire settings save
         var firstRunDone = false;
@@ -642,7 +666,7 @@ internal static class Program
 
         using var apiCts = new CancellationTokenSource();
         using var updateService = new UpdateService();
-        using var trayDispose = tray = new NativeTrayIcon(iconPath);
+        using var trayDispose = tray = new NativeTrayIcon(iconPath, smokeTest ? $"TimeLens Smoke {apiPort}" : "TimeLens");
         audioMonitor.MessageLoopDispatcher = tray.Post;
         void RequestShutdown()
         {
@@ -698,14 +722,15 @@ internal static class Program
                     LiveStatusStore.AudibleTab = null;
                     WriteAppEvent();
                 }
-            });
+            }, port: apiPort);
         _ = apiTask.ContinueWith(task => RuntimeDiagnostics.Write($"Local API failed: {task.Exception}"),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
         void OnAudioChanged(int pid, string exe, bool playing)
         {
-            if (browserAudioExes.Contains(exe) && !string.IsNullOrEmpty(LiveStatusStore.AudibleTab))
-                return;
+            // Browser media is attributed to the actual tab/domain by the extension.
+            // Recording the browser's Core Audio process as well would double-count it.
+            if (browserAudioExes.Contains(exe)) return;
             writer.InsertAudioActivity(pid, exe, playing);
             LiveStatusStore.AudioActive = audioMonitor.AnyAudioPlaying;
         }
@@ -773,7 +798,7 @@ internal static class Program
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = $"http://127.0.0.1:{TimeLens.Api.ApiHost.DefaultPort}/?v={dashboardBuildKey}&view={Uri.EscapeDataString(view)}",
+                FileName = $"http://127.0.0.1:{apiPort}/?v={dashboardBuildKey}&view={Uri.EscapeDataString(view)}",
                 UseShellExecute = true
             });
         }

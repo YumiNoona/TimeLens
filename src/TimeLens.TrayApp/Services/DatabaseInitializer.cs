@@ -77,6 +77,25 @@ public static class DatabaseInitializer
                 is_playing INTEGER NOT NULL DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS web_media_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                media_key TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                browser TEXT NOT NULL,
+                tab_id INTEGER NOT NULL,
+                media_kind TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                is_pip INTEGER NOT NULL DEFAULT 0,
+                is_audible INTEGER NOT NULL DEFAULT 0,
+                is_muted INTEGER NOT NULL DEFAULT 0,
+                visibility TEXT NOT NULL DEFAULT 'background',
+                confidence TEXT NOT NULL DEFAULT 'media-element',
+                local_date TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS app_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 exe_name TEXT NOT NULL UNIQUE,
@@ -152,6 +171,8 @@ public static class DatabaseInitializer
             CREATE INDEX IF NOT EXISTS idx_browser_local_date ON browser_events(local_date);
             CREATE INDEX IF NOT EXISTS idx_input_activity_ts ON input_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audio_activity_ts ON audio_activity(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_web_media_time ON web_media_events(start_time, end_time);
+            CREATE INDEX IF NOT EXISTS idx_web_media_local_date ON web_media_events(local_date);
             CREATE INDEX IF NOT EXISTS idx_session_events_ts ON session_events(timestamp);
             CREATE INDEX IF NOT EXISTS idx_block_log_timestamp ON block_log(timestamp);
             """;

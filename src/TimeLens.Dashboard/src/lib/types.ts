@@ -59,6 +59,36 @@ export interface AudioEntry {
   exeName: string;
   sessions: number;
   firstSeen: string;
+  playbackSeconds: number;
+}
+
+export interface WebMediaEntry {
+  domain: string;
+  title: string;
+  browser: string;
+  kind: string;
+  playbackSeconds: number;
+  backgroundSeconds: number;
+  pictureInPictureSeconds: number;
+  sessions: number;
+  confidence: string;
+}
+
+export interface WebMediaSummary {
+  playbackSeconds: number;
+  backgroundSeconds: number;
+  pictureInPictureSeconds: number;
+  entries: WebMediaEntry[];
+}
+
+export interface ExtensionStatus {
+  connected: boolean;
+  compatible: boolean;
+  version: string;
+  minimumVersion: string;
+  coveragePercent: number;
+  focusedBrowserSeconds: number;
+  attributedSeconds: number;
 }
 
 export interface HeatmapEntry {
@@ -103,4 +133,5 @@ export interface DashboardData {
   live: LiveStatus;
   browserSites: BrowserEntry[];
   audioSessions: AudioEntry[];
+  webMedia: WebMediaSummary;
 }

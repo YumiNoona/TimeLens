@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { AudioEntry, BrowserEntry } from '../types';
+  import type { AudioEntry, BrowserEntry, ExtensionStatus, WebMediaSummary } from '../types';
   import { fmtPrecise } from '../utils';
   import { showSeconds } from '../stores/settings';
   import TopSites from './TopSites.svelte';
@@ -10,9 +10,9 @@
 
   type Visit = { domain:string; url:string; title:string; browser:string; startedAt:string; endedAt:string; activeSeconds:number };
   const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-  let { sites, browserTime, browserHourly, audioSessions }: {
+  let { sites, browserTime, browserHourly, audioSessions, webMedia }: {
     sites: BrowserEntry[]; browserTime: {domain:string; totalMinutes:number; totalSeconds?:number}[];
-    browserHourly: {hour:number; totalSeconds:number}[]; audioSessions: AudioEntry[];
+    browserHourly: {hour:number; totalSeconds:number}[]; audioSessions: AudioEntry[]; webMedia: WebMediaSummary;
   } = $props();
   let tab = $state<'overview'|'visits'|'pages'>('overview');
   let visits = $state<Visit[]>([]);
@@ -20,6 +20,9 @@
   let shownSites = $state<BrowserEntry[]>([]);
   let shownTime = $state<{domain:string; totalMinutes:number; totalSeconds?:number}[]>([]);
   let shownHourly = $state<{hour:number; totalSeconds:number}[]>([]);
+  let shownAudio = $state<AudioEntry[]>([]);
+  let shownMedia = $state<WebMediaSummary>({ playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] });
+  let extensionStatus = $state<ExtensionStatus | null>(null);
   let loading = $state(false);
   let query = $state('');
   let domain = $state('all');
@@ -37,18 +40,22 @@
     loading = true;
     const query = `?date=${encodeURIComponent(selectedDate)}`;
     try {
-      const [visitResponse, siteResponse, timeResponse, hourlyResponse] = await Promise.all([
+      const [visitResponse, siteResponse, timeResponse, hourlyResponse, audioResponse, mediaResponse, statusResponse] = await Promise.all([
         fetch('/api/browser-visits'+query), fetch('/api/browser-summary'+query),
-        fetch('/api/browser-time-summary'+query), fetch('/api/browser-hourly'+query)
+        fetch('/api/browser-time-summary'+query), fetch('/api/browser-hourly'+query),
+        fetch('/api/audio-summary'+query), fetch('/api/media-summary'+query), fetch('/api/extension-status')
       ]);
       visits = visitResponse.ok ? await visitResponse.json() : [];
       shownSites = siteResponse.ok ? await siteResponse.json() : [];
       shownTime = timeResponse.ok ? await timeResponse.json() : [];
       shownHourly = hourlyResponse.ok ? await hourlyResponse.json() : [];
+      shownAudio = audioResponse.ok ? await audioResponse.json() : [];
+      shownMedia = mediaResponse.ok ? await mediaResponse.json() : { playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] };
+      extensionStatus = statusResponse.ok ? await statusResponse.json() : null;
     }
     finally { loading = false; }
   }
-  onMount(() => { shownSites=sites; shownTime=browserTime; shownHourly=browserHourly; void loadDate(); });
+  onMount(() => { shownSites=sites; shownTime=browserTime; shownHourly=browserHourly; shownAudio=audioSessions; shownMedia=webMedia; void loadDate(); });
 </script>
 
 <div class="browser-nav">
@@ -59,16 +66,23 @@
  </div>
  <label class="date-picker"><i class="ti ti-calendar"></i><input type="date" bind:value={selectedDate} max={localDate()} onchange={loadDate} aria-label="Browser activity date" /></label>
 </div>
+{#if extensionStatus && (!extensionStatus.connected || !extensionStatus.compatible || (extensionStatus.focusedBrowserSeconds > 300 && extensionStatus.coveragePercent < 80))}
+  <div class="coverage-warning">
+    <i class="ti ti-alert-triangle"></i>
+    <span>{!extensionStatus.connected ? 'Browser extension is offline; website and web-media time cannot be attributed.' : !extensionStatus.compatible ? `Extension ${extensionStatus.version} is outdated; install ${extensionStatus.minimumVersion} or newer.` : `Only ${extensionStatus.coveragePercent}% of foreground browser time was attributed today. Check extension pairing and private-window permissions.`}</span>
+  </div>
+{/if}
 <div class="browser-summary">
   <div><span>Unique sites</span><strong>{shownSites.length}</strong></div>
   <div><span>Recorded sessions</span><strong>{shownSites.reduce((sum,site)=>sum+site.visits,0).toLocaleString()}</strong></div>
   <div><span>Active browsing</span><strong>{fmtPrecise(shownTime.reduce((sum,item)=>sum+(item.totalSeconds ?? item.totalMinutes*60),0), $showSeconds)}</strong></div>
+  <div><span>Media playback</span><strong>{fmtPrecise(shownMedia.playbackSeconds, $showSeconds)}</strong></div>
 </div>
 
 {#if tab === 'overview'}
-  {#if shownSites.length || shownTime.length}
+  {#if shownSites.length || shownTime.length || shownMedia.entries.length || shownAudio.length}
     <div class="two-col"><TopSites sites={shownSites} /><SiteTimeCard browserTime={shownTime} /></div>
-    <div class="detail-grid"><BrowserHourlyCard browserHourly={shownHourly} /><MediaCard {audioSessions} /></div>
+    <div class="detail-grid"><BrowserHourlyCard browserHourly={shownHourly} /><MediaCard audioSessions={shownAudio} webMedia={shownMedia} /></div>
   {:else}<div class="empty overview-empty"><i class="ti ti-world-off"></i><strong>No browsing data on this date</strong><span>Choose another date, or connect the browser extension in Settings.</span></div>{/if}
 {:else}
   <div class="browser-tools">
@@ -104,8 +118,9 @@
 
 <style>
   .browser-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.browser-tabs{display:flex;align-items:center;gap:6px;padding:5px;width:max-content;max-width:100%;overflow:auto;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:12px}
+  .coverage-warning{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--clr-warning,#d9a441) 45%,var(--clr-border));border-radius:10px;background:color-mix(in srgb,var(--clr-warning,#d9a441) 9%,var(--clr-bg-sec));color:var(--clr-text-sec);font-size:11px}.coverage-warning i{color:var(--clr-warning,#d9a441);font-size:16px}
   .browser-tabs button{height:34px;display:flex;align-items:center;gap:7px;padding:0 13px;border:0;border-radius:8px;background:transparent;color:var(--clr-text-sec);font:12px inherit;cursor:pointer;white-space:nowrap}.browser-tabs button.active{background:var(--md-primary-cont);color:var(--md-primary)}.browser-tabs span{font:10px var(--font-mono);opacity:.65}
-  .browser-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:hidden;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:12px}.browser-summary>div{display:grid;gap:3px;padding:14px 18px}.browser-summary>div+div{border-left:1px solid var(--clr-border)}.browser-summary span{color:var(--clr-text-sec);font-size:10px}.browser-summary strong{font:18px var(--font-mono)}
+  .browser-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:12px}.browser-summary>div{display:grid;gap:3px;padding:14px 18px}.browser-summary>div+div{border-left:1px solid var(--clr-border)}.browser-summary span{color:var(--clr-text-sec);font-size:10px}.browser-summary strong{font:18px var(--font-mono)}
   .two-col,.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}.detail-grid{grid-template-columns:1fr;margin-top:var(--space-4)}
   .browser-tools{display:flex;gap:8px;align-items:center}.browser-tools label{height:38px;flex:1;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:9px;color:var(--clr-text-ter)}.browser-tools input{width:100%;border:0;outline:0;background:transparent;color:var(--clr-text-pri);font:12px inherit}.browser-tools select{height:38px;padding:0 30px 0 11px;background:var(--clr-bg-sec);border:1px solid var(--clr-border);border-radius:9px;color:var(--clr-text-pri);font:12px inherit}
   .date-picker{height:42px;display:flex;align-items:center;gap:8px;padding:0 11px;border:1px solid var(--clr-border);border-radius:10px;background:var(--clr-bg-sec);color:var(--clr-text-sec)}.date-picker input{border:0;outline:0;background:transparent;color:var(--clr-text-pri);font:11px var(--font-mono)}

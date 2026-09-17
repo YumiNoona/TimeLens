@@ -24,7 +24,13 @@ public static class ApiHost
     private const int MaxBlockImageBytes = 4 * 1024 * 1024;
     private const int MaxBlockVideoBytes = 8 * 1024 * 1024;
     private static BrowserTrackingService? _browserTracker;
-    public static void UpdateBrowserTracking() => _browserTracker?.Tick();
+    private static MediaTrackingService? _mediaTracker;
+    private static long _lastExtensionStatusPersistTicks;
+    public static void UpdateBrowserTracking()
+    {
+        _browserTracker?.Tick();
+        _mediaTracker?.Tick();
+    }
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> PublicSettingNames = new(StringComparer.Ordinal)
     {
@@ -188,7 +194,7 @@ public static class ApiHost
         var extensionPostPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "/api/extension-heartbeat", "/api/browser-event", "/api/browser-input",
-            "/api/browser-leave", "/api/browser-heartbeat", "/api/audible-status"
+            "/api/browser-leave", "/api/browser-heartbeat", "/api/audible-status", "/api/media-state"
         };
 
         app.Use(async (ctx, next) =>
@@ -396,7 +402,7 @@ public static class ApiHost
         {
             var settings = LiveStatusStore.Settings;
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync($$"""{"trackBrowser":{{settings.TrackBrowser.ToString().ToLowerInvariant()}},"trackInput":{{settings.TrackInput.ToString().ToLowerInvariant()}},"focusMode":{{settings.FocusMode.ToString().ToLowerInvariant()}},"browserUrlMode":"{{settings.BrowserUrlMode}}","browserStoreTitles":{{settings.BrowserStoreTitles.ToString().ToLowerInvariant()}}}""");
+            await ctx.Response.WriteAsync($$"""{"trackBrowser":{{settings.TrackBrowser.ToString().ToLowerInvariant()}},"trackInput":{{settings.TrackInput.ToString().ToLowerInvariant()}},"trackAudio":{{settings.TrackAudio.ToString().ToLowerInvariant()}},"focusMode":{{settings.FocusMode.ToString().ToLowerInvariant()}},"browserUrlMode":"{{settings.BrowserUrlMode}}","browserStoreTitles":{{settings.BrowserStoreTitles.ToString().ToLowerInvariant()}}}""");
         });
 
         app.MapPost("/api/pair/code", async (HttpContext ctx) =>
@@ -975,6 +981,7 @@ public static class ApiHost
                 return;
             }
             _browserTracker?.Reset();
+            _mediaTracker?.Reset();
             clearActivityData();
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -1291,6 +1298,7 @@ public static class ApiHost
         });
 
         _browserTracker = new BrowserTrackingService(dbPath);
+        _mediaTracker = new MediaTrackingService(dbPath);
 
         app.MapPost("/api/browser-event", async (HttpContext ctx) =>
         {
@@ -1367,6 +1375,14 @@ public static class ApiHost
             await ctx.Response.WriteAsync(accepted ? "{\"accepted\":true}" : "{\"accepted\":false}");
         });
 
+        app.MapPost("/api/media-state", async (HttpContext ctx) =>
+        {
+            var state = await ctx.Request.ReadFromJsonAsync<MediaStateDto>(AppJsonContext.Default.MediaStateDto);
+            var accepted = state is not null && _mediaTracker.Observe(state);
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(accepted ? "{\"accepted\":true}" : "{\"accepted\":false}");
+        });
+
         app.MapPost("/api/browser-leave", async (HttpContext ctx) =>
         {
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
@@ -1401,18 +1417,60 @@ public static class ApiHost
 
         app.MapPost("/api/extension-heartbeat", (HttpContext ctx) =>
         {
-            LiveStatusStore.LastExtensionHeartbeat = DateTime.UtcNow;
+            var now = DateTime.UtcNow;
+            LiveStatusStore.LastExtensionHeartbeat = now;
             LiveStatusStore.LastExtensionBrowser = ctx.Request.Query["browser"].FirstOrDefault() ?? "unknown";
             LiveStatusStore.LastExtensionVersion = ctx.Request.Query["version"].FirstOrDefault() ?? "unknown";
+            var priorTicks = Interlocked.Read(ref _lastExtensionStatusPersistTicks);
+            if (priorTicks == 0 || now.Ticks - priorTicks >= TimeSpan.FromMinutes(2).Ticks)
+            {
+                Interlocked.Exchange(ref _lastExtensionStatusPersistTicks, now.Ticks);
+                saveSetting?.Invoke("extension_last_seen", now.ToString("o"));
+                saveSetting?.Invoke("extension_last_browser", LiveStatusStore.LastExtensionBrowser);
+                saveSetting?.Invoke("extension_last_version", LiveStatusStore.LastExtensionVersion);
+            }
             ctx.Response.StatusCode = 200;
             return Task.CompletedTask;
         });
 
         app.MapGet("/api/extension-status", async (HttpContext ctx) =>
         {
+            if (LiveStatusStore.LastExtensionHeartbeat == DateTime.MinValue)
+            {
+                using var statusConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+                await statusConn.OpenAsync();
+                using var statusCmd = statusConn.CreateCommand();
+                statusCmd.CommandText = "SELECT key,value FROM settings WHERE key IN ('extension_last_seen','extension_last_browser','extension_last_version')";
+                using var statusReader = await statusCmd.ExecuteReaderAsync();
+                while (await statusReader.ReadAsync())
+                {
+                    var key = statusReader.GetString(0); var value = statusReader.GetString(1);
+                    if (key == "extension_last_seen" && DateTime.TryParse(value, null, DateTimeStyles.RoundtripKind, out var seen))
+                        LiveStatusStore.LastExtensionHeartbeat = seen.ToUniversalTime();
+                    else if (key == "extension_last_browser") LiveStatusStore.LastExtensionBrowser = value;
+                    else if (key == "extension_last_version") LiveStatusStore.LastExtensionVersion = value;
+                }
+            }
             var ageSeconds = LiveStatusStore.LastExtensionHeartbeat == DateTime.MinValue
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
+            var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
+                             extensionVersion >= new Version(7, 5, 0);
+            var localStart = DateTime.SpecifyKind(DateTime.Now.Date, DateTimeKind.Local).ToUniversalTime();
+            var nowUtc = DateTime.UtcNow;
+            using var coverageConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await coverageConn.OpenAsync();
+            var foreground = await ActivityIntervalService.ReadExclusiveAsync(coverageConn, localStart, nowUtc);
+            var focusedBrowserSeconds = foreground.Where(x =>
+                    BrowserTrackingService.MatchesForeground("firefox", x.ExeName) ||
+                    BrowserTrackingService.MatchesForeground("chrome", x.ExeName) ||
+                    BrowserTrackingService.MatchesForeground("edge", x.ExeName) ||
+                    BrowserTrackingService.MatchesForeground("opera", x.ExeName))
+                .Sum(x => x.Seconds);
+            var attributedSeconds = (await BrowserAnalyticsService.ReadAsync(coverageConn, localStart, nowUtc))
+                .Sum(x => x.TotalSeconds);
+            var coveragePercent = focusedBrowserSeconds < 1 ? 100 :
+                Math.Clamp((int)Math.Round(attributedSeconds / focusedBrowserSeconds * 100), 0, 100);
             ctx.Response.ContentType = "application/json";
             await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
             json.WriteStartObject();
@@ -1420,6 +1478,11 @@ public static class ApiHost
             json.WriteNumber("ageSeconds", ageSeconds);
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
+            json.WriteBoolean("compatible", compatible);
+            json.WriteString("minimumVersion", "7.5.0");
+            json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
+            json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
+            json.WriteNumber("coveragePercent", coveragePercent);
             json.WriteEndObject();
             await json.FlushAsync();
         });
@@ -1458,18 +1521,21 @@ public static class ApiHost
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT exe_name, COUNT(*), MIN(timestamp) FROM audio_activity WHERE is_playing=1 AND timestamp>=$t0 AND timestamp<$t1 GROUP BY exe_name ORDER BY 2 DESC";
-            cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
-            cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
-            using var arr = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
-            arr.WriteStartArray();
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync()) { arr.WriteStartObject(); arr.WriteString("exeName", r.IsDBNull(0) ? "" : r.GetString(0)); arr.WriteNumber("sessions", r.IsDBNull(1) ? 0 : r.GetInt32(1)); arr.WriteString("firstSeen", r.IsDBNull(2) ? "" : r.GetString(2)); arr.WriteEndObject(); }
-            arr.WriteEndArray();
-            await arr.FlushAsync();
-            ctx.Response.StatusCode = 200;
-            ctx.Response.ContentType = "application/json";
+            var result = await MediaAnalyticsService.ReadNativeAsync(conn, today, tomorrow, DateTime.UtcNow);
+            await ctx.Response.WriteAsJsonAsync(result, AppJsonContext.Default.AudioSessionDtoArray);
+        });
+
+        app.MapGet("/api/media-summary", async (HttpContext ctx) =>
+        {
+            if (!TryParseLocalDay(ctx.Request.Query["date"].FirstOrDefault(), out var local))
+            { ctx.Response.StatusCode = 400; return; }
+            var start = TimeZoneInfo.ConvertTimeToUtc(local.Date);
+            var dayEnd = TimeZoneInfo.ConvertTimeToUtc(local.Date.AddDays(1));
+            var end = local.Date == DateTime.Now.Date ? DateTime.UtcNow : dayEnd;
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync();
+            var result = await MediaAnalyticsService.ReadWebAsync(conn, start, end);
+            await ctx.Response.WriteAsJsonAsync(result, AppJsonContext.Default.WebMediaSummaryDto);
         });
 
         app.MapGet("/api/browser-summary", async (HttpContext ctx) =>
@@ -1837,33 +1903,20 @@ public static class ApiHost
 
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT start_time, exe_name, window_title, category, session_state,
-                    MAX(0, MIN(julianday(COALESCE(end_time, $end)), julianday($end)) -
-                        MAX(julianday(start_time), julianday($start))) * 86400 AS duration_secs
-                FROM app_events
-                WHERE julianday(start_time) < julianday($end)
-                    AND julianday(COALESCE(end_time, $end)) > julianday($start)
-                ORDER BY start_time
-                """;
-            cmd.Parameters.AddWithValue("$start", rangeStart.ToString("o"));
-            cmd.Parameters.AddWithValue("$end", rangeEnd.ToString("o"));
-
-            using var r = await cmd.ExecuteReaderAsync();
+            var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, rangeStart, rangeEnd);
             if (format == "json")
             {
                 await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
                 json.WriteStartArray();
-                while (await r.ReadAsync())
+                foreach (var segment in segments)
                 {
                     json.WriteStartObject();
-                    json.WriteString("start", r.GetString(0));
-                    json.WriteString("exe", r.GetString(1));
-                    json.WriteString("title", r.IsDBNull(2) ? "" : r.GetString(2));
-                    json.WriteString("category", r.IsDBNull(3) ? "" : r.GetString(3));
-                    json.WriteString("state", r.IsDBNull(4) ? "" : r.GetString(4));
-                    json.WriteNumber("secs", Convert.ToInt32(r.GetValue(5)));
+                    json.WriteString("start", segment.StartUtc.ToString("o"));
+                    json.WriteString("exe", segment.ExeName);
+                    json.WriteString("title", segment.WindowTitle ?? "");
+                    json.WriteString("category", segment.Category);
+                    json.WriteString("state", "active");
+                    json.WriteNumber("secs", (int)Math.Round(segment.Seconds));
                     json.WriteEndObject();
                 }
                 json.WriteEndArray();
@@ -1873,14 +1926,12 @@ public static class ApiHost
             {
                 await using var w = new System.IO.StreamWriter(ctx.Response.Body);
                 await w.WriteLineAsync("start_time,exe_name,window_title,category,session_state,duration_secs");
-                while (await r.ReadAsync())
+                foreach (var segment in segments)
                 {
                     await w.WriteLineAsync(
-                        string.Join(",", CsvCell(r.GetString(0)), CsvCell(r.GetString(1)),
-                            CsvCell(r.IsDBNull(2) ? "" : r.GetString(2)),
-                            CsvCell(r.IsDBNull(3) ? "" : r.GetString(3)),
-                            CsvCell(r.IsDBNull(4) ? "" : r.GetString(4)),
-                            Convert.ToInt32(r.GetValue(5)).ToString(CultureInfo.InvariantCulture)));
+                        string.Join(",", CsvCell(segment.StartUtc.ToString("o")), CsvCell(segment.ExeName),
+                            CsvCell(segment.WindowTitle ?? ""), CsvCell(segment.Category), CsvCell("active"),
+                            ((int)Math.Round(segment.Seconds)).ToString(CultureInfo.InvariantCulture)));
                 }
             }
         });
@@ -2124,6 +2175,7 @@ public static class ApiHost
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(BrowserEventDto))]
 [JsonSerializable(typeof(BrowserInputDto))]
+[JsonSerializable(typeof(MediaStateDto))]
 [JsonSerializable(typeof(DashboardResponse))]
 [JsonSerializable(typeof(SummaryDto))]
 [JsonSerializable(typeof(TimelineBlockDto))]
@@ -2135,6 +2187,8 @@ public static class ApiHost
 [JsonSerializable(typeof(BrowserEntryDto))]
 [JsonSerializable(typeof(BrowserEntryDto[]))]
 [JsonSerializable(typeof(AudioSessionDto))]
+[JsonSerializable(typeof(AudioSessionDto[]))]
+[JsonSerializable(typeof(WebMediaSummaryDto))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(BlockEntry[]))]

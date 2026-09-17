@@ -5,10 +5,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$api = 'http://127.0.0.1:47821'
+$api = 'http://127.0.0.1:48721'
 $target = 'timelensblockprobe.exe'
 
-if ([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners().Port -contains 47821) {
+if ([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners().Port -contains 48721) {
     throw 'Close the running TimeLens instance before running the isolated block-mode test.'
 }
 
@@ -81,7 +81,7 @@ $webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $PSDefaultParameterValues['Invoke-RestMethod:WebSession'] = $webSession
 $PSDefaultParameterValues['Invoke-WebRequest:WebSession'] = $webSession
 try {
-    $timeLensProcess = Start-Process -FilePath $exe -ArgumentList ('--startup --smoke-test "{0}"' -f $dataDir) `
+    $timeLensProcess = Start-Process -FilePath $exe -ArgumentList ('--startup --smoke-test "{0}" --api-port 48721' -f $dataDir) `
         -WorkingDirectory "$env:WINDIR\System32" -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $testRoot 'stdout.log') `
         -RedirectStandardError (Join-Path $testRoot 'stderr.log')
@@ -91,7 +91,7 @@ try {
         Start-Sleep -Milliseconds 100
         $timeLensProcess.Refresh()
         if ($timeLensProcess.HasExited) { throw "Packaged app exited during startup (code $($timeLensProcess.ExitCode))." }
-        $timeLensWindow = [TimeLensBlockModeProbe]::FindWindowW('TimeLensHiddenWindow', 'TimeLens')
+        $timeLensWindow = [TimeLensBlockModeProbe]::FindWindowW('TimeLensHiddenWindow', 'TimeLens Smoke 48721')
         [uint32]$owner = 0
         if ($timeLensWindow -ne [IntPtr]::Zero) { [void][TimeLensBlockModeProbe]::GetWindowThreadProcessId($timeLensWindow, [ref]$owner) }
         if ($owner -eq $timeLensProcess.Id) {

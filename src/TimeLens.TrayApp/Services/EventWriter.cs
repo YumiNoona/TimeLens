@@ -85,7 +85,7 @@ public sealed class EventWriter : IDisposable
         _queue.ExecuteSync(conn =>
         {
             using var tx = conn.BeginTransaction();
-            foreach (var table in new[] { "browser_input_batches", "browser_events", "app_events", "session_events", "input_activity", "audio_activity", "block_log", "idle_spans" })
+            foreach (var table in new[] { "browser_input_batches", "browser_events", "web_media_events", "app_events", "session_events", "input_activity", "audio_activity", "block_log", "idle_spans" })
             {
                 using var delete = conn.CreateCommand();
                 delete.Transaction = tx;

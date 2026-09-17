@@ -11,6 +11,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   let focused = true;
   let tab = { id: 1, active: true, url: 'https://example.com/a', title: 'A', audible: false };
   let offline = false;
+  let unauthorized = false;
   let blockAction = 'none';
   const injections = [], redirects = [];
   const messageListeners = [];
@@ -20,7 +21,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
-    tabs: { query: async query => { assert.equal(query.windowId, 7); return [tab]; },
+    tabs: { query: async query => { if (query.audible) return tab.audible ? [tab] : []; assert.equal(query.windowId, 7); return [tab]; },
       onActivated: event(), onUpdated: event(), onRemoved: event(), executeScript: async (id, options) => { injections.push(options.code); }, update: async (id, options) => { redirects.push(options.url); } },
     storage: { local: {
       remove(key) { delete stored[key]; },
@@ -29,9 +30,10 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
     } }, scripting: { executeScript: async options => { injections.push(options.func.name); } },
     alarms: { create() {}, onAlarm: event() }
   };
-  const sandbox = { [family === 'firefox' ? 'browser' : 'chrome']: api, navigator: { userAgent: 'Chrome' }, URL, Date, AbortSignal,
+  const sandbox = { [family === 'firefox' ? 'browser' : 'chrome']: api, navigator: { userAgent: 'Chrome' }, URL, Date, AbortSignal, crypto: globalThis.crypto,
     setInterval() {}, clearInterval() {}, fetch: async (url, options) => {
       if (offline) throw new Error('offline');
+      if (unauthorized) return { ok: false, status: 401, json: async () => ({}) };
       calls.push({ url, body: options?.body ? JSON.parse(options.body) : null, headers: options?.headers || {} });
       return { ok: true, json: async () => url.endsWith('/api/extension/settings')
         ? { trackBrowser: true, trackInput: true, focusMode: true }
@@ -60,6 +62,23 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   api.alarms.onAlarm.listener({ name: 'timelens-heartbeat' }); await settle();
   assert.equal(observations().at(-1).body.url, tab.url);
   assert.equal(observations().length, count + 1);
+  const mediaResponse = await new Promise(resolve => {
+    for (const listener of messageListeners) {
+      const handled = listener({ type: 'timelens-media-state', state: { mediaId: 'video-1', kind: 'video',
+        playing: true, audible: true, muted: false, pictureInPicture: true, visibility: 'pip', confidence: 'media-element' } },
+        { tab, frameId: 0 }, resolve);
+      if (handled) break;
+    }
+  });
+  assert.ok(mediaResponse);
+  const mediaCall = calls.findLast(x => x.url.endsWith('/api/media-state'));
+  assert.equal(mediaCall.body.url, tab.url);
+  assert.equal(mediaCall.body.pictureInPicture, true);
+  assert.ok(mediaCall.body.observedAt);
+  unauthorized = true;
+  await assert.rejects(sandbox.checkedFetch('http://127.0.0.1:47821/api/extension/settings'), /HTTP 401/);
+  assert.equal(stored.timelens_pair_token, 'test-token', 'Transient 401 must not erase pairing');
+  unauthorized = false;
   blockAction = 'notify'; api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.ok(injections.some(text => text.includes('mountNotifyToast')), 'Notify must inject a reminder');
   blockAction = 'strict'; api.tabs.onActivated.listener({ tabId: 2 }); await settle();
@@ -126,4 +145,33 @@ test('content input counts trusted focused events only and retries stable batche
   listeners.keydown(real); await timer(); await new Promise(setImmediate);
   assert.equal(sent.at(-1).batch.url, sandbox.location.href);
   assert.notEqual(sent.at(-1).batch.batchId, nonzero[0].batch.batchId);
+});
+
+test('content media collector reports background, PiP, checkpoints and stop without polling frames', async () => {
+  const handlers = new Map(), sent = [], timers = [];
+  const on = (name, fn) => handlers.set(name, [...(handlers.get(name) || []), fn]);
+  const media = { tagName: 'VIDEO', paused: false, ended: false, readyState: 4, muted: false,
+    volume: 1, isConnected: true, querySelectorAll: () => [] };
+  const document = { visibilityState: 'hidden', title: 'Tutorial', pictureInPictureElement: null,
+    documentElement: {}, hasFocus: () => false, querySelectorAll: () => [media], addEventListener: on };
+  const window = { addEventListener: on, setTimeout(fn, delay) { timers.push({ fn, delay }); return timers.length; }, clearTimeout() {} };
+  window.top = window;
+  class MutationObserver { observe() {} }
+  const content = readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8');
+  vm.runInNewContext(content, { chrome: { runtime: { sendMessage: async msg => { sent.push(structuredClone(msg)); return { accepted: true }; } } },
+    document, window, location: { href: 'https://youtube.com/watch?v=tutorial' }, Date, crypto: globalThis.crypto,
+    MutationObserver, setTimeout: window.setTimeout });
+  await new Promise(setImmediate);
+  const first = sent.find(x => x.type === 'timelens-media-state');
+  assert.equal(first.state.visibility, 'background');
+  assert.equal(first.state.playing, true);
+  document.pictureInPictureElement = media;
+  for (const fn of handlers.get('enterpictureinpicture') || []) fn({ target: media });
+  await new Promise(setImmediate);
+  assert.equal(sent.at(-1).state.visibility, 'pip');
+  assert.equal(timers.some(x => x.delay === 15000), true, 'Playback uses a low-frequency lease checkpoint');
+  media.paused = true;
+  for (const fn of handlers.get('pause') || []) fn({ target: media });
+  await new Promise(setImmediate);
+  assert.equal(sent.at(-1).state.playing, false);
 });

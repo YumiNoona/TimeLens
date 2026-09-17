@@ -29,6 +29,10 @@ public static class DataRetentionService
               WHERE julianday(start_time) < julianday($cutoff)
                 AND julianday(COALESCE(end_time, start_time)) > julianday($cutoff);
 
+            DELETE FROM web_media_events WHERE julianday(end_time) <= julianday($cutoff);
+            UPDATE web_media_events SET start_time=$cutoff, local_date=$localDate
+              WHERE julianday(start_time) < julianday($cutoff) AND julianday(end_time) > julianday($cutoff);
+
             DELETE FROM idle_spans
               WHERE julianday(COALESCE(end_time, start_time)) <= julianday($cutoff);
             UPDATE idle_spans SET start_time=$cutoff

@@ -16,13 +16,16 @@ const BLOCKED_PAGE = api.runtime.getURL('blocked.html');
 const EXTENSION_VERSION = api.runtime.getManifest().version;
 const INPUT_QUEUE_KEY = 'timelens_pending_input_v1';
 const MAX_INPUT_QUEUE_LENGTH = 5000;
+const MEDIA_API = ROOT + '/api/media-state';
 
 let trackingEnabled = true;
 let inputTrackingEnabled = true;
+let audioTrackingEnabled = true;
 let blockingEnabled = false;
 let browserUrlMode = 'domain';
 let browserStoreTitles = false;
 let pairToken = '';
+let profileId = '';
 let imageDataCache = { url: '', data: '' };
 const notifiedTabs = new Set();
 let inputQueue = [];
@@ -98,10 +101,8 @@ function checkedFetch(url, options) {
   const headers = Object.assign({}, request.headers || {});
   if (pairToken) headers['X-TimeLens-Extension'] = pairToken;
   return fetch(url, { ...request, headers: headers, redirect: 'error', signal: AbortSignal.timeout(3000) }).then(function(response) {
-    if (response.status === 401) {
-      pairToken = '';
-      api.storage.local.remove('timelens_pair_token');
-    }
+    // A desktop restart or isolated test instance can temporarily reject an otherwise
+    // valid token. Preserve it until the user explicitly disconnects or replaces it.
     if (!response.ok) throw new Error('HTTP ' + response.status);
     return response;
   });
@@ -146,6 +147,7 @@ function fetchSettings() {
   return checkedFetch(SETTINGS_API).then(function(response) { return response.json(); }).then(function(settings) {
     trackingEnabled = settings.trackBrowser !== false;
     inputTrackingEnabled = settings.trackInput !== false;
+    audioTrackingEnabled = settings.trackAudio !== false;
     blockingEnabled = settings.focusMode === true;
     browserUrlMode = settings.browserUrlMode === 'full' || settings.browserUrlMode === 'path' ? settings.browserUrlMode : 'domain';
     browserStoreTitles = settings.browserStoreTitles === true;
@@ -357,6 +359,67 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   return true;
 });
 
+const recentMediaTabs = new Map();
+const fallbackMediaTabs = new Map();
+
+function postMediaState(state) {
+  return checkedFetch(MEDIA_API, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state)
+  }).then(function(response) { return response.json(); });
+}
+
+api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || message.type !== 'timelens-media-state') return false;
+  const tab = sender.tab;
+  if (!tab || tab.incognito || !trackingEnabled || !audioTrackingEnabled) {
+    sendResponse({ accepted: false }); return false;
+  }
+  try {
+    const top = new URL(tab.url);
+    if (!/^https?:$/.test(top.protocol)) throw new Error('Unsupported media page');
+    recentMediaTabs.set(tab.id, Date.now());
+    const fallback = fallbackMediaTabs.get(tab.id);
+    if (fallback) {
+      fallbackMediaTabs.delete(tab.id);
+      void postMediaState({ ...fallback, playing: false, audible: false,
+        observedAt: new Date().toISOString() }).catch(function() {});
+    }
+    const state = { ...message.state, mediaId: `${profileId}:${sender.frameId || 0}:${message.state.mediaId}`,
+      url: top.href, title: tab.title || message.state.title || '', browser: BROWSER, tabId: tab.id,
+      observedAt: new Date().toISOString() };
+    postMediaState(state).then(sendResponse).catch(function() { sendResponse({ retry: true }); });
+  } catch (_) { sendResponse({ accepted: false }); }
+  return true;
+});
+
+async function sampleAudibleTabs() {
+  if (!pairToken || !profileId || !trackingEnabled || !audioTrackingEnabled || !api.tabs) return;
+  try {
+    const tabs = await api.tabs.query({ audible: true });
+    const now = Date.now();
+    const current = new Set();
+    for (const tab of tabs || []) {
+      if (!tab || !tab.id || tab.incognito || !tab.audible || !/^https?:\/\//.test(tab.url || '')) continue;
+      if (now - (recentMediaTabs.get(tab.id) || 0) < 35000) continue;
+      current.add(tab.id);
+      const state = { mediaId: profileId + ':audible-fallback', url: tab.url, title: tab.title || '', browser: BROWSER,
+        tabId: tab.id, kind: 'unknown', playing: true, audible: true, muted: false,
+        pictureInPicture: false, visibility: 'background', confidence: 'audible-fallback',
+        observedAt: new Date().toISOString() };
+      fallbackMediaTabs.set(tab.id, state);
+      void postMediaState(state).catch(function() {});
+    }
+    for (const [tabId, previous] of [...fallbackMediaTabs]) {
+      if (current.has(tabId) || now - (recentMediaTabs.get(tabId) || 0) < 35000) continue;
+      fallbackMediaTabs.delete(tabId);
+      void postMediaState({ ...previous, playing: false, audible: false,
+        observedAt: new Date().toISOString() }).catch(function() {});
+    }
+    for (const [tabId, timestamp] of [...recentMediaTabs])
+      if (now - timestamp > 120000) recentMediaTabs.delete(tabId);
+  } catch (_) {}
+}
+
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-pair') return false;
   fetch(ROOT + '/api/pair/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -444,13 +507,16 @@ api.tabs.onActivated.addListener(sampleFocusedTab);
 api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
   if (tab.active && (changeInfo.url || changeInfo.title || changeInfo.status === 'complete' || changeInfo.audible !== undefined))
     sampleFocusedTab();
+  if (changeInfo.audible !== undefined) void sampleAudibleTabs();
 });
 api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
 function initialize() {
-  return Promise.all([api.storage.local.get('timelens_pair_token'), loadInputQueue()]).then(function(results) {
+  return Promise.all([api.storage.local.get(['timelens_pair_token', 'timelens_profile_id']), loadInputQueue()]).then(function(results) {
     const saved = results[0];
     pairToken = saved && saved.timelens_pair_token || '';
+    profileId = saved && saved.timelens_profile_id || crypto.randomUUID();
+    if (!saved || !saved.timelens_profile_id) void api.storage.local.set({ timelens_profile_id: profileId });
     if (!pairToken) return null;
     sendHeartbeat();
     return fetchSettings().then(function() { void drainInputQueue(); return sampleFocusedTab(); });
@@ -463,13 +529,14 @@ initialize();
 // Best-effort five-second samples while the worker lives; alarms recover after
 // suspension/restart. Chrome 120+ supports a 30-second minimum alarm period.
 setInterval(sampleFocusedTab, 5000);
+setInterval(sampleAudibleTabs, 15000);
 if (api.alarms) {
   api.alarms.create('timelens-heartbeat', { periodInMinutes: 0.5 });
   api.alarms.onAlarm.addListener(function(alarm) {
     if (alarm.name === 'timelens-heartbeat') {
       if (!pairToken) return;
       sendHeartbeat();
-      fetchSettings().then(function() { void drainInputQueue(); return sampleFocusedTab(); });
+      fetchSettings().then(function() { void drainInputQueue(); void sampleAudibleTabs(); return sampleFocusedTab(); });
     }
   });
 }

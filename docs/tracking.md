@@ -4,6 +4,19 @@ TimeLens counts observed foreground app use. The active total includes browsers;
 website breakdowns describe that browser time and are not added a second time.
 Apps merely left running in the background are not counted as active work.
 
+Foreground accounting is exclusive: a later window observation supersedes an
+older open row, idle/away spans supersede all apps, and every dashboard/export
+aggregate is built from that same normalized ledger. Consequently app and
+category totals cannot multiply elapsed wall-clock time even if legacy rows overlap.
+
+Media playback is a separate concurrent overlay. Spotify or another native audio
+app can keep playing while an editor is foreground; both facts are retained, but
+playback is never added to active-work time. The browser extension reports HTML
+audio/video play, pause, visibility and Picture-in-Picture transitions, plus a
+15-second lease checkpoint while playback continues. The browser audible flag is
+used only as a lower-confidence fallback for players that hide their media element.
+No frames, audio samples, captions or page text are captured.
+
 ## Reliability
 
 - Foreground hooks provide immediate updates, with a one-second poll as a fallback.
@@ -71,7 +84,7 @@ startup version/path, shutdown requests, callback errors and unhandled failures.
 The log rotates at 1 MiB. Forced process termination and power loss may not leave
 an exit record; durable activity checkpoints remain the recovery boundary.
 
-## Browser intervals in 7.0
+## Browser intervals
 
 A single visible browser tab is checkpointed alongside desktop foreground state. Switching
 away or entering idle ends that interval. Five-second extension samples are backed
@@ -87,6 +100,13 @@ The selected tab must be a normal HTTP(S) page in a focused, non-private window.
 Undated legacy orphan browser rows have no reliable last observation and close at
 their start rather than being extended through downtime. Historical missing data
 cannot be reconstructed. Existing overlapping legacy website rows are not rewritten.
+
+Only the selected tab contributes foreground website time. Other tabs may still
+contribute concurrent media playback while audible, including PiP and background
+playback. The Browser page displays extension connectivity, minimum compatible
+version and foreground-attribution coverage so missing pairing is visible rather
+than silently presented as a complete day. Pair tokens survive transient desktop
+restarts and isolated release tests; only explicit revocation removes them.
 
 The default three-minute idle grace is retained as active time, without retroactively
 removing reading time. This differs from ActivityWatch's retrospective AFK boundary.

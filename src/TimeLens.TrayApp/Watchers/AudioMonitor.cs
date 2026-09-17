@@ -24,6 +24,9 @@ public sealed class AudioMonitor : IDisposable
 
     public bool AnyAudioPlaying => !_activeSessions.IsEmpty;
     public bool IsPlayingFor(string exe) => _activeSessions.Values.Any(session => string.Equals(session.exe, exe, StringComparison.OrdinalIgnoreCase));
+    public (int Pid, string Exe)[] ActiveSessions => _activeSessions.Values
+        .DistinctBy(session => (session.pid, session.exe), new AudioProcessComparer())
+        .Select(session => (session.pid, session.exe)).ToArray();
     public event Action<int, string, bool>? SessionAudioChanged;
 
     public void Start()
@@ -65,8 +68,9 @@ public sealed class AudioMonitor : IDisposable
             }
             ConnectDefaultEndpoint();
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeDiagnostics.Write($"Audio monitor startup: {ex.GetType().Name}: {ex.Message}");
             Stop(); // Core Audio is optional; release any partially-created COM state.
         }
     }
@@ -90,7 +94,11 @@ public sealed class AudioMonitor : IDisposable
             if (!_enabled) return;
             ReleaseEndpointResources();
             try { ConnectDefaultEndpoint(); }
-            catch { Stop(); }
+            catch (Exception ex)
+            {
+                RuntimeDiagnostics.Write($"Audio endpoint reconnect: {ex.GetType().Name}: {ex.Message}");
+                Stop();
+            }
         }
 
         try

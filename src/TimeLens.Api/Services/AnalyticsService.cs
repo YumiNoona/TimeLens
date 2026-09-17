@@ -76,9 +76,11 @@ public sealed class AnalyticsService
             );
 
             var browserSites = await BrowserAnalyticsService.ReadAsync(conn, today, rangeEnd);
-            var audioSessions = await GetAudioSummaryAsync(conn, today, tomorrow);
+            var audioSessions = await MediaAnalyticsService.ReadNativeAsync(conn, today, tomorrow, DateTime.UtcNow);
+            var webMedia = await MediaAnalyticsService.ReadWebAsync(conn, today, rangeEnd);
 
-            var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories, live, browserSites, audioSessions);
+            var result = new DashboardResponse(summary, timeline, topApps, heatmap, categories,
+                live, browserSites, audioSessions, webMedia);
 
             if (isToday || isYesterday)
             {
@@ -112,105 +114,32 @@ public sealed class AnalyticsService
         DateTime tomorrow,
         DateTime rangeEnd)
     {
+        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
+        var previousStart = today.ToLocalTime().Date.AddDays(-1).ToUniversalTime();
+        var previousSegments = await ActivityIntervalService.ReadExclusiveAsync(conn, previousStart, today);
+        var activeSecs = (int)Math.Round(segments.Sum(x => x.Seconds));
+        var idleSecs = (int)Math.Round(await ActivityIntervalService.ReadIdleUnionSecondsAsync(conn, today, rangeEnd));
+        var productiveSecs = (int)Math.Round(segments
+            .Where(x => x.Category is "development" or "work" or "documents" or "communication" or "design")
+            .Sum(x => x.Seconds));
+        var otherSecs = (int)Math.Round(segments.Where(x => x.Category == "other").Sum(x => x.Seconds));
+        var yesterdaySecs = previousSegments.Length > 0
+            ? (int)Math.Round(previousSegments.Sum(x => x.Seconds))
+            : -1;
+        var topCategory = segments.GroupBy(x => x.Category)
+            .Select(x => new { Name = x.Key, Seconds = x.Sum(y => y.Seconds) })
+            .OrderByDescending(x => x.Seconds).FirstOrDefault();
+        var topCat = topCategory?.Name ?? "—";
+        var topCatSecs = (int)Math.Round(topCategory?.Seconds ?? 0);
+
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT
-                COALESCE(SUM(CASE WHEN session_state = 'active' THEN
-                    MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
-                ELSE 0 END), 0) AS active_secs,
-                0 AS idle_secs
-            FROM app_events
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today)
-            """;
+        cmd.CommandText = "SELECT 1";
         cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$rangeEnd", rangeEnd.ToString("o"));
         cmd.Parameters.AddWithValue("$previousEnd", today.ToString("o"));
         cmd.Parameters.AddWithValue("$previousStart", today.ToLocalTime().Date.AddDays(-1).ToUniversalTime().ToString("o"));
         cmd.Parameters.AddWithValue("$today", today.ToString("o"));
         cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
-
-        int activeSecs = 0, idleSecs = 0;
-        using (var r = await cmd.ExecuteReaderAsync())
-        {
-            if (await r.ReadAsync())
-            {
-                activeSecs = Convert.ToInt32(r["active_secs"]);
-                idleSecs = Convert.ToInt32(r["idle_secs"]);
-            }
-        }
-
-        // Idle belongs to the machine, not to whichever window was foreground when
-        // input stopped. Use dedicated spans so Explorer/Figma/browser rows cannot
-        // inflate both their own time and the idle total.
-        cmd.CommandText = """
-            SELECT COALESCE(SUM(MAX(0,
-                (MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) -
-                 MAX(julianday(start_time), julianday($today))) * 86400
-            )), 0)
-            FROM idle_spans
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today)
-            """;
-        idleSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-
-        // Sum active time in productive categories for focus score
-        cmd.CommandText = """
-            SELECT COALESCE(SUM(
-                MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
-            ), 0) FROM app_events
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today)
-              AND session_state = 'active'
-              AND category IN ('development', 'work', 'documents', 'communication', 'design')
-            """;
-        var productiveSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-
-        // Sum "other" time — unclassified, treated as neutral in focus score
-        cmd.CommandText = """
-            SELECT COALESCE(SUM(
-                MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
-            ), 0) FROM app_events
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today)
-              AND session_state = 'active'
-              AND (category = 'other' OR category IS NULL)
-            """;
-        var otherSecs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-
-        cmd.CommandText = """
-            SELECT COUNT(*) FROM app_events
-            WHERE julianday(start_time) < julianday($previousEnd) AND julianday(COALESCE(end_time, $previousEnd)) > julianday($previousStart) AND session_state = 'active'
-
-            """;
-        cmd.Parameters.AddWithValue("$yday", yesterdayDate);
-        var hadYesterdayData = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
-
-        if (hadYesterdayData)
-        {
-            cmd.CommandText = """
-                SELECT COALESCE(SUM(
-                    MAX(0, MIN(julianday(COALESCE(end_time, $previousEnd)), julianday($previousEnd)) - MAX(julianday(start_time), julianday($previousStart))) * 86400
-                ), 0) FROM app_events
-                WHERE julianday(start_time) < julianday($previousEnd) AND julianday(COALESCE(end_time, $previousEnd)) > julianday($previousStart) AND session_state = 'active'
-
-                """;
-        }
-        var yesterdaySecs = hadYesterdayData ? Convert.ToInt32(await cmd.ExecuteScalarAsync()) : -1;
-
-        cmd.CommandText = """
-            SELECT category, COALESCE(SUM(
-                MAX(0, MIN(julianday(COALESCE(end_time, $rangeEnd)), julianday($rangeEnd)) - MAX(julianday(start_time), julianday($today))) * 86400
-            ), 0) AS secs FROM app_events
-            WHERE julianday(start_time) < julianday($rangeEnd) AND julianday(COALESCE(end_time, $rangeEnd)) > julianday($today) AND session_state = 'active'
-            GROUP BY category ORDER BY secs DESC LIMIT 1
-            """;
-        string topCat = "—";
-        int topCatSecs = 0;
-        using (var r = await cmd.ExecuteReaderAsync())
-        {
-            if (await r.ReadAsync())
-            {
-                topCat = r.IsDBNull(0) ? "other" : r.GetString(0);
-                topCatSecs = Convert.ToInt32(r["secs"]);
-            }
-        }
 
         // "other" is unclassified and treated as neutral — excluded from denominator
         // so it doesn't penalize the score. Edge: if everything is "other", score 50% (neutral).
@@ -273,57 +202,31 @@ public sealed class AnalyticsService
         SqliteConnection conn, string localDate, DateTime localEndOfDayUtc)
     {
         var localStartOfDayUtc = DateTime.SpecifyKind(DateTime.ParseExact(localDate, "yyyy-MM-dd", null), DateTimeKind.Local).ToUniversalTime();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT exe_name, window_title, category, start_time, end_time, was_idle, session_state, COALESCE(project,'')
-            FROM app_events
-            WHERE julianday(start_time) < julianday($end) AND julianday(COALESCE(end_time, $end)) > julianday($start)
-
-            ORDER BY start_time
-            """;
-        cmd.Parameters.AddWithValue("$start", localStartOfDayUtc.ToString("o"));
-        cmd.Parameters.AddWithValue("$end", localEndOfDayUtc.ToString("o"));
-
         var blocks = new List<TimelineBlockDto>();
-        using var r = await cmd.ExecuteReaderAsync();
-
-        while (await r.ReadAsync())
+        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, localStartOfDayUtc, localEndOfDayUtc);
+        foreach (var segment in segments)
         {
-            var exeName = r.IsDBNull(0) ? "" : r.GetString(0);
-            var windowTitle = r.IsDBNull(1) ? null : r.GetString(1);
-            var cat = r.IsDBNull(2) ? null : r.GetString(2);
-            var start = DateTime.Parse(r.GetString(3), null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-            if (start < localStartOfDayUtc) start = localStartOfDayUtc;
-            var endStr = r.IsDBNull(4) ? null : r.GetString(4);
-            var isOngoing = endStr is null;
-            var endRaw = isOngoing
-                ? DateTime.UtcNow
-                : DateTime.Parse(endStr!, null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-            var end = endRaw > localEndOfDayUtc ? localEndOfDayUtc : endRaw;
-            var sessionState = r.IsDBNull(6) ? (r.GetInt32(5) == 1 ? "idle" : "active") : r.GetString(6);
-            var project = r.IsDBNull(7) ? null : r.GetString(7);
-
-            var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, TimeZoneInfo.Local);
-            var localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, TimeZoneInfo.Local);
+            var localStart = TimeZoneInfo.ConvertTimeFromUtc(segment.StartUtc, TimeZoneInfo.Local);
+            var localEnd = TimeZoneInfo.ConvertTimeFromUtc(segment.EndUtc, TimeZoneInfo.Local);
 
             var startHour = localStart.TimeOfDay.TotalHours;
             var endHour = localEnd.Date > localStart.Date ? 24.0 : localEnd.TimeOfDay.TotalHours;
 
             if (endHour <= startHour) continue;
-            var durationSecs = (int)Math.Round((end - start).TotalSeconds);
+            var durationSecs = (int)Math.Round(segment.Seconds);
+            var type = segment.Category;
 
-            var type = sessionState == "active" ? (cat ?? "other") : sessionState;
-
-            if (!isOngoing && blocks.Count > 0 && blocks[^1].Type == type &&
-                string.Equals(blocks[^1].ExeName, exeName, StringComparison.OrdinalIgnoreCase) &&
-                blocks[^1].WindowTitle == windowTitle && blocks[^1].Project == project &&
+            if (blocks.Count > 0 && blocks[^1].Type == type &&
+                string.Equals(blocks[^1].ExeName, segment.ExeName, StringComparison.OrdinalIgnoreCase) &&
+                blocks[^1].WindowTitle == segment.WindowTitle && blocks[^1].Project == segment.Project &&
                 Math.Abs(blocks[^1].EndHour - startHour) < 0.001 / 3600.0)
             {
                 blocks[^1] = blocks[^1] with { EndHour = endHour, DurationSeconds = blocks[^1].DurationSeconds + durationSecs };
             }
             else
             {
-                blocks.Add(new TimelineBlockDto(startHour, endHour, type, exeName, windowTitle, durationSecs, project));
+                blocks.Add(new TimelineBlockDto(startHour, endHour, type, segment.ExeName,
+                    segment.WindowTitle, durationSecs, segment.Project));
             }
         }
 
@@ -368,65 +271,41 @@ public sealed class AnalyticsService
     private static async Task<TopAppDto[]> GetTopAppsAsync(
         SqliteConnection conn, string localDate, DateTime today, DateTime tomorrow, DateTime rangeEnd)
     {
+        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
+        var durations = segments.GroupBy(x => x.ExeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Sum(y => y.Seconds), StringComparer.OrdinalIgnoreCase);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT ae.exe_name, COALESCE(SUM(
-                MAX(0, MIN(julianday(COALESCE(ae.end_time, $now)), julianday($now)) - MAX(julianday(ae.start_time), julianday($t0))) * 86400
-            ), 0) AS secs,
-            COALESCE(ia.keys, 0) AS keys,
-            COALESCE(ia.clicks, 0) AS clicks
-            FROM app_events ae
-            LEFT JOIN (
-                SELECT exe_name,
-                       COALESCE(SUM(keystroke_count), 0) AS keys,
-                       COALESCE(SUM(click_count), 0) AS clicks
-                FROM input_activity
-                WHERE timestamp >= $t0 AND timestamp < $t1 AND exe_name IS NOT NULL
-                GROUP BY exe_name
-            ) ia ON ia.exe_name = ae.exe_name
-            WHERE julianday(ae.start_time) < julianday($now) AND julianday(COALESCE(ae.end_time, $now)) > julianday($t0)
-              AND ae.session_state = 'active'
-            GROUP BY ae.exe_name ORDER BY secs DESC
+            SELECT exe_name, COALESCE(SUM(keystroke_count),0), COALESCE(SUM(click_count),0)
+            FROM input_activity
+            WHERE timestamp >= $t0 AND timestamp < $t1 AND exe_name IS NOT NULL
+            GROUP BY exe_name
             """;
         cmd.Parameters.AddWithValue("$date", localDate);
         cmd.Parameters.AddWithValue("$now", rangeEnd.ToString("o"));
         cmd.Parameters.AddWithValue("$t0", today.ToString("o"));
         cmd.Parameters.AddWithValue("$t1", tomorrow.ToString("o"));
 
-        var apps = new List<TopAppDto>();
+        var inputs = new Dictionary<string, (int Keys, int Clicks)>(StringComparer.OrdinalIgnoreCase);
         using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
-        {
-            var secs = Convert.ToInt32(r["secs"]);
-            var keys = Convert.ToInt32(r["keys"]);
-            var clicks = Convert.ToInt32(r["clicks"]);
-            apps.Add(new TopAppDto(r.GetString(0), secs / 60.0, keys, clicks));
-        }
-        return apps.ToArray();
+            inputs[r.GetString(0)] = (r.GetInt32(1), r.GetInt32(2));
+        return durations.Select(x => new TopAppDto(x.Key, x.Value / 60.0,
+                inputs.GetValueOrDefault(x.Key).Keys, inputs.GetValueOrDefault(x.Key).Clicks))
+            .OrderByDescending(x => x.Minutes).ToArray();
     }
 
     private static async Task<HeatmapEntryDto[]> GetHeatmapAsync(
         SqliteConnection conn, DateTime localDate, DateTime rangeEnd)
     {
         var startDate = localDate.AddDays(-(HeatmapDays - 1));
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT start_time, COALESCE(end_time, $end) FROM app_events
-            WHERE session_state = 'active'
-              AND julianday(start_time) < julianday($end)
-              AND julianday(COALESCE(end_time, $end)) > julianday($start)
-            """;
         var rangeStart = startDate.ToUniversalTime();
-        cmd.Parameters.AddWithValue("$start", rangeStart.ToString("o"));
-        cmd.Parameters.AddWithValue("$end", rangeEnd.ToString("o"));
         var seconds = new Dictionary<string, double>();
-        using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
+        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, rangeStart, rangeEnd);
+        foreach (var segment in segments)
         {
-            var start = DateTime.Parse(r.GetString(0), null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-            var end = DateTime.Parse(r.GetString(1), null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-            if (start < rangeStart) start = rangeStart;
-            if (end > rangeEnd) end = rangeEnd;
+            var start = segment.StartUtc;
+            var end = segment.EndUtc;
             while (start < end)
             {
                 var day = start.ToLocalTime().Date;
@@ -451,28 +330,11 @@ public sealed class AnalyticsService
     private static async Task<CategoryEntryDto[]> GetCategoriesAsync(
         SqliteConnection conn, string localDate, DateTime today, DateTime rangeEnd)
     {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT COALESCE(category, 'other') AS cat, COALESCE(SUM(
-                MAX(0, MIN(julianday(COALESCE(end_time, $now)), julianday($now)) - MAX(julianday(start_time), julianday($today))) * 86400
-            ), 0) AS secs FROM app_events
-            WHERE julianday(start_time) < julianday($now) AND julianday(COALESCE(end_time, $now)) > julianday($today)
-              AND session_state = 'active'
-            GROUP BY cat ORDER BY secs DESC
-            """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$now", rangeEnd.ToString("o"));
-
-        var cats = new List<CategoryEntryDto>();
-        double totalSecs = 0;
-
-        using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-        {
-            var secs = Convert.ToInt32(r["secs"]);
-            cats.Add(new CategoryEntryDto(r.GetString(0), 0, secs / 60.0));
-            totalSecs += secs;
-        }
+        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
+        var cats = segments.GroupBy(x => x.Category)
+            .Select(x => new CategoryEntryDto(x.Key, 0, x.Sum(y => y.Seconds) / 60.0))
+            .OrderByDescending(x => x.Minutes).ToList();
+        var totalSecs = cats.Sum(x => x.Minutes * 60);
 
         for (int i = 0; i < cats.Count; i++)
         {
@@ -538,30 +400,7 @@ public sealed class AnalyticsService
 
     private static async Task<AudioSessionDto[]> GetAudioSummaryAsync(
         SqliteConnection conn, DateTime today, DateTime tomorrow)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT exe_name,
-                   COUNT(*) AS sessions,
-                   MIN(timestamp) AS first_seen
-            FROM audio_activity
-            WHERE is_playing = 1 AND timestamp >= $today AND timestamp < $tomorrow
-            GROUP BY exe_name ORDER BY sessions DESC
-            """;
-        cmd.Parameters.AddWithValue("$today", today.ToString("o"));
-        cmd.Parameters.AddWithValue("$tomorrow", tomorrow.ToString("o"));
-
-        var list = new List<AudioSessionDto>();
-        using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-        {
-            list.Add(new AudioSessionDto(
-                r.IsDBNull(0) ? "" : r.GetString(0),
-                Convert.ToInt32(r["sessions"]),
-                r.IsDBNull(2) ? "" : r.GetString(2)));
-        }
-        return list.ToArray();
-    }
+        => await MediaAnalyticsService.ReadNativeAsync(conn, today, tomorrow, DateTime.UtcNow);
 
     private static string FormatDuration(int totalSecs)
     {

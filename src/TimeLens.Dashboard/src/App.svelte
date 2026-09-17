@@ -6,6 +6,7 @@
   import { fmtPrecise } from './lib/utils';
   import TopApps from './lib/components/TopApps.svelte';
   import CalendarHeatmap from './lib/components/CalendarHeatmap.svelte';
+  import FocusBreakdown from './lib/components/FocusBreakdown.svelte';
   import CategoryBreakdown from './lib/components/CategoryBreakdown.svelte';
 
   import AppsView from './lib/components/AppsView.svelte';
@@ -288,7 +289,10 @@
             />
           </section>
 
-          <CalendarHeatmap entries={$data.heatmap} onselect={(date) => { historyDate = date; goTo('history'); }} />
+          <div class="today-overview">
+            <FocusBreakdown categories={$data.categories} score={$data.summary.focusScore} activeSeconds={$data.summary.activeSeconds} />
+            <CalendarHeatmap entries={$data.heatmap} onselect={(date) => { historyDate = date; goTo('history'); }} />
+          </div>
           <div class="today-grid" use:reorderable={{ key: 'today:insights' }}>
             <TopApps apps={$data.topApps} />
             <CategoryBreakdown categories={$data.categories} />
@@ -511,6 +515,14 @@
     gap: var(--space-4);
   }
 
+  .today-overview {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.52fr) minmax(620px, 1.48fr);
+    align-items: stretch;
+    gap: var(--space-4);
+  }
+  .today-overview :global(.heatmap-card) { max-width: 960px; margin-left: auto; margin-right: 0; }
+
   /* ── Today teaser cards ── */
   .view-all-link {
     font-size: var(--text-xs);
@@ -646,6 +658,8 @@
 
   @media (max-width: 1050px) {
     .today-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .today-overview { grid-template-columns: 1fr; }
+    .today-overview :global(.heatmap-card) { max-width: none; margin-inline: 0; }
   }
 
   @media (max-width: 760px) {

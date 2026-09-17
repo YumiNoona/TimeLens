@@ -71,6 +71,7 @@
   );
 
   const formatAppTime = (minutes: number) => fmtPrecise(minutes * 60, $showSeconds);
+  const appShare = (minutes: number) => data.summary.activeSeconds ? Math.min(100, Math.max(0, minutes * 6000 / data.summary.activeSeconds)) : 0;
 
 </script>
 
@@ -106,8 +107,9 @@
           {/if}
           {app.name}
         </span>
-        <span class="td-time" role="cell">
-          {formatAppTime(app.minutes)}<small class="app-share">{data.summary.activeSeconds ? Math.round(app.minutes * 6000 / data.summary.activeSeconds) : 0}% of active time</small>
+        <span class="app-usage" role="cell" style={`--app-tone:${i % 3 === 0 ? 'var(--md-primary)' : i % 3 === 1 ? 'var(--md-secondary)' : 'var(--md-tertiary)'}`}>
+          <span class="usage-copy"><strong>{formatAppTime(app.minutes)}</strong><small>{Math.round(appShare(app.minutes))}%</small></span>
+          <span class="app-share-track" aria-label={`${Math.round(appShare(app.minutes))}% of active time`}><i style={`width:${appShare(app.minutes)}%`}></i></span>
         </span>
       </div>
     {:else}<p class="empty">No applications match your search.</p>{/each}
@@ -181,7 +183,6 @@
 </div>
 
 <style>
-  .app-share { display:block; font-size:9px; color:var(--clr-text-ter); margin-top:4px; }
   .empty { padding:16px; color:var(--clr-text-sec); }
   .apps { display: flex; flex-direction: column; gap: var(--sp-4); }
   .app-toolbar {
@@ -209,18 +210,18 @@
   }
   .sort-btn i { font-size: 14px; }
   .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
-  .table { display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--clr-bg-sec); border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
+  .table { display: flex; flex-direction: column; gap: 3px; padding: 5px; background:linear-gradient(180deg,color-mix(in srgb,var(--md-primary) 3%,var(--clr-bg-sec)),var(--clr-bg-sec) 120px); border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
   .th {
-    display: grid; grid-template-columns: minmax(0, 1fr) 110px; padding: var(--sp-2) var(--sp-3);
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 28%); padding: var(--sp-2) var(--sp-3);
     background: transparent;
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--clr-text-sec);
   }
   .th.input-th { grid-template-columns: 2fr 1fr 1fr; }
   .tr {
-    display: grid; grid-template-columns: minmax(0, 1fr) 110px;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 28%);
     align-items: center;
-    min-height: 38px;
+    min-height: 48px;
     padding: 8px 12px;
     font-size: 13px;
     color: var(--clr-text-pri);
@@ -228,8 +229,8 @@
     border-radius: 7px;
   }
   .tr.input-tr { grid-template-columns: 2fr 1fr 1fr; }
-  .tr.alt { background: transparent; }
-  .tr:hover { background: var(--clr-bg-ter); }
+  .tr.alt { background: color-mix(in srgb,var(--md-primary) 2.5%,transparent); }
+  .tr:hover { background: color-mix(in srgb,var(--md-primary) 7%,var(--clr-bg-ter)); }
   .td-name { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .app-icon-tabler { font-size: 18px; color: var(--md-on-surf-var); flex-shrink: 0; width: 20px; }
@@ -241,7 +242,7 @@
 		flex-shrink: 0;
 	}
 	.app-letter.hidden { display: none; }
-	.td-time { font-family: var(--font-mono); text-align: right; color: var(--clr-text-pri); font-size: 12px; font-weight: 500; }
+	.app-usage{min-width:0;display:grid;gap:6px}.usage-copy{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:var(--font-mono)}.usage-copy strong{color:var(--clr-text-pri);font-size:11px;font-weight:600}.usage-copy small{color:var(--clr-text-sec);font-size:9px}.app-share-track{height:6px;overflow:hidden;border:1px solid color-mix(in srgb,var(--app-tone) 15%,var(--clr-border));border-radius:99px;background:color-mix(in srgb,var(--clr-bg-ter) 82%,var(--clr-bg-sec))}.app-share-track i{display:block;height:100%;min-width:2px;border-radius:inherit;background:var(--app-tone);box-shadow:0 0 10px color-mix(in srgb,var(--app-tone) 24%,transparent);transition:width var(--duration-base) var(--ease-out)}
   .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
   .section { margin-top: var(--sp-4); }
@@ -267,6 +268,7 @@
   .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; margin-left: var(--sp-3); }
   .input-row>.td-num{width:auto;min-width:0;margin-left:0;overflow:hidden;text-overflow:ellipsis}
   @media(max-width:700px){.input-summary{grid-template-columns:1fr}.input-labels{display:none}.input-row{grid-template-columns:minmax(150px,1fr) 70px 70px}.input-bars{display:none}.td-num{width:auto;margin:0}.input-header{align-items:flex-start}}
+  @media(max-width:560px){.th,.tr{grid-template-columns:minmax(0,1fr) 112px}.usage-copy small{display:none}}
 
   .section-hint { font-size: 11px; color: var(--clr-text-ter); font-weight: 400; margin-left: var(--sp-2); }
   .uncat-list { display: flex; flex-direction: column; gap: 8px; margin-top: 0; }

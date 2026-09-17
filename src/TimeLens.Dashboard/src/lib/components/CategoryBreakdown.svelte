@@ -119,8 +119,8 @@
   .tracked-pill i { color: var(--md-primary); }
   .category-layout { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(280px, 1.2fr); gap: 24px; padding: 14px 20px 20px; align-items: center; }
   .donut-panel { min-height: 222px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: visible; }
-  .donut-halo { position: absolute; width: 168px; height: 168px; top: 24px; border-radius: 50%; background: color-mix(in srgb, var(--md-primary) 5%, transparent); filter: blur(18px); }
-  .cat-donut { position: relative; width: 182px; height: 182px; z-index: 1; }
+  .donut-halo { position: absolute; width: 196px; height: 196px; top: 11px; border-radius: 50%; background: color-mix(in srgb, var(--md-primary) 7%, transparent); filter: blur(20px); }
+  .cat-donut { position: relative; width: 214px; height: 214px; z-index: 1; }
   .cat-donut svg { width: 100%; height: 100%; overflow: visible; }
   .cat-donut circle { transition: opacity 180ms var(--ease-out), filter 180ms var(--ease-out), stroke-width 180ms var(--ease-out); }
   .cat-donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
@@ -138,7 +138,7 @@
   .category-name-line { display:flex; align-items:center; gap:7px; min-width:0; }
   .category-name-line strong { min-width:0; overflow:hidden; color:var(--clr-text-pri); font-size:11px; font-weight:600; text-overflow:ellipsis; text-transform:capitalize; white-space:nowrap; }
   .category-name-line small { color:var(--clr-text-ter); font:9px var(--font-mono); }
-  .mini-track { height: 4px; overflow: hidden; border-radius: 99px; background: var(--clr-bg-sec); }
+  .mini-track { height: 5px; overflow: hidden; border:1px solid color-mix(in srgb,var(--clr-border) 70%,transparent); border-radius: 99px; background: color-mix(in srgb,var(--clr-bg-ter) 86%,var(--clr-bg-sec)); }
   .mini-track span { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 300ms var(--ease-out); }
   .category-metric { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
   .category-metric strong { min-width: 42px; padding: 3px 6px; border-radius: 7px; color: var(--clr-text-pri); background: transparent; text-align: center; font: 600 11px var(--font-mono); }

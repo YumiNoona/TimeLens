@@ -62,9 +62,9 @@
         {#if notes.length}
           {#each notes as note}<li>{note}</li>{/each}
         {:else}
-          <li>Clear browser connection states that remain accurate after restarts.</li>
-          <li>A cleaner GitHub-style activity contribution calendar.</li>
-          <li>More reliable update completion and first-install guidance.</li>
+          <li>Browser pairing states verified by both the extension and desktop.</li>
+          <li>A scrollbar-free GitHub-style activity contribution calendar.</li>
+          <li>Faster connection confirmation and clearer reconnect guidance.</li>
         {/if}
       </ul>
     </div>

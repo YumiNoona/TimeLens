@@ -548,9 +548,9 @@ try
 
         var settingsService = new SettingsService(browserPath);
         settingsService.Save("release_notice_pending", "true");
-        settingsService.Save("release_notice_version", "7.6.0");
+        settingsService.Save("release_notice_version", "7.7.0");
         using (var notice = System.Text.Json.JsonDocument.Parse(await dashboard.GetStringAsync("/api/release-notice")))
-            Check(notice.RootElement.GetProperty("pending").GetBoolean() && notice.RootElement.GetProperty("version").GetString() == "7.6.0",
+            Check(notice.RootElement.GetProperty("pending").GetBoolean() && notice.RootElement.GetProperty("version").GetString() == "7.7.0",
                 "Release notice must survive dashboard sessions until acknowledged");
         (await dashboard.PostAsync("/api/release-notice/dismiss", null)).EnsureSuccessStatusCode();
         Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='release_notice_pending' AND value='false'") == 1,

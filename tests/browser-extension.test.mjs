@@ -17,7 +17,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.6.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '7.7.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -78,7 +78,16 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   unauthorized = true;
   await assert.rejects(sandbox.checkedFetch('http://127.0.0.1:47821/api/extension/settings'), /HTTP 401/);
   assert.equal(stored.timelens_pair_token, 'test-token', 'Transient 401 must not erase pairing');
+  const rejectedStatus = await new Promise(resolve => {
+    for (const listener of messageListeners) if (listener({ type: 'timelens-status' }, {}, resolve)) break;
+  });
+  assert.equal(rejectedStatus.needsPair, true, 'A server-rejected token must ask the user to pair again');
+  assert.equal(rejectedStatus.connected, false, 'A stored but rejected token must never be shown as connected');
   unauthorized = false;
+  const recoveredStatus = await new Promise(resolve => {
+    for (const listener of messageListeners) if (listener({ type: 'timelens-status' }, {}, resolve)) break;
+  });
+  assert.equal(recoveredStatus.connected, true, 'A valid saved token must reconnect without another pairing step');
   blockAction = 'notify'; api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.ok(injections.some(text => text.includes('mountNotifyToast')), 'Notify must inject a reminder');
   blockAction = 'strict'; api.tabs.onActivated.listener({ tabId: 2 }); await settle();
@@ -103,7 +112,7 @@ test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.6.0');
+    assert.equal(manifest.version, '7.7.0');
     if (family === 'firefox') {
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
       assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');

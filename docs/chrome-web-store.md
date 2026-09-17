@@ -1,8 +1,8 @@
-# Chrome Web Store submission - TimeLens 7.6.0
+# Chrome Web Store submission - TimeLens 7.7.0
 
 Upload `TimeLens-Chrome-Extension.zip` from the repository root. The manifest is
 at the ZIP root. For local testing extract it, open chrome://extensions, enable
-Developer mode and choose Load unpacked. Run TimeLens 7.6.0 on the same PC.
+Developer mode and choose Load unpacked. Run TimeLens 7.7.0 on the same PC.
 
 Suggested listing:
 - Name: TimeLens Tracker
@@ -30,7 +30,7 @@ verification. Google review and account submission remain separate steps.
 
 Submit `TimeLens-Firefox-Extension.zip` as a new version of the existing TimeLens
 Tracker add-on in the Mozilla developer hub, preserving that listing's assigned
-add-on identity. Both manifests declare 7.6.0. The Firefox package includes the same
+add-on identity. Both manifests declare 7.7.0. The Firefox package includes the same
 Notify/Strict controls, input collector and connection popup. Apply the same privacy
 disclosures and reviewer instructions. The GitHub ZIP is unsigned; release Firefox
 requires Mozilla signing. For temporary testing use about:debugging > This Firefox >
@@ -41,4 +41,4 @@ and website activity sent to the companion desktop app. The manifest declares
 `browsingActivity` and `websiteActivity`; local-only transmission is still disclosed.
 See [Mozilla's built-in consent documentation](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/).
 
-Generate a pairing code in desktop Settings > Privacy center and enter it in the extension popup. Pair each browser separately. Store version numbers must continue increasing after 7.6.0; an already-published higher version cannot be replaced by this package.
+Generate a pairing code in desktop Settings > Privacy center and enter it in the extension popup. Pair each browser separately. Store version numbers must continue increasing after 7.7.0; an already-published higher version cannot be replaced by this package.

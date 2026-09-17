@@ -15,7 +15,7 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 7.6.0
+## Version 7.7.0
 
 Version 7.5 moves the desktop runtime to .NET 10 LTS, unifies Chrome and Firefox runtime sources, makes every .NET regression discoverable through `dotnet test`, adds repeated API/writer lifecycle soak coverage, and fixes shutdown races across Kestrel, SQLite, timers, tray dispatch, and native hooks.
 
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The desktop, dashboard, installer, Chrome companion, and Firefox companion are released as `v7.6.0`. Vercel resolves the greatest complete stable GitHub release for every download, while installed apps discover the same separately checksummed desktop executable through the update feed. Firefox installations from Mozilla Add-ons update in place under the stable `timelens@timelens.app` ID.
+The desktop, dashboard, installer, Chrome companion, and Firefox companion are released as `v7.7.0`. Vercel resolves the greatest complete stable GitHub release for every download, while installed apps discover the same separately checksummed desktop executable through the update feed. Firefox installations from Mozilla Add-ons update in place under the stable `timelens@timelens.app` ID.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -160,4 +160,4 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 Firefox is the supported browser companion. Legacy Chrome sources are not packaged or release-tested.
 
-TimeLens 7.6.0 adds durable update notices, persistent browser pairing states, and a GitHub-style activity calendar. See [7.6.0 release notes](docs/releases/7.6.0.md).
+TimeLens 7.7.0 synchronizes browser pairing status and delivers a scrollbar-free GitHub-style contribution calendar. See [7.7.0 release notes](docs/releases/7.7.0.md).

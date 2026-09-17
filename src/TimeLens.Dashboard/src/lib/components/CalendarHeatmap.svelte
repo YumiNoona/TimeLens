@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { HeatmapEntry } from '../types';
   import { fmtPrecise } from '../utils';
   import { heatmapDays, showSeconds } from '../stores/settings';
 
   let { entries, selectedDate = '', onselect }: { entries: HeatmapEntry[]; selectedDate?: string; onselect?: (date: string) => void } = $props();
   let range = $state(0);
+  let chartHost: HTMLDivElement | undefined = $state();
+  let cellSize = $state(12);
+  let cellGap = $state(3);
   const days = $derived(range || $heatmapDays);
   const visibleEntries = $derived(entries.slice(-days));
   const totalMinutes = $derived(visibleEntries.reduce((sum, entry) => sum + entry.value, 0));
@@ -29,13 +33,13 @@
   const monthLabels = $derived.by(() => {
     const labels: { text: string; col: number }[] = [];
     let lastColumn = -5;
-    weeks.forEach((week, column) => {
-      const first = week.find(Boolean);
-      if (!first) return;
-      const date = new Date(`${first.date}T00:00:00`);
-      const previous = column > 0 ? weeks[column - 1].filter(Boolean).at(-1) : null;
-      const previousMonth = previous ? new Date(`${previous.date}T00:00:00`).getMonth() : -1;
-      if ((column === 0 || date.getMonth() !== previousMonth) && column - lastColumn >= 3) {
+    if (!visibleEntries.length) return labels;
+    const offset = new Date(`${visibleEntries[0].date}T00:00:00`).getDay();
+    visibleEntries.forEach((entry, index) => {
+      const date = new Date(`${entry.date}T00:00:00`);
+      const previous = index ? new Date(`${visibleEntries[index - 1].date}T00:00:00`) : null;
+      const column = Math.floor((offset + index) / 7);
+      if ((index === 0 || date.getMonth() !== previous?.getMonth()) && column - lastColumn >= 3) {
         labels.push({ text: date.toLocaleString('en-US', { month: 'short' }), col: column });
         lastColumn = column;
       }
@@ -52,18 +56,33 @@
   }
   function dateLabel(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }); }
   function activityLabel(value: number) { return value <= 0 ? 'No recorded activity' : `${fmtPrecise(value * 60, $showSeconds)} active`; }
+  function fitChart() {
+    if (!chartHost || !weeks.length) return;
+    const gap = chartHost.clientWidth < 620 ? 2 : 3;
+    const available = chartHost.clientWidth - 34 - Math.max(0, weeks.length - 1) * gap;
+    cellGap = gap;
+    cellSize = Math.max(4, Math.min(12, Math.floor(available / weeks.length)));
+  }
+
+  onMount(() => {
+    if (!chartHost) return;
+    const observer = new ResizeObserver(fitChart);
+    observer.observe(chartHost);
+    fitChart();
+    return () => observer.disconnect();
+  });
 </script>
 
-<section class="heatmap-card" aria-labelledby="contributions-title">
+<section class="heatmap-card" aria-labelledby="contributions-title" style="--cell:{cellSize}px;--gap:{cellGap}px">
   <header>
     <div><h2 id="contributions-title">Activity contributions</h2><p>{activeDays} active days · {fmtPrecise(totalMinutes * 60, $showSeconds)} recorded</p></div>
     <div class="ranges" aria-label="Contribution range">
       {#each [{v:91,l:'3m'},{v:182,l:'6m'},{v:365,l:'1y'}] as option}
-        <button type="button" class:chosen={days === option.v} onclick={() => range = option.v}>{option.l}</button>
+        <button type="button" class:chosen={days === option.v} onclick={() => { range = option.v; requestAnimationFrame(fitChart); }}>{option.l}</button>
       {/each}
     </div>
   </header>
-  <div class="chart-scroll"><div class="chart">
+  <div class="chart-scroll" bind:this={chartHost}><div class="chart">
     <div class="day-labels" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
     <div class="calendar">
       <div class="months" style="grid-template-columns:repeat({weeks.length},var(--cell))">{#each monthLabels as label}<span style="grid-column:{label.col + 1}">{label.text}</span>{/each}</div>
@@ -79,15 +98,15 @@
 </section>
 
 <style>
-  .heatmap-card { --cell:12px; --gap:3px; --heat-0:color-mix(in srgb,var(--clr-border) 56%,var(--clr-bg-ter)); --heat-1:color-mix(in srgb,var(--md-primary) 24%,var(--clr-bg-ter)); --heat-2:color-mix(in srgb,var(--md-primary) 46%,var(--clr-bg-ter)); --heat-3:color-mix(in srgb,var(--md-primary) 70%,var(--clr-bg-ter)); --heat-4:var(--md-primary); width:100%; box-sizing:border-box; overflow:hidden; padding:18px 20px 14px; background:var(--md-surface-1); border:1px solid var(--md-outline); border-radius:var(--shape-lg); }
+  .heatmap-card { --heat-0:color-mix(in srgb,var(--clr-border) 56%,var(--clr-bg-ter)); --heat-1:color-mix(in srgb,var(--md-primary) 24%,var(--clr-bg-ter)); --heat-2:color-mix(in srgb,var(--md-primary) 46%,var(--clr-bg-ter)); --heat-3:color-mix(in srgb,var(--md-primary) 70%,var(--clr-bg-ter)); --heat-4:var(--md-primary); width:100%; box-sizing:border-box; overflow:hidden; padding:16px 18px 12px; background:var(--md-surface-1); border:1px solid var(--md-outline); border-radius:var(--shape-lg); }
   header, footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   h2 { margin:0; color:var(--md-on-surf); font-size:13px; font-weight:650; }
   header p { margin:3px 0 0; color:var(--md-on-surf-var); font-size:10px; }
   .ranges { display:flex; padding:3px; gap:2px; background:var(--clr-bg-sec); border:1px solid var(--clr-border); border-radius:8px; }
   .ranges button { height:25px; min-width:31px; padding:0 7px; border:0; border-radius:5px; color:var(--md-on-surf-var); background:transparent; font:10px var(--font-mono); cursor:pointer; }
   .ranges button.chosen { color:var(--md-primary); background:var(--clr-bg-ter); }
-  .chart-scroll { margin-top:17px; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; }
-  .chart { width:max-content; min-width:100%; display:flex; justify-content:center; gap:8px; padding:0 1px 5px; }
+  .chart-scroll { width:100%; margin-top:14px; overflow:hidden; }
+  .chart { width:max-content; max-width:100%; display:flex; justify-content:flex-start; gap:8px; padding:0 1px 3px; }
   .day-labels { width:23px; flex:none; display:grid; grid-template-rows:repeat(7,var(--cell)); gap:var(--gap); padding-top:18px; }
   .day-labels span { color:var(--md-on-surf-var); font-size:8px; line-height:var(--cell); text-align:right; }
   .calendar { width:max-content; }.months { height:14px; display:grid; grid-auto-columns:var(--cell); gap:var(--gap); margin-bottom:4px; }.months span { overflow:visible; white-space:nowrap; color:var(--md-on-surf-var); font-size:9px; }
@@ -95,6 +114,6 @@
   .cell { width:var(--cell); height:var(--cell); box-sizing:border-box; display:block; padding:0; border:1px solid color-mix(in srgb,var(--clr-border) 55%,transparent); border-radius:2px; background:var(--heat-0); }
   button.cell { cursor:pointer; transition:transform 90ms ease,box-shadow 90ms ease; }button.cell:hover { transform:scale(1.35); box-shadow:0 0 0 1px var(--md-on-surf); z-index:2; }button.cell:focus-visible,button.cell.selected{outline:none;box-shadow:0 0 0 1px var(--clr-bg-pri),0 0 0 2px var(--md-primary);z-index:2}
   .level-1{background:var(--heat-1)}.level-2{background:var(--heat-2)}.level-3{background:var(--heat-3)}.level-4{background:var(--heat-4)}.blank{visibility:hidden}
-  footer { margin-top:10px; color:var(--md-on-surf-var); font-size:9px; }.legend{display:flex;align-items:center;gap:3px}.legend .cell{width:10px;height:10px}
-  @media(max-width:600px){.heatmap-card{padding:15px 12px 12px}.chart{justify-content:flex-start}.chart-scroll{margin-top:14px}}
+  footer { margin-top:9px; color:var(--md-on-surf-var); font-size:9px; }.legend{display:flex;align-items:center;gap:3px}.legend .cell{width:10px;height:10px}
+  @media(max-width:600px){.heatmap-card{padding:14px 10px 11px}.chart-scroll{margin-top:12px}.months span{font-size:8px}.day-labels{width:20px}.ranges button{min-width:28px;padding:0 5px}}
 </style>

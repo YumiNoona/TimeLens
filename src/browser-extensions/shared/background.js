@@ -25,6 +25,7 @@ let blockingEnabled = false;
 let browserUrlMode = 'domain';
 let browserStoreTitles = false;
 let pairToken = '';
+let connectionState = 'not-paired';
 let profileId = '';
 let imageDataCache = { url: '', data: '' };
 const notifiedTabs = new Set();
@@ -103,7 +104,11 @@ function checkedFetch(url, options) {
   return fetch(url, { ...request, headers: headers, redirect: 'error', signal: AbortSignal.timeout(3000) }).then(function(response) {
     // A desktop restart or isolated test instance can temporarily reject an otherwise
     // valid token. Preserve it until the user explicitly disconnects or replaces it.
-    if (!response.ok) throw new Error('HTTP ' + response.status);
+    if (!response.ok) {
+      const error = new Error('HTTP ' + response.status);
+      error.status = response.status;
+      throw error;
+    }
     return response;
   });
 }
@@ -136,15 +141,17 @@ function hydrateNotifyMedia(response) {
 }
 
 function sendHeartbeat() {
-  if (!pairToken) return;
-  checkedFetch(HEARTBEAT_API + '?browser=' + encodeURIComponent(BROWSER) +
+  if (!pairToken) return Promise.resolve(false);
+  return checkedFetch(HEARTBEAT_API + '?browser=' + encodeURIComponent(BROWSER) +
     '&version=' + encodeURIComponent(EXTENSION_VERSION) + '&ts=' + Date.now(), { method: 'POST' })
-    .catch(function() {});
+    .then(function() { connectionState = 'connected'; return true; })
+    .catch(function(error) { connectionState = error && (error.status === 401 || error.status === 403) ? 'rejected' : 'offline'; return false; });
 }
 
 function fetchSettings() {
-  if (!pairToken) return Promise.resolve(null);
+  if (!pairToken) { connectionState = 'not-paired'; return Promise.resolve(null); }
   return checkedFetch(SETTINGS_API).then(function(response) { return response.json(); }).then(function(settings) {
+    connectionState = 'connected';
     trackingEnabled = settings.trackBrowser !== false;
     inputTrackingEnabled = settings.trackInput !== false;
     audioTrackingEnabled = settings.trackAudio !== false;
@@ -152,7 +159,10 @@ function fetchSettings() {
     browserUrlMode = settings.browserUrlMode === 'full' || settings.browserUrlMode === 'path' ? settings.browserUrlMode : 'domain';
     browserStoreTitles = settings.browserStoreTitles === true;
     return settings;
-  }).catch(function() {});
+  }).catch(function(error) {
+    connectionState = error && (error.status === 401 || error.status === 403) ? 'rejected' : 'offline';
+    return null;
+  });
 }
 
 function mountNotifyToast(presentation, domain) {
@@ -427,8 +437,10 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     .then(function(response) { if (!response.ok) throw new Error('Pairing failed'); return response.json(); })
     .then(function(result) {
       pairToken = result.token || '';
+      connectionState = pairToken ? 'checking' : 'not-paired';
       return api.storage.local.set({ timelens_pair_token: pairToken });
     })
+    .then(function() { return sendHeartbeat(); })
     .then(function() { return fetchSettings(); })
     .then(function(settings) { sendResponse({ ok: true, trackingEnabled: settings && settings.trackBrowser !== false }); })
     .catch(function() { sendResponse({ ok: false }); });
@@ -438,7 +450,9 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-status') return false;
   fetchSettings().then(function(settings) {
-    sendResponse({ paired: !!pairToken, connected: !!settings, trackingEnabled: settings && settings.trackBrowser !== false });
+    sendResponse({ paired: !!pairToken && connectionState !== 'rejected', hasToken: !!pairToken,
+      needsPair: connectionState === 'rejected', connected: connectionState === 'connected' && !!settings,
+      trackingEnabled: settings && settings.trackBrowser !== false });
   });
   return true;
 });
@@ -515,6 +529,7 @@ function initialize() {
   return Promise.all([api.storage.local.get(['timelens_pair_token', 'timelens_profile_id']), loadInputQueue()]).then(function(results) {
     const saved = results[0];
     pairToken = saved && saved.timelens_pair_token || '';
+    connectionState = pairToken ? 'checking' : 'not-paired';
     profileId = saved && saved.timelens_profile_id || crypto.randomUUID();
     if (!saved || !saved.timelens_profile_id) void api.storage.local.set({ timelens_profile_id: profileId });
     if (!pairToken) return null;

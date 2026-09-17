@@ -1490,7 +1490,7 @@ public static class ApiHost
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
             var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
-                             extensionVersion >= new Version(7, 5, 1);
+                             extensionVersion >= new Version(7, 7, 0);
             double focusedBrowserSeconds = 0;
             double attributedSeconds = 0;
             if (!string.Equals(ctx.Request.Query["light"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
@@ -1521,7 +1521,7 @@ public static class ApiHost
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
             json.WriteBoolean("compatible", compatible);
-            json.WriteString("minimumVersion", "7.5.1");
+            json.WriteString("minimumVersion", "7.7.0");
             json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
             json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
             json.WriteNumber("coveragePercent", coveragePercent);

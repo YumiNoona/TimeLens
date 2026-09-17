@@ -35,6 +35,7 @@
   let pairState: PairState = $state('checking');
   let extensionStatus: ExtensionStatus | null = $state(null);
   let pairPoll: ReturnType<typeof setInterval> | null = null;
+  let pairExpiresAt = $state(0);
   let privacyBusy = $state(false);
   let idleMinutes = $state(3);
   let theme = $state('default');
@@ -216,6 +217,7 @@
       if (!response.ok) throw new Error();
       const result = await response.json();
       pairCode = result.code;
+      pairExpiresAt = Date.now() + (Number(result.expiresInSeconds) || 120) * 1000;
       pairState = 'connecting';
       try { await navigator.clipboard.writeText(pairCode); pairCopied = true; setTimeout(() => pairCopied = false, 1500); }
       catch { }
@@ -229,12 +231,18 @@
       const response = await fetch('/api/extension-status?light=true', { cache: 'no-store' });
       if (!response.ok) throw new Error();
       extensionStatus = await response.json();
-      if (extensionStatus?.connected && !extensionStatus.compatible) pairState = 'outdated';
-      else if (extensionStatus?.connected) {
+      if (extensionStatus?.connected && extensionStatus.compatible) {
         pairState = 'connected';
         pairCode = '';
+        pairExpiresAt = 0;
         pairMessage = `${extensionStatus.browser || 'Browser'} extension connected and reporting activity.`;
-      } else if (pairCode) pairState = 'connecting';
+      } else if (pairCode && Date.now() < pairExpiresAt) pairState = 'connecting';
+      else if (pairCode) {
+        pairCode = '';
+        pairExpiresAt = 0;
+        pairMessage = 'Pairing code expired. Choose Connect to generate a new code.';
+        pairState = extensionStatus?.paired ? 'paired-offline' : 'not-paired';
+      } else if (extensionStatus?.connected && !extensionStatus.compatible) pairState = 'outdated';
       else if (extensionStatus?.paired) pairState = 'paired-offline';
       else pairState = 'not-paired';
     } catch { pairState = 'error'; }
@@ -256,6 +264,7 @@
       const response = await fetch('/api/pair/revoke', { method: 'POST' });
       if (!response.ok) throw new Error();
       pairCode = '';
+      pairExpiresAt = 0;
       pairState = 'not-paired';
       extensionStatus = null;
       pairMessage = 'All paired browser access revoked. Pair again to resume browser tracking.';
@@ -532,7 +541,7 @@
           </div>
           <div class="button-group connection-actions">
             {#if pairCode}<button class="pair-code" type="button" title="Copy pairing code" onclick={copyPairCode}>{pairCode}<i class="ti {pairCopied ? 'ti-check' : 'ti-copy'}"></i></button>{/if}
-            <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy || pairState === 'checking' || pairState === 'connected'}>{pairState === 'connected' ? 'Connected' : pairState === 'connecting' ? 'New code' : pairState === 'paired-offline' ? 'Reconnect' : 'Connect'}</button>
+            <button class="primary-btn" type="button" onclick={createPairCode} disabled={privacyBusy || pairState === 'checking' || pairState === 'connected' || pairState === 'connecting'}>{pairState === 'connected' ? 'Connected' : pairState === 'connecting' ? 'Connecting…' : pairState === 'paired-offline' ? 'Reconnect' : pairState === 'outdated' ? 'Update extension' : 'Connect'}</button>
             <button class="secondary-btn" type="button" onclick={revokeBrowsers} disabled={privacyBusy || (!extensionStatus?.paired && pairState !== 'connecting')}>Disconnect all</button>
           </div>
         </div>

@@ -404,8 +404,7 @@
   .history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
   .history-overview {
     display: grid;
-    grid-template-columns: minmax(620px, 960px) minmax(300px, 420px);
-    justify-content: center;
+    grid-template-columns: minmax(620px, 960px) minmax(360px, 1fr);
     gap: var(--space-4);
     align-items: stretch;
   }

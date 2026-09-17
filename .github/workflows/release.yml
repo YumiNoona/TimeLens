@@ -33,7 +33,9 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
+          $extensionVersion = [string](Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json).version
           echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "EXTENSION_VERSION=$extensionVersion" >> $env:GITHUB_ENV
 
       - name: Build dashboard
         working-directory: src/TimeLens.Dashboard
@@ -81,22 +83,25 @@ jobs:
           $dashboard = Get-Content "src\TimeLens.Dashboard\package.json" | ConvertFrom-Json
           $web = Get-Content "web\package.json" | ConvertFrom-Json
           $firefoxExtension = Get-Content "src\browser-extensions\firefox\manifest.json" | ConvertFrom-Json
-          $actual = @{
+          $desktop = @{
             TrayApp = [string]$project.Project.PropertyGroup.Version
             Dashboard = [string]$dashboard.version
             Web = [string]$web.version
-            Chrome = [string](Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json).version
-            Firefox = [string]$firefoxExtension.version
           }
-          foreach ($entry in $actual.GetEnumerator()) {
+          foreach ($entry in $desktop.GetEnumerator()) {
             if ($entry.Value -ne $expected) {
               throw "$($entry.Key) version $($entry.Value) does not match tag version $expected"
             }
           }
-          Write-Host "Desktop and browser extensions release: $expected"
+          $chromeVersion = [string](Get-Content "src\browser-extensions\chrome\manifest.json" | ConvertFrom-Json).version
+          $firefoxVersion = [string]$firefoxExtension.version
+          if ($chromeVersion -ne $firefoxVersion) {
+            throw "Browser extension versions do not match: Chrome $chromeVersion, Firefox $firefoxVersion"
+          }
+          Write-Host "Desktop release: $expected; browser companions: $chromeVersion"
 
       - name: Publish Firefox update to Mozilla Add-ons
-        if: ${{ env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != '' }}
+        if: ${{ env.EXTENSION_VERSION == env.VERSION && env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != '' }}
         shell: pwsh
         run: |
           .\scripts\package-extensions.ps1 -OutputDirectory $env:RUNNER_TEMP
@@ -110,7 +115,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Mozilla Add-ons submission failed" }
 
       - name: Note manual Firefox publishing requirement
-        if: ${{ env.AMO_JWT_ISSUER == '' || env.AMO_JWT_SECRET == '' }}
+        if: ${{ env.EXTENSION_VERSION == env.VERSION && (env.AMO_JWT_ISSUER == '' || env.AMO_JWT_SECRET == '') }}
         shell: pwsh
         run: Write-Warning "AMO credentials are not configured; upload the versioned Firefox package to the existing Mozilla Add-ons listing to activate automatic updates."
 

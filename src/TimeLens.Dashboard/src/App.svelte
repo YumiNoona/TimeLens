@@ -290,6 +290,7 @@
           </section>
 
           <div class="today-overview">
+            <CalendarHeatmap entries={$data.heatmap} onselect={(date) => { historyDate = date; goTo('history'); }} />
             <DaySnapshot
               summary={$data.summary}
               live={$data.live}
@@ -298,7 +299,6 @@
               {browserSites}
               {webMedia}
             />
-            <CalendarHeatmap entries={$data.heatmap} onselect={(date) => { historyDate = date; goTo('history'); }} />
           </div>
           <div class="today-grid" use:reorderable={{ key: 'today:insights' }}>
             <TopApps apps={$data.topApps} />
@@ -524,8 +524,7 @@
 
   .today-overview {
     display: grid;
-    grid-template-columns: minmax(330px, 420px) minmax(620px, 960px);
-    justify-content: center;
+    grid-template-columns: minmax(620px, 960px) minmax(360px, 1fr);
     align-items: stretch;
     gap: var(--space-4);
   }

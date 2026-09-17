@@ -1490,7 +1490,7 @@ public static class ApiHost
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
             var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
-                             extensionVersion >= new Version(7, 8, 0);
+                             extensionVersion >= new Version(8, 0, 0);
             double focusedBrowserSeconds = 0;
             double attributedSeconds = 0;
             double diagnosticWindowSeconds = 0;

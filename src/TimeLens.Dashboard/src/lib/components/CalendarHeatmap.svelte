@@ -98,7 +98,7 @@
 </section>
 
 <style>
-  .heatmap-card { --heat-0:color-mix(in srgb,var(--clr-border) 56%,var(--clr-bg-ter)); --heat-1:color-mix(in srgb,var(--md-primary) 24%,var(--clr-bg-ter)); --heat-2:color-mix(in srgb,var(--md-primary) 46%,var(--clr-bg-ter)); --heat-3:color-mix(in srgb,var(--md-primary) 70%,var(--clr-bg-ter)); --heat-4:var(--md-primary); width:100%; box-sizing:border-box; overflow:hidden; padding:16px 18px 12px; background:var(--md-surface-1); border:1px solid var(--md-outline); border-radius:var(--shape-lg); }
+  .heatmap-card { --heat-0:color-mix(in srgb,var(--clr-border) 56%,var(--clr-bg-ter)); --heat-1:color-mix(in srgb,var(--md-primary) 24%,var(--clr-bg-ter)); --heat-2:color-mix(in srgb,var(--md-primary) 46%,var(--clr-bg-ter)); --heat-3:color-mix(in srgb,var(--md-primary) 70%,var(--clr-bg-ter)); --heat-4:var(--md-primary); width:100%; max-width:960px; margin-inline:auto; box-sizing:border-box; overflow:hidden; padding:14px 16px 11px; background:var(--md-surface-1); border:1px solid var(--md-outline); border-radius:var(--shape-lg); }
   header, footer { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   h2 { margin:0; color:var(--md-on-surf); font-size:13px; font-weight:650; }
   header p { margin:3px 0 0; color:var(--md-on-surf-var); font-size:10px; }

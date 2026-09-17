@@ -13,5 +13,8 @@ public sealed record MediaStateDto(
     bool PictureInPicture,
     string Visibility,
     string Confidence,
-    DateTimeOffset ObservedAt
+    DateTimeOffset ObservedAt,
+    double? PositionSeconds = null,
+    double? DurationSeconds = null,
+    double PlaybackRate = 1
 );

@@ -77,12 +77,16 @@
   }
   function snapshot(media, forcePlaying) {
     const playing = forcePlaying === undefined ? isPlaying(media) : forcePlaying;
+    const positionSeconds = Number.isFinite(media.currentTime) && media.currentTime >= 0 ? media.currentTime : null;
+    const durationSeconds = Number.isFinite(media.duration) && media.duration >= 0 ? media.duration : null;
+    const playbackRate = Number.isFinite(media.playbackRate) && media.playbackRate > 0 ? media.playbackRate : 1;
     return {
       mediaId: idFor(media), url: location.href, title: document.title.slice(0, 4096),
       kind: media.tagName && media.tagName.toLowerCase() === 'audio' ? 'audio' : 'video',
       playing, audible: playing && !media.muted && media.volume > 0,
       muted: !!media.muted || media.volume === 0, pictureInPicture: pipFor(media),
       visibility: visibilityFor(media), confidence: 'media-element',
+      positionSeconds, durationSeconds, playbackRate,
       observedAt: new Date().toISOString()
     };
   }

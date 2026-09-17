@@ -62,9 +62,9 @@
         {#if notes.length}
           {#each notes as note}<li>{note}</li>{/each}
         {:else}
-          <li>Browser pairing states verified by both the extension and desktop.</li>
-          <li>A scrollbar-free GitHub-style activity contribution calendar.</li>
-          <li>Faster connection confirmation and clearer reconnect guidance.</li>
+          <li>Reliable multi-hour YouTube and background-media duration tracking.</li>
+          <li>Accurate, quieter browser-coverage diagnostics.</li>
+          <li>Refresh-safe navigation and a more compact contribution calendar.</li>
         {/if}
       </ul>
     </div>

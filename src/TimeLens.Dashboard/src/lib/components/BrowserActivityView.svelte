@@ -66,10 +66,10 @@
  </div>
  <label class="date-picker"><i class="ti ti-calendar"></i><input type="date" bind:value={selectedDate} max={localDate()} onchange={loadDate} aria-label="Browser activity date" /></label>
 </div>
-{#if extensionStatus && (!extensionStatus.connected || !extensionStatus.compatible || (extensionStatus.focusedBrowserSeconds > 300 && extensionStatus.coveragePercent < 80))}
+{#if selectedDate === localDate() && extensionStatus && (!extensionStatus.connected || !extensionStatus.compatible || (extensionStatus.focusedBrowserSeconds >= 1800 && extensionStatus.missingSeconds >= 900 && extensionStatus.coveragePercent < 70))}
   <div class="coverage-warning">
     <i class="ti ti-alert-triangle"></i>
-    <span>{!extensionStatus.connected ? 'Browser extension is offline; website and web-media time cannot be attributed.' : !extensionStatus.compatible ? `Extension ${extensionStatus.version} is outdated; install ${extensionStatus.minimumVersion} or newer.` : `Only ${extensionStatus.coveragePercent}% of foreground browser time was attributed today. Check extension pairing and private-window permissions.`}</span>
+    <span>{!extensionStatus.connected ? 'Browser extension is offline; website and web-media time cannot be attributed.' : !extensionStatus.compatible ? `Extension ${extensionStatus.version} is outdated; install ${extensionStatus.minimumVersion} or newer.` : `${fmtPrecise(extensionStatus.missingSeconds, false)} of browser time could not be matched to a regular web page. Internal, private, restricted, and pre-reconnect pages are not attributable.`}</span>
   </div>
 {/if}
 <div class="browser-summary">

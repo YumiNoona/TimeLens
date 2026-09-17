@@ -13,7 +13,10 @@ Media playback is a separate concurrent overlay. Spotify or another native audio
 app can keep playing while an editor is foreground; both facts are retained, but
 playback is never added to active-work time. The browser extension reports HTML
 audio/video play, pause, visibility and Picture-in-Picture transitions, plus a
-15-second lease checkpoint while playback continues. The browser audible flag is
+15-second lease checkpoint while playback continues. Checkpoints include playback
+position and rate: if a browser suspends background JavaScript for up to 30 minutes,
+TimeLens can recover only the duration proven by natural media progress. Implausible
+position jumps are treated as seeks rather than watched time. The browser audible flag is
 used only as a lower-confidence fallback for players that hide their media element.
 No frames, audio samples, captions or page text are captured.
 
@@ -104,8 +107,9 @@ cannot be reconstructed. Existing overlapping legacy website rows are not rewrit
 Only the selected tab contributes foreground website time. Other tabs may still
 contribute concurrent media playback while audible, including PiP and background
 playback. The Browser page displays extension connectivity, minimum compatible
-version and foreground-attribution coverage so missing pairing is visible rather
-than silently presented as a complete day. Pair tokens survive transient desktop
+version and foreground-attribution coverage inside the extension's observed window,
+so time before pairing/reconnecting is not mislabeled as a permission failure. Internal,
+private and browser-restricted pages remain intentionally unattributable. Pair tokens survive transient desktop
 restarts and isolated release tests; only explicit revocation removes them.
 
 The default three-minute idle grace is retained as active time, without retroactively

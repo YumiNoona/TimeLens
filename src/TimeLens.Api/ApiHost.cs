@@ -1490,24 +1490,42 @@ public static class ApiHost
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
             var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
-                             extensionVersion >= new Version(7, 7, 0);
+                             extensionVersion >= new Version(7, 8, 0);
             double focusedBrowserSeconds = 0;
             double attributedSeconds = 0;
+            double diagnosticWindowSeconds = 0;
             if (!string.Equals(ctx.Request.Query["light"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
             {
                 var localStart = DateTime.SpecifyKind(DateTime.Now.Date, DateTimeKind.Local).ToUniversalTime();
                 var nowUtc = DateTime.UtcNow;
                 using var coverageConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
                 await coverageConn.OpenAsync();
-                var foreground = await ActivityIntervalService.ReadExclusiveAsync(coverageConn, localStart, nowUtc);
-                focusedBrowserSeconds = foreground.Where(x =>
-                        BrowserTrackingService.MatchesForeground("firefox", x.ExeName) ||
-                        BrowserTrackingService.MatchesForeground("chrome", x.ExeName) ||
-                        BrowserTrackingService.MatchesForeground("edge", x.ExeName) ||
-                        BrowserTrackingService.MatchesForeground("opera", x.ExeName))
-                    .Sum(x => x.Seconds);
-                attributedSeconds = (await BrowserAnalyticsService.ReadAsync(coverageConn, localStart, nowUtc))
-                    .Sum(x => x.TotalSeconds);
+                using var windowCmd = coverageConn.CreateCommand();
+                windowCmd.CommandText = "SELECT MIN(start_time),MAX(end_time) FROM browser_events WHERE julianday(start_time)<julianday($end) AND julianday(end_time)>julianday($start)";
+                windowCmd.Parameters.AddWithValue("$start", localStart.ToString("o"));
+                windowCmd.Parameters.AddWithValue("$end", nowUtc.ToString("o"));
+                using var windowReader = await windowCmd.ExecuteReaderAsync();
+                if (await windowReader.ReadAsync() && !windowReader.IsDBNull(0) && !windowReader.IsDBNull(1) &&
+                    DateTime.TryParse(windowReader.GetString(0), null, DateTimeStyles.RoundtripKind, out var firstObserved) &&
+                    DateTime.TryParse(windowReader.GetString(1), null, DateTimeStyles.RoundtripKind, out var lastObserved))
+                {
+                    await windowReader.DisposeAsync();
+                    var windowStart = firstObserved.ToUniversalTime() > localStart ? firstObserved.ToUniversalTime() : localStart;
+                    var windowEnd = lastObserved.ToUniversalTime() < nowUtc ? lastObserved.ToUniversalTime() : nowUtc;
+                    if (windowEnd > windowStart)
+                    {
+                        diagnosticWindowSeconds = (windowEnd - windowStart).TotalSeconds;
+                        var foreground = await ActivityIntervalService.ReadExclusiveAsync(coverageConn, windowStart, windowEnd);
+                        focusedBrowserSeconds = foreground.Where(x =>
+                                BrowserTrackingService.MatchesForeground("firefox", x.ExeName) ||
+                                BrowserTrackingService.MatchesForeground("chrome", x.ExeName) ||
+                                BrowserTrackingService.MatchesForeground("edge", x.ExeName) ||
+                                BrowserTrackingService.MatchesForeground("opera", x.ExeName))
+                            .Sum(x => x.Seconds);
+                        attributedSeconds = (await BrowserAnalyticsService.ReadAsync(coverageConn, windowStart, windowEnd))
+                            .Sum(x => x.TotalSeconds);
+                    }
+                }
             }
             var coveragePercent = focusedBrowserSeconds < 1 ? 100 :
                 Math.Clamp((int)Math.Round(attributedSeconds / focusedBrowserSeconds * 100), 0, 100);
@@ -1521,9 +1539,11 @@ public static class ApiHost
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
             json.WriteBoolean("compatible", compatible);
-            json.WriteString("minimumVersion", "7.7.0");
+            json.WriteString("minimumVersion", "7.8.0");
             json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
             json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
+            json.WriteNumber("missingSeconds", (int)Math.Round(Math.Max(0, focusedBrowserSeconds - attributedSeconds)));
+            json.WriteNumber("diagnosticWindowSeconds", (int)Math.Round(diagnosticWindowSeconds));
             json.WriteNumber("coveragePercent", coveragePercent);
             json.WriteEndObject();
             await json.FlushAsync();

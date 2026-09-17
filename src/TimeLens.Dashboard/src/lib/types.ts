@@ -89,6 +89,8 @@ export interface ExtensionStatus {
   coveragePercent: number;
   focusedBrowserSeconds: number;
   attributedSeconds: number;
+  missingSeconds: number;
+  diagnosticWindowSeconds: number;
 }
 
 export interface HeatmapEntry {

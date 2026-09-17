@@ -17,7 +17,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.7.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '7.8.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -112,7 +112,7 @@ test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.7.0');
+    assert.equal(manifest.version, '7.8.0');
     if (family === 'firefox') {
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
       assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
@@ -160,7 +160,8 @@ test('content media collector reports background, PiP, checkpoints and stop with
   const handlers = new Map(), sent = [], timers = [];
   const on = (name, fn) => handlers.set(name, [...(handlers.get(name) || []), fn]);
   const media = { tagName: 'VIDEO', paused: false, ended: false, readyState: 4, muted: false,
-    volume: 1, isConnected: true, querySelectorAll: () => [] };
+    volume: 1, currentTime: 321.5, duration: 7200, playbackRate: 1.25,
+    isConnected: true, querySelectorAll: () => [] };
   const document = { visibilityState: 'hidden', title: 'Tutorial', pictureInPictureElement: null,
     documentElement: {}, hasFocus: () => false, querySelectorAll: () => [media], addEventListener: on };
   const window = { addEventListener: on, setTimeout(fn, delay) { timers.push({ fn, delay }); return timers.length; }, clearTimeout() {} };
@@ -174,6 +175,9 @@ test('content media collector reports background, PiP, checkpoints and stop with
   const first = sent.find(x => x.type === 'timelens-media-state');
   assert.equal(first.state.visibility, 'background');
   assert.equal(first.state.playing, true);
+  assert.equal(first.state.positionSeconds, 321.5);
+  assert.equal(first.state.durationSeconds, 7200);
+  assert.equal(first.state.playbackRate, 1.25);
   document.pictureInPictureElement = media;
   for (const fn of handlers.get('enterpictureinpicture') || []) fn({ target: media });
   await new Promise(setImmediate);

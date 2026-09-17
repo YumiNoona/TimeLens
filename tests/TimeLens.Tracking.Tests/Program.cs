@@ -145,6 +145,51 @@ try
     Check(mediaSummary.Summary.ActiveSeconds == ledger.Summary.ActiveSeconds,
         "Concurrent playback must never inflate primary active time");
 
+    var throttledMediaPath = Path.Combine(root, "throttled-media.db");
+    DatabaseInitializer.Initialize(throttledMediaPath);
+    var throttledClock = new FakeClock(ledgerStart.AddHours(8));
+    var throttledTracker = new MediaTrackingService(throttledMediaPath, throttledClock);
+    var longVideo = media with { MediaId = "youtube-long", PictureInPicture = false,
+        Visibility = "background", ObservedAt = throttledClock.GetUtcNow() };
+    throttledTracker.Observe(longVideo);
+    for (var minute = 1; minute <= 180; minute++)
+    {
+        throttledClock.Now = throttledClock.Now.AddMinutes(1);
+        throttledTracker.Observe(longVideo with { ObservedAt = throttledClock.GetUtcNow() });
+    }
+    var longMediaSummary = await new AnalyticsService(throttledMediaPath).GetDashboardAsync(
+        throttledClock.Now.ToLocalTime().Date);
+    Check(Math.Abs(longMediaSummary.WebMedia.PlaybackSeconds - 10800) <= 1,
+        "A three-hour background video must survive one-minute browser timer throttling");
+
+    var suspendedMediaPath = Path.Combine(root, "suspended-media.db");
+    DatabaseInitializer.Initialize(suspendedMediaPath);
+    var suspendedClock = new FakeClock(ledgerStart.AddHours(12));
+    var suspendedTracker = new MediaTrackingService(suspendedMediaPath, suspendedClock);
+    var suspendedVideo = media with { MediaId = "youtube-suspended", PositionSeconds = 120,
+        DurationSeconds = 14400, ObservedAt = suspendedClock.GetUtcNow() };
+    suspendedTracker.Observe(suspendedVideo);
+    suspendedClock.Now = suspendedClock.Now.AddMinutes(10);
+    suspendedTracker.Tick();
+    suspendedTracker.Observe(suspendedVideo with { PositionSeconds = 720, ObservedAt = suspendedClock.GetUtcNow() });
+    var suspendedSummary = await new AnalyticsService(suspendedMediaPath).GetDashboardAsync(
+        suspendedClock.Now.ToLocalTime().Date);
+    Check(Math.Abs(suspendedSummary.WebMedia.PlaybackSeconds - 600) <= 1,
+        "A suspended background page must recover playback proven by media-position progress");
+
+    var seekMediaPath = Path.Combine(root, "seek-media.db");
+    DatabaseInitializer.Initialize(seekMediaPath);
+    var seekClock = new FakeClock(ledgerStart.AddHours(14));
+    var seekTracker = new MediaTrackingService(seekMediaPath, seekClock);
+    var seekVideo = media with { MediaId = "youtube-seek", PositionSeconds = 120,
+        DurationSeconds = 14400, ObservedAt = seekClock.GetUtcNow() };
+    seekTracker.Observe(seekVideo);
+    seekClock.Now = seekClock.Now.AddMinutes(10);
+    seekTracker.Observe(seekVideo with { PositionSeconds = 3720, ObservedAt = seekClock.GetUtcNow() });
+    var seekSummary = await new AnalyticsService(seekMediaPath).GetDashboardAsync(seekClock.Now.ToLocalTime().Date);
+    Check(seekSummary.WebMedia.PlaybackSeconds == 0,
+        "A forward seek must not be mistaken for unattended playback");
+
     long inputAge = 0;
     var idle = new IdleMonitor(() => inputAge);
     idle.SetSessionState("locked");
@@ -548,9 +593,9 @@ try
 
         var settingsService = new SettingsService(browserPath);
         settingsService.Save("release_notice_pending", "true");
-        settingsService.Save("release_notice_version", "7.7.0");
+        settingsService.Save("release_notice_version", "7.8.0");
         using (var notice = System.Text.Json.JsonDocument.Parse(await dashboard.GetStringAsync("/api/release-notice")))
-            Check(notice.RootElement.GetProperty("pending").GetBoolean() && notice.RootElement.GetProperty("version").GetString() == "7.7.0",
+            Check(notice.RootElement.GetProperty("pending").GetBoolean() && notice.RootElement.GetProperty("version").GetString() == "7.8.0",
                 "Release notice must survive dashboard sessions until acknowledged");
         (await dashboard.PostAsync("/api/release-notice/dismiss", null)).EnsureSuccessStatusCode();
         Check(Scalar(browserPath, "SELECT count(*) FROM settings WHERE key='release_notice_pending' AND value='false'") == 1,

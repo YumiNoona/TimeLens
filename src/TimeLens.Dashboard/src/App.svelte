@@ -44,14 +44,28 @@
   let activeTheme = 'default';
   let density = 'comfortable';
   let motionEnabled = true;
+  const allowedViews = ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'];
 
   function needsCompanionData(targetView = view): boolean {
     return targetView === 'today' || targetView === 'apps' || targetView === 'browser';
   }
 
-  function goTo(id: string) {
+  function goTo(id: string, historyMode: 'push' | 'replace' | 'none' = 'push') {
+    if (!allowedViews.includes(id)) return;
     view = id;
+    if (historyMode !== 'none') {
+      const next = new URL(window.location.href);
+      next.searchParams.set('view', id);
+      const currentView = new URLSearchParams(window.location.search).get('view');
+      if (historyMode === 'replace' || currentView === id) window.history.replaceState({ view: id }, '', next);
+      else window.history.pushState({ view: id }, '', next);
+    }
     if (needsCompanionData(id)) void loadCompanionData();
+  }
+
+  function onPopState() {
+    const requested = new URLSearchParams(window.location.search).get('view');
+    goTo(requested && allowedViews.includes(requested) ? requested : 'today', 'none');
   }
 
   const dateStr = $derived(now.toLocaleDateString('en-US', {
@@ -137,7 +151,6 @@
       if (typeof s.motionEnabled === 'boolean') applyMotion(s.motionEnabled);
       if (typeof s.timelineMinSegmentSeconds === 'number') timelineMinSegmentSeconds.set(s.timelineMinSegmentSeconds);
       if (typeof s.heatmapDays === 'number') heatmapDays.set(s.heatmapDays);
-      const allowedViews = ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'];
       if (typeof s.defaultView === 'string' && allowedViews.includes(s.defaultView)) view = s.defaultView;
     } catch { }
   }
@@ -171,12 +184,12 @@
       await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
       if (disposed) return;
       const requestedView = new URLSearchParams(window.location.search).get('view');
-      if (requestedView && ['today', 'history', 'apps', 'browser', 'timeline', 'block', 'rules', 'settings'].includes(requestedView))
-        goTo(requestedView);
+      goTo(requestedView && allowedViews.includes(requestedView) ? requestedView : view, 'replace');
       document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('popstate', onPopState);
       if (!document.hidden) startPoll();
     })();
-    return () => { disposed = true; stopPoll(); document.removeEventListener('visibilitychange', onVisibility); };
+    return () => { disposed = true; stopPoll(); document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('popstate', onPopState); };
   });
 
   function onVisibility() {

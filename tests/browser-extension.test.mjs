@@ -17,7 +17,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '7.9.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '8.0.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -112,7 +112,7 @@ test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '7.9.0');
+    assert.equal(manifest.version, '8.0.0');
     if (family === 'firefox') {
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
       assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');

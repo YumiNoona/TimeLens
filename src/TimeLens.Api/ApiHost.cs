@@ -1539,7 +1539,7 @@ public static class ApiHost
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
             json.WriteBoolean("compatible", compatible);
-            json.WriteString("minimumVersion", "7.9.0");
+            json.WriteString("minimumVersion", "8.0.0");
             json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
             json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
             json.WriteNumber("missingSeconds", (int)Math.Round(Math.Max(0, focusedBrowserSeconds - attributedSeconds)));

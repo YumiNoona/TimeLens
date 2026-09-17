@@ -12,7 +12,7 @@
     <a class="skip" href="#docs-content">Skip to documentation</a>
     <header class="docs-topbar">
       <a class="wordmark" href="/" aria-label="TimeLens home"><span class="mark" aria-hidden="true"><i></i></span><span>TIMELENS</span></a>
-      <span class="docs-label">DOCUMENTATION / VERSION 7.9</span>
+      <span class="docs-label">DOCUMENTATION / VERSION 8.0</span>
       <a class="download" href="/api/download">DOWNLOAD SETUP <i data-lucide="download" aria-hidden="true"></i></a>
     </header>
 
@@ -36,7 +36,7 @@
           <p class="kicker">TIMELENS / USER GUIDE</p>
           <h1>Understand the day.<br /><span>Keep it yours.</span></h1>
           <p>Everything you need to install TimeLens, connect your browser, understand every dashboard tab, create useful rules, and build focus boundaries that are difficult to bypass accidentally.</p>
-          <div class="hero-meta"><span>Version 7.9</span><span>Windows 10 / 11</span><span>Local SQLite</span><span>No account</span></div>
+          <div class="hero-meta"><span>Version 8.0</span><span>Windows 10 / 11</span><span>Local SQLite</span><span>No account</span></div>
         </section>
 
         <article id="overview" data-search="overview local tracker system tray dashboard getting started">
@@ -64,7 +64,7 @@
 
         <article id="extension" data-search="chrome edge brave firefox zen extension install unpacked developer mode browser tracking web blocking">
           <header><span>03</span><div><p>SETUP</p><h2>Connect your browser</h2></div></header>
-          <p>The desktop app works without an extension, but browser activity will appear only as the browser executable. Install the matching 7.9 companion to see domains, visits, duration-based web media, and enforce website blocks.</p>
+          <p>The desktop app works without an extension, but browser activity will appear only as the browser executable. Install the matching 8.0 companion to see domains, visits, duration-based web media, and enforce website blocks.</p>
           <div class="split">
             <section><p class="mini">OFFICIAL ADD-ON</p><h3>Install from Firefox Add-ons</h3><ol><li>Right-click the TimeLens tray icon.</li><li>Choose <em>Install Browser Extension</em>.</li><li>Select <em>Add to Firefox</em> on the official listing.</li><li>Keep the TimeLens desktop app running while you browse.</li></ol><p><a href="https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/" target="_blank" rel="noopener noreferrer">Open the TimeLens Tracker listing →</a></p></section>
             <section><p class="mini">CONNECTION</p><h3>Pair this browser once</h3><ol><li>Launch TimeLens and open Settings → Privacy center.</li><li>Choose <em>Connect</em>; the two-minute pairing code is copied when the browser permits it.</li><li>Open the extension popup, enter the code, and choose <em>Pair</em>.</li><li>Wait for both surfaces to show <em>Connected</em>. The trusted connection is saved across browser, app, and PC restarts.</li></ol></section>
@@ -90,8 +90,8 @@
 
         <article id="today" data-search="today active time focus score keystrokes clicks idle top apps categories cards drag layout">
           <header><span>05</span><div><p>DASHBOARD</p><h2>Today</h2></div></header>
-          <p>The Today tab is a live summary of the current date. Active time excludes idle and away periods. Input totals are counts—not typed content. The compact GitHub-style heatmap sits beside a Focus breakdown card, while category and app bars automatically follow the selected theme.</p>
-          <dl><div><dt>Active time</dt><dd>Exclusive foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>The rounded percentage of scored active time in Development, Work, Documents, Communication, and Design. “Other” is removed from the denominator; if all scored time is Other the neutral value is 50, and a day with no active time is 0.</dd></div><div><dt>Focus breakdown</dt><dd>Shows productive, neutral, and distracting portions behind the score so the number is explainable.</dd></div><div><dt>Categories</dt><dd>The larger donut and ranked bars group time using built-in and custom Rules without changing the card footprint.</dd></div></dl>
+          <p>The Today tab is a live summary of the current date. Active time excludes idle and away periods. Input totals are counts—not typed content. The compact GitHub-style heatmap sits directly beside a Day snapshot card, while category and app colors automatically follow the selected theme.</p>
+          <dl><div><dt>Active time</dt><dd>Exclusive foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>The rounded percentage of scored active time in Development, Work, Documents, Communication, and Design. “Other” is removed from the denominator; if all scored time is Other the neutral value is 50, and a day with no active time is 0.</dd></div><div><dt>Day snapshot</dt><dd>Shows current foreground state, most-used app, leading category, concurrent web-media duration, and browser-visit count without repeating the Focus score card.</dd></div><div><dt>Categories</dt><dd>The larger donut and ranked bars group time using built-in and custom Rules without changing the card footprint.</dd></div></dl>
           <div class="note"><strong>The focus score is category-based.</strong><p>It does not inspect document content, judge the quality of work, or reward rapid app switching. Classification rules directly affect the score, so fix an incorrect category before interpreting it.</p></div>
           <div class="tip"><strong>Arrange the dashboard.</strong><p>Hover a movable card and drag its grip. TimeLens remembers card order separately for each page. Use <kbd>Alt</kbd> + an arrow key while the grip is focused for keyboard reordering.</p></div>
         </article>
@@ -99,12 +99,12 @@
         <article id="history" data-search="history heatmap calendar date previous daily summary compare apps categories timeline">
           <header><span>06</span><div><p>DASHBOARD</p><h2>History</h2></div></header>
           <p>History answers what happened on a specific day and how activity changes over time. Select a heatmap square, use the date field, or move through days with the arrow controls. The selected date is encoded in the URL, so refreshing or using browser Back and Forward preserves the page and date.</p>
-          <ul class="check-list"><li>The compact activity heatmap offers 3-month, 6-month, and 1-year ranges without a horizontal page scrollbar.</li><li>Month labels, weekday guides, theme-aware intensity levels, and hover details use the familiar contribution-calendar pattern.</li><li>Daily cards compare active time, focus, input, and idle time.</li><li>At a glance highlights the leading app, category, browser visits, and session balance.</li><li>Lower cards contain the selected day’s apps, categories, browser data, and expandable timeline.</li></ul>
+          <ul class="check-list"><li>The compact activity heatmap offers 3-month, 6-month, and 1-year ranges without a horizontal page scrollbar.</li><li>The heatmap visualization is unchanged in 8.0; its card now shares a compact row with an equal-height At a glance card on the right.</li><li>Month labels, weekday guides, theme-aware intensity levels, and hover details use the familiar contribution-calendar pattern.</li><li>Daily cards compare active time, focus, input, and idle time.</li><li>At a glance highlights the leading app, category, browser visits, activity segments, and session balance.</li><li>Lower cards contain the selected day’s apps, categories, browser data, and expandable timeline.</li></ul>
         </article>
 
         <article id="apps" data-search="apps executable active time input keystrokes clicks assign category uncategorized">
           <header><span>07</span><div><p>DASHBOARD</p><h2>Apps</h2></div></header>
-          <p>Apps provides an application-first view: time, keyboard counts, and mouse counts for each executable. Each row includes a theme-aware share bar so large and small contributors remain visible without turning the list into a wall of black. Use the Uncategorized section to assign an app without leaving the page; TimeLens creates a categorization rule for future events.</p>
+          <p>Apps provides an application-first view: time, keyboard counts, and mouse counts for each executable. Each row uses three clear columns: application, a centered theme-aware activity-share bar, and a right-aligned time value. Use the Uncategorized section to assign an app without leaving the page; TimeLens creates a categorization rule for future events.</p>
           <div class="note"><strong>Names come from Windows.</strong><p>Entries such as <code>ApplicationFrameHost.exe</code> or helper processes may be normal Windows hosts. Categorize the executable you actually want grouped; avoid broad rules that could catch unrelated programs.</p></div>
         </article>
 
@@ -175,10 +175,10 @@
           <header><span>15</span><div><p>REFERENCE</p><h2>Troubleshooting</h2></div></header>
           <div class="faq">
             <details><summary>The dashboard does not open</summary><p>Confirm the tray icon is running, then open <code>http://127.0.0.1:47821/</code>. The address intentionally remains local to your PC. If another TimeLens instance exists, close all copies and launch the newest EXE once.</p></details>
-            <details><summary>The extension and dashboard show different connection states</summary><p>Install desktop and companion version 7.9, keep the tray app running, then press Connect once and wait for both surfaces to refresh. A saved profile normally survives PC restart. Generate a new code only when the extension says Pair/Not connected, the credential was revoked, the extension was reinstalled, or this is a different browser profile.</p></details>
+            <details><summary>The extension and dashboard show different connection states</summary><p>Install desktop and companion version 8.0, keep the tray app running, then press Connect once and wait for both surfaces to refresh. A saved profile normally survives PC restart. Generate a new code only when the extension says Pair/Not connected, the credential was revoked, the extension was reinstalled, or this is a different browser profile.</p></details>
             <details><summary>YouTube or another web player shows much less time than I watched</summary><p>First compare Media playback—not only Active browsing. Background and picture-in-picture video is concurrent media. Confirm the popup says Connected, the desktop and extension both show 7.9, and test with a newly played video; an update cannot reconstruct old missing sessions. Restricted browser pages and private windows need separate permission or remain intentionally excluded. Pauses, seeks, buffering, and non-advancing media are not counted.</p></details>
             <details><summary>I granted every permission but still see an attribution warning</summary><p>Permissions allow future events; they do not repair time before the extension connected. The diagnostic uses only the period where the extension was observed and requires substantial missing time before warning. Confirm the extension is installed and paired in the exact profile you are using. Internal browser pages and intentionally excluded private windows may remain unattributed.</p></details>
-            <details><summary>Refreshing returns me to another page</summary><p>Version 7.9 keeps the active dashboard view and relevant selected date in the URL. If an older tab still resets, close it, open the dashboard from the 7.9 tray app, and refresh once.</p></details>
+            <details><summary>Refreshing returns me to another page</summary><p>Version 8.0 keeps the active dashboard view and relevant selected date in the URL. If an older tab still resets, close it, open the dashboard from the 8.0 tray app, and refresh once.</p></details>
             <details><summary>Website blocking does not work</summary><p>Website enforcement requires the extension. Confirm Focus Mode is enabled, the entry is a domain rather than a full URL, and the current browser has the TimeLens extension loaded.</p></details>
             <details><summary>An app is categorized incorrectly</summary><p>Open Rules, look for a custom rule that is too broad, and replace it with an exact executable or domain match.</p></details>
             <details><summary>Cards are in the wrong order</summary><p>Open Settings → Card layout, choose the affected page, and reset it. You can also reset all saved layouts.</p></details>

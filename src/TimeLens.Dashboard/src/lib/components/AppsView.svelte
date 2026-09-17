@@ -94,7 +94,8 @@
   <div class="table" role="table">
     <div class="th" role="row">
       <span role="columnheader">App</span>
-      <span role="columnheader">Time / share</span>
+      <span role="columnheader">Activity share</span>
+      <span role="columnheader">Time</span>
     </div>
     {#each allApps as app, i}
       {@const icon = appIcon(app.name)}
@@ -107,10 +108,11 @@
           {/if}
           {app.name}
         </span>
-        <span class="app-usage" role="cell" style={`--app-tone:${i % 3 === 0 ? 'var(--md-primary)' : i % 3 === 1 ? 'var(--md-secondary)' : 'var(--md-tertiary)'}`}>
-          <span class="usage-copy"><strong>{formatAppTime(app.minutes)}</strong><small>{Math.round(appShare(app.minutes))}%</small></span>
+        <span class="app-share" role="cell" style={`--app-tone:${i % 3 === 0 ? 'var(--md-primary)' : i % 3 === 1 ? 'var(--md-secondary)' : 'var(--md-tertiary)'}`}>
           <span class="app-share-track" aria-label={`${Math.round(appShare(app.minutes))}% of active time`}><i style={`width:${appShare(app.minutes)}%`}></i></span>
+          <small>{Math.round(appShare(app.minutes))}%</small>
         </span>
+        <span class="app-time" role="cell"><strong>{formatAppTime(app.minutes)}</strong></span>
       </div>
     {:else}<p class="empty">No applications match your search.</p>{/each}
   </div>
@@ -212,14 +214,14 @@
   .count { font-size: 12px; color: var(--clr-text-ter); margin-left: auto; }
   .table { display: flex; flex-direction: column; gap: 3px; padding: 5px; background:linear-gradient(180deg,color-mix(in srgb,var(--md-primary) 3%,var(--clr-bg-sec)),var(--clr-bg-sec) 120px); border: 1px solid var(--clr-border); border-radius: var(--shape-md); overflow: hidden; }
   .th {
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 28%); padding: var(--sp-2) var(--sp-3);
+    display: grid; grid-template-columns: minmax(190px, 1fr) minmax(180px, 36%) minmax(76px, 110px); gap:18px; padding: var(--sp-2) var(--sp-3);
     background: transparent;
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--clr-text-sec);
   }
   .th.input-th { grid-template-columns: 2fr 1fr 1fr; }
   .tr {
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 28%);
+    display: grid; grid-template-columns: minmax(190px, 1fr) minmax(180px, 36%) minmax(76px, 110px); gap:18px;
     align-items: center;
     min-height: 48px;
     padding: 8px 12px;
@@ -242,7 +244,7 @@
 		flex-shrink: 0;
 	}
 	.app-letter.hidden { display: none; }
-	.app-usage{min-width:0;display:grid;gap:6px}.usage-copy{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:var(--font-mono)}.usage-copy strong{color:var(--clr-text-pri);font-size:11px;font-weight:600}.usage-copy small{color:var(--clr-text-sec);font-size:9px}.app-share-track{height:6px;overflow:hidden;border:1px solid color-mix(in srgb,var(--app-tone) 15%,var(--clr-border));border-radius:99px;background:color-mix(in srgb,var(--clr-bg-ter) 82%,var(--clr-bg-sec))}.app-share-track i{display:block;height:100%;min-width:2px;border-radius:inherit;background:var(--app-tone);box-shadow:0 0 10px color-mix(in srgb,var(--app-tone) 24%,transparent);transition:width var(--duration-base) var(--ease-out)}
+	.app-share{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) 34px;align-items:center;gap:10px}.app-share small{color:var(--clr-text-sec);font:9px var(--font-mono);text-align:right}.app-share-track{height:6px;overflow:hidden;border-radius:99px;background:color-mix(in srgb,var(--app-tone) 12%,var(--clr-bg-ter))}.app-share-track i{display:block;height:100%;min-width:2px;border-radius:inherit;background:var(--app-tone);transition:width var(--duration-base) var(--ease-out)}.app-time{color:var(--clr-text-pri);font:11px var(--font-mono);text-align:right}.app-time strong{font-weight:600}
   .td-num { font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; }
 
   .section { margin-top: var(--sp-4); }
@@ -263,12 +265,13 @@
     gap: var(--sp-2);
   }
   .section-title i { color: var(--clr-text-sec); font-size: 16px; }
-  .th span:nth-child(2),
-  .th span:nth-child(3) { width: 100px; flex: none; text-align: right; }
+  .th span:nth-child(2) { text-align: left; }
+  .th span:nth-child(3) { text-align: right; }
   .td-num { width: 100px; flex: none; font-family: var(--font-mono); text-align: right; color: var(--clr-text-sec); font-size: 12px; margin-left: var(--sp-3); }
   .input-row>.td-num{width:auto;min-width:0;margin-left:0;overflow:hidden;text-overflow:ellipsis}
   @media(max-width:700px){.input-summary{grid-template-columns:1fr}.input-labels{display:none}.input-row{grid-template-columns:minmax(150px,1fr) 70px 70px}.input-bars{display:none}.td-num{width:auto;margin:0}.input-header{align-items:flex-start}}
-  @media(max-width:560px){.th,.tr{grid-template-columns:minmax(0,1fr) 112px}.usage-copy small{display:none}}
+  @media(max-width:700px){.th,.tr{grid-template-columns:minmax(0,1fr) minmax(100px,32%) 68px;gap:10px}.app-share{grid-template-columns:1fr}.app-share small{display:none}}
+  @media(max-width:520px){.th,.tr{grid-template-columns:minmax(0,1fr) 82px}.th span:nth-child(2),.app-share{display:none}.th span:nth-child(3){grid-column:2}.app-time{grid-column:2}}
 
   .section-hint { font-size: 11px; color: var(--clr-text-ter); font-weight: 400; margin-left: var(--sp-2); }
   .uncat-list { display: flex; flex-direction: column; gap: 8px; margin-top: 0; }

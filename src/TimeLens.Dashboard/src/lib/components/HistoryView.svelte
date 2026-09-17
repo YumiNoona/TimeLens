@@ -404,12 +404,13 @@
   .history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
   .history-overview {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(620px, 960px) minmax(300px, 420px);
+    justify-content: center;
     gap: var(--space-4);
     align-items: stretch;
   }
 
-  .day-details { min-height: 292px; display: flex; flex-direction: column; }
+  .day-details { min-height: 0; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
   .detail-list { display: flex; flex-direction: column; }
   .detail-row {
     display: flex;

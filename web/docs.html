@@ -12,7 +12,7 @@
     <a class="skip" href="#docs-content">Skip to documentation</a>
     <header class="docs-topbar">
       <a class="wordmark" href="/" aria-label="TimeLens home"><span class="mark" aria-hidden="true"><i></i></span><span>TIMELENS</span></a>
-      <span class="docs-label">DOCUMENTATION / VERSION 7.2</span>
+      <span class="docs-label">DOCUMENTATION / VERSION 7.9</span>
       <a class="download" href="/api/download">DOWNLOAD SETUP <i data-lucide="download" aria-hidden="true"></i></a>
     </header>
 
@@ -21,7 +21,7 @@
         <div class="search-wrap"><i data-lucide="search" aria-hidden="true"></i><input id="docs-search" type="search" placeholder="Search the guide" aria-label="Search documentation" /></div>
         <nav>
           <p>GET STARTED</p>
-          <a href="#overview"><i data-lucide="compass"></i>Overview</a><a href="#install"><i data-lucide="package-check"></i>Install TimeLens</a><a href="#extension"><i data-lucide="puzzle"></i>Browser extension</a>
+          <a href="#overview"><i data-lucide="compass"></i>Overview</a><a href="#install"><i data-lucide="package-check"></i>Install TimeLens</a><a href="#extension"><i data-lucide="puzzle"></i>Browser extension</a><a href="#tracking"><i data-lucide="split"></i>How time is counted</a>
           <p>USE TIMELENS</p>
           <a href="#today"><i data-lucide="layout-dashboard"></i>Today</a><a href="#history"><i data-lucide="calendar-range"></i>History</a><a href="#apps"><i data-lucide="chart-no-axes-column"></i>Apps</a><a href="#browser"><i data-lucide="globe-2"></i>Browser</a><a href="#timeline"><i data-lucide="route"></i>Timeline</a>
           <p>CONTROL</p>
@@ -36,12 +36,12 @@
           <p class="kicker">TIMELENS / USER GUIDE</p>
           <h1>Understand the day.<br /><span>Keep it yours.</span></h1>
           <p>Everything you need to install TimeLens, connect your browser, understand every dashboard tab, create useful rules, and build focus boundaries that are difficult to bypass accidentally.</p>
-          <div class="hero-meta"><span>Windows 10 / 11</span><span>Guided setup</span><span>Local SQLite</span><span>No account</span></div>
+          <div class="hero-meta"><span>Version 7.9</span><span>Windows 10 / 11</span><span>Local SQLite</span><span>No account</span></div>
         </section>
 
         <article id="overview" data-search="overview local tracker system tray dashboard getting started">
           <header><span>01</span><div><p>GET STARTED</p><h2>What TimeLens does</h2></div></header>
-          <p class="lead">TimeLens observes foreground applications, separates idle and away spans from active time, recognizes selected audible media, and—when a paired extension is installed—attributes browser time to the focused normal tab.</p>
+          <p class="lead">TimeLens records one exclusive foreground application timeline, separates idle and away spans, and records media playback as a clearly separate concurrent signal. A paired extension attributes foreground browser time to the selected normal tab and supplies duration-based web-media checkpoints.</p>
           <div class="note"><strong>It counts activity, not content.</strong><p>Keyboard and mouse activity is stored as aggregate counts with capture timestamps. TimeLens does not record key values, typed text, messages, passwords, document contents, or screenshots.</p></div>
           <div class="feature-grid">
             <div><b>Tray application</b><p>Runs quietly in the Windows notification area and owns the local tracking service.</p></div>
@@ -64,47 +64,67 @@
 
         <article id="extension" data-search="chrome edge brave firefox zen extension install unpacked developer mode browser tracking web blocking">
           <header><span>03</span><div><p>SETUP</p><h2>Connect your browser</h2></div></header>
-          <p>The desktop app works without an extension, but browser activity will appear only as the browser executable. Install the companion to see domains, visits, audible media, and enforce website blocks.</p>
+          <p>The desktop app works without an extension, but browser activity will appear only as the browser executable. Install the matching 7.9 companion to see domains, visits, duration-based web media, and enforce website blocks.</p>
           <div class="split">
             <section><p class="mini">OFFICIAL ADD-ON</p><h3>Install from Firefox Add-ons</h3><ol><li>Right-click the TimeLens tray icon.</li><li>Choose <em>Install Browser Extension</em>.</li><li>Select <em>Add to Firefox</em> on the official listing.</li><li>Keep the TimeLens desktop app running while you browse.</li></ol><p><a href="https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/" target="_blank" rel="noopener noreferrer">Open the TimeLens Tracker listing →</a></p></section>
-            <section><p class="mini">CONNECTION</p><h3>Pair this browser</h3><ol><li>Launch TimeLens and open Settings → Privacy center.</li><li>Choose <em>Connect</em>; the two-minute pairing code is copied when the browser permits it.</li><li>Open the extension popup, enter the code, and choose <em>Pair</em>.</li><li>Pair each browser profile separately. <em>Disconnect all</em> revokes every saved profile.</li></ol></section>
+            <section><p class="mini">CONNECTION</p><h3>Pair this browser once</h3><ol><li>Launch TimeLens and open Settings → Privacy center.</li><li>Choose <em>Connect</em>; the two-minute pairing code is copied when the browser permits it.</li><li>Open the extension popup, enter the code, and choose <em>Pair</em>.</li><li>Wait for both surfaces to show <em>Connected</em>. The trusted connection is saved across browser, app, and PC restarts.</li></ol></section>
           </div>
+          <dl><div><dt>Pair / Not connected</dt><dd>This browser profile has no valid local credential. Generate and enter a new code.</dd></div><div><dt>Connecting</dt><dd>The browser is verifying the code with the local desktop service. Keep TimeLens running.</dd></div><div><dt>Connected</dt><dd>Tracking is enabled. Restarting Windows should not require another pairing.</dd></div><div><dt>Reconnect / Desktop offline</dt><dd>The saved pairing still exists, but the local app cannot currently be reached. Start or update TimeLens before replacing the pairing.</dd></div></dl>
+          <div class="tip"><strong>Profiles and private windows are separate.</strong><p>Pair each Chrome, Edge, Brave, Firefox, or Zen profile you use. Browsers exclude private/incognito windows unless you explicitly allow the extension there. TimeLens intentionally does not infer a private tab from the browser executable.</p></div>
           <div class="note"><strong>Use the signed add-on when possible.</strong><p>The Firefox listing is the normal install path. Versioned Chrome and Firefox packages are also attached to each GitHub release for review and developer installation.</p></div>
         </article>
 
+        <article id="tracking" data-search="tracking accounting foreground exclusive concurrent media overlap pip spotify youtube idle day 24 hours">
+          <header><span>04</span><div><p>FOUNDATIONS</p><h2>How TimeLens counts time</h2></div></header>
+          <p class="lead">TimeLens keeps the foreground ledger and concurrent-media ledger separate. This prevents an app from receiving time while it is no longer in front, while still preserving music, podcasts, tutorials, and picture-in-picture playback that continue in the background.</p>
+          <div class="feature-grid">
+            <div><b>Foreground app time</b><p>Exactly one eligible application owns each active moment. Alt-tabbing closes the previous segment and starts the next one.</p></div>
+            <div><b>Foreground web time</b><p>When the foreground app is a browser, the paired extension attributes that same interval to the selected normal tab. It is a breakdown, not extra time.</p></div>
+            <div><b>Concurrent media</b><p>Playing Spotify audio or web video is recorded separately and may overlap foreground work. It never increases the primary Active time total.</p></div>
+            <div><b>Idle and away</b><p>After the configured input threshold, foreground activity stops accumulating until activity resumes. Proven media progress can continue on its separate ledger.</p></div>
+          </div>
+          <div class="example"><p class="mini">ALT-TAB EXAMPLE</p><p>Use VS Code for 2 hours, watch YouTube in the foreground for 30 minutes, then code for 1 more hour. Apps shows VS Code <strong>3h</strong>, the browser <strong>30m</strong>, and primary Active time <strong>3h 30m</strong>—not 3h 30m for VS Code.</p></div>
+          <div class="example"><p class="mini">BACKGROUND MEDIA EXAMPLE</p><p>Code for 2 hours while Spotify plays, or keep a tutorial in picture-in-picture while another app is foreground. The foreground app receives up to 2 hours of Active time; Spotify or the tutorial receives up to 2 hours of concurrent playback. These values describe overlapping facts and must not be added together as a workday total.</p></div>
+          <div class="note"><strong>A day still has a hard boundary.</strong><p>Primary active, app, category, timeline, and foreground-site summaries use the exclusive ledger and cannot legitimately exceed the elapsed local day. Concurrent playback is displayed separately because several real activities can happen during the same wall-clock minute.</p></div>
+        </article>
+
         <article id="today" data-search="today active time focus score keystrokes clicks idle top apps categories cards drag layout">
-          <header><span>04</span><div><p>DASHBOARD</p><h2>Today</h2></div></header>
-          <p>The Today tab is a live summary of the current date. Active time excludes idle and away periods, Focus score estimates how concentrated the day was, and input totals show counts—not typed content.</p>
-          <dl><div><dt>Active time</dt><dd>Foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>A compact signal based on switching patterns and category balance; use it as context, not a grade.</dd></div><div><dt>Top apps</dt><dd>Applications ranked by tracked active duration.</dd></div><div><dt>Categories</dt><dd>Time grouped using built-in and custom Rules.</dd></div></dl>
+          <header><span>05</span><div><p>DASHBOARD</p><h2>Today</h2></div></header>
+          <p>The Today tab is a live summary of the current date. Active time excludes idle and away periods. Input totals are counts—not typed content. The compact GitHub-style heatmap sits beside a Focus breakdown card, while category and app bars automatically follow the selected theme.</p>
+          <dl><div><dt>Active time</dt><dd>Exclusive foreground activity after idle time is removed.</dd></div><div><dt>Focus score</dt><dd>The rounded percentage of scored active time in Development, Work, Documents, Communication, and Design. “Other” is removed from the denominator; if all scored time is Other the neutral value is 50, and a day with no active time is 0.</dd></div><div><dt>Focus breakdown</dt><dd>Shows productive, neutral, and distracting portions behind the score so the number is explainable.</dd></div><div><dt>Categories</dt><dd>The larger donut and ranked bars group time using built-in and custom Rules without changing the card footprint.</dd></div></dl>
+          <div class="note"><strong>The focus score is category-based.</strong><p>It does not inspect document content, judge the quality of work, or reward rapid app switching. Classification rules directly affect the score, so fix an incorrect category before interpreting it.</p></div>
           <div class="tip"><strong>Arrange the dashboard.</strong><p>Hover a movable card and drag its grip. TimeLens remembers card order separately for each page. Use <kbd>Alt</kbd> + an arrow key while the grip is focused for keyboard reordering.</p></div>
         </article>
 
         <article id="history" data-search="history heatmap calendar date previous daily summary compare apps categories timeline">
-          <header><span>05</span><div><p>DASHBOARD</p><h2>History</h2></div></header>
-          <p>History answers what happened on a specific day and how activity changes over time. Select a heatmap square, use the date field, or move through days with the arrow controls.</p>
-          <ul class="check-list"><li>The activity heatmap covers the range selected in Settings.</li><li>Daily cards compare active time, focus, input, and idle time.</li><li>At a glance highlights the leading app, category, browser visits, and session balance.</li><li>Lower cards contain the selected day’s apps, categories, browser data, and expandable timeline.</li></ul>
+          <header><span>06</span><div><p>DASHBOARD</p><h2>History</h2></div></header>
+          <p>History answers what happened on a specific day and how activity changes over time. Select a heatmap square, use the date field, or move through days with the arrow controls. The selected date is encoded in the URL, so refreshing or using browser Back and Forward preserves the page and date.</p>
+          <ul class="check-list"><li>The compact activity heatmap offers 3-month, 6-month, and 1-year ranges without a horizontal page scrollbar.</li><li>Month labels, weekday guides, theme-aware intensity levels, and hover details use the familiar contribution-calendar pattern.</li><li>Daily cards compare active time, focus, input, and idle time.</li><li>At a glance highlights the leading app, category, browser visits, and session balance.</li><li>Lower cards contain the selected day’s apps, categories, browser data, and expandable timeline.</li></ul>
         </article>
 
         <article id="apps" data-search="apps executable active time input keystrokes clicks assign category uncategorized">
-          <header><span>06</span><div><p>DASHBOARD</p><h2>Apps</h2></div></header>
-          <p>Apps provides an application-first view: time, keyboard counts, and mouse counts for each executable. Use the Uncategorized section to assign an app without leaving the page; TimeLens creates a categorization rule for future events.</p>
+          <header><span>07</span><div><p>DASHBOARD</p><h2>Apps</h2></div></header>
+          <p>Apps provides an application-first view: time, keyboard counts, and mouse counts for each executable. Each row includes a theme-aware share bar so large and small contributors remain visible without turning the list into a wall of black. Use the Uncategorized section to assign an app without leaving the page; TimeLens creates a categorization rule for future events.</p>
           <div class="note"><strong>Names come from Windows.</strong><p>Entries such as <code>ApplicationFrameHost.exe</code> or helper processes may be normal Windows hosts. Categorize the executable you actually want grouped; avoid broad rules that could catch unrelated programs.</p></div>
         </article>
 
-        <article id="browser" data-search="browser domains visits audible media extension sites hourly browsing">
-          <header><span>07</span><div><p>DASHBOARD</p><h2>Browser</h2></div></header>
-          <p>Browser is distinct from Apps: it uses paired extension events for the selected date. Overview ranks domains and shows hourly use; Visits lists each focused interval with start time, duration, browser, title, URL and known input counts; Pages aggregates matching page records. A browser executable can have active time even when no domain event is available.</p>
-          <div class="tip"><strong>No sites listed?</strong><p>Check that the extension is installed in the browser you are actively using and that the tray app was running when the tab changed.</p></div>
+        <article id="browser" data-search="browser domains visits audible media playback youtube pip extension sites hourly browsing coverage attribution warning">
+          <header><span>08</span><div><p>DASHBOARD</p><h2>Browser and web media</h2></div></header>
+          <p>Browser is distinct from Apps: it uses paired extension events for the selected date. Overview ranks domains and shows hourly foreground use; Visits lists each focused interval with start time, duration, browser, title, URL, and known input counts; Pages aggregates matching page records. A browser executable can have active time even when no domain event is available.</p>
+          <dl><div><dt>Active browsing</dt><dd>Time when a browser was the foreground Windows app and the extension identified its selected normal tab.</dd></div><div><dt>Media playback</dt><dd>Duration proven by media-element position changes or a lower-confidence audible-tab fallback. It may continue in a background tab or picture-in-picture.</dd></div><div><dt>Visits</dt><dd>Focused tab intervals. Many short visits do not imply equal time; duration is the useful measure.</dd></div><div><dt>Pages</dt><dd>Normalized page-level totals, subject to the selected page-title and URL privacy settings.</dd></div></dl>
+          <div class="note"><strong>Why three hours of YouTube may not say three hours of Active browsing.</strong><p>If YouTube played behind VS Code or in picture-in-picture, VS Code correctly owns foreground time and YouTube belongs under Media playback. In 7.9 the extension sends media position, duration, and playback-rate checkpoints; TimeLens accepts real progress, rejects forward seeks as watched time, and can reconcile a suspended gap for up to 30 minutes when the later media position proves continuous playback.</p></div>
+          <div class="tip"><strong>About the attribution warning</strong><p>The percentage compares attributable site intervals only with foreground-browser time during periods when the extension was actually observed. It appears only for today after at least 30 minutes of browser use, at least 15 minutes are unexplained, and coverage is below 70%. Internal browser pages, private windows, a missing profile extension, sleep, or the interval before reconnection can still be unmatched. Granting permissions cannot backfill time that was never reported.</p></div>
+          <div class="warning"><strong>Media tracking is conservative by design.</strong><p>Paused video, buffering, seeking, muted tabs without advancing media, browser shutdown, and restricted pages are not guessed as watched time. Update both the desktop app and extension before judging a new session; old gaps remain historical.</p></div>
         </article>
 
         <article id="timeline" data-search="timeline grouped flat categories expand apps segments switch noise threshold titles">
-          <header><span>08</span><div><p>DASHBOARD</p><h2>Timeline</h2></div></header>
+          <header><span>09</span><div><p>DASHBOARD</p><h2>Timeline</h2></div></header>
           <p>Timeline follows activity chronologically. Grouped mode combines the day by category, then app, while preserving expandable detail. Flat mode shows individual normalized segments.</p>
           <dl><div><dt>Category chips</dt><dd>Filter the timeline without changing stored data.</dd></div><div><dt>Grouped rows</dt><dd>Select a category to expand its apps, then expand an app for individual segments.</dd></div><div><dt>Quick-switch filter</dt><dd>Settings can hide segments shorter than 30 seconds, 1, 2, or 5 minutes.</dd></div><div><dt>Window titles</dt><dd>Optional detail for expanded rows; disabled by default for a cleaner, more private view.</dd></div></dl>
         </article>
 
         <article id="block" data-search="block focus mode app domain duration notify hide kill strict scan enforcement">
-          <header><span>09</span><div><p>CONTROL</p><h2>Block & Focus Mode</h2></div></header>
+          <header><span>10</span><div><p>CONTROL</p><h2>Block & Focus Mode</h2></div></header>
           <p>Add an exact executable name such as <code>discord.exe</code> or a domain such as <code>youtube.com</code>, choose how long it should remain blocked, and enable Focus Mode to enforce the list.</p>
           <div class="mode-grid">
             <div><span>01</span><i data-lucide="bell-ring" aria-hidden="true"></i><b>Notify</b><p>Shows the saved reminder in your selected screen corner while the website remains usable.</p></div>
@@ -117,14 +137,14 @@
         </article>
 
         <article id="password" data-search="password protection shared pc disable remove strict focus pbkdf2 recovery">
-          <header><span>10</span><div><p>CONTROL</p><h2>Password protection</h2></div></header>
+          <header><span>11</span><div><p>CONTROL</p><h2>Password protection</h2></div></header>
           <p>Password protection is optional. Choose whether it applies to Strict targets only or every focus target, and whether the tray Exit command needs a password.</p>
           <ul class="check-list"><li>Open Settings → Block password and create a password of at least six characters.</li><li>With Strict targets only selected, removing or weakening a Strict app or website requires the password. Choose All focus targets to cover every entry.</li><li>The password is converted to a salted PBKDF2 hash and stored locally; the original password is not retained.</li><li>Unlock attempts are throttled to slow casual guessing. Changing the protection scope or disabling protected exit also asks for the password.</li><li>Protection prevents casual dashboard and tray bypasses. Windows Task Manager can still end a normal user process; separate Windows accounts and a locked screen are required for stronger PC security.</li></ul>
           <div class="warning"><strong>Keep the password somewhere safe.</strong><p>TimeLens cannot reveal a forgotten password. Removing local settings can reset protection, but also changes your local configuration.</p></div>
         </article>
 
         <article id="rules" data-search="rules categories executable domain exact substring prefix regex priority built in custom">
-          <header><span>11</span><div><p>CONTROL</p><h2>Rules & categories</h2></div></header>
+          <header><span>12</span><div><p>CONTROL</p><h2>Rules & categories</h2></div></header>
           <p>Rules determine how apps and domains are labeled. Built-in rules provide sensible defaults; custom rules override or extend them.</p>
           <dl><div><dt>Target</dt><dd>Choose executable for desktop apps or domain for websites.</dd></div><div><dt>Match type</dt><dd>Use the narrowest available match—exact before broader substring or pattern matching.</dd></div><div><dt>Category</dt><dd>Select an existing category or create a meaningful custom label.</dd></div><div><dt>Priority</dt><dd>When multiple custom rules match, their order determines which classification wins.</dd></div></dl>
           <div class="example"><p class="mini">EXAMPLE</p><code>Target: executable  ·  Pattern: Code.exe  ·  Match: exact  ·  Category: Development</code></div>
@@ -132,9 +152,9 @@
         </article>
 
         <article id="settings" data-search="settings theme appearance density motion tracking idle audio input default tab time format refresh heatmap goals retention export startup">
-          <header><span>12</span><div><p>CONTROL</p><h2>Settings reference</h2></div></header>
+          <header><span>13</span><div><p>CONTROL</p><h2>Settings reference</h2></div></header>
           <div class="settings-list">
-            <section><h3>Appearance</h3><p>Choose the accent theme, comfortable or compact density, motion preference, and the dashboard tab opened by default.</p></section>
+            <section><h3>Appearance</h3><p>Choose the accent theme, comfortable or compact density, motion preference, and the dashboard tab opened by default. Charts, progress bars, heatmap intensity, and timeline categories derive accessible colors from the active theme.</p></section>
             <section><h3>Tracking</h3><p>Toggle browser, input, and audio signals and set the idle threshold. Disabling a signal stops future collection; it does not delete existing rows.</p></section>
             <section><h3>Timeline & history</h3><p>Choose grouped or flat default timeline, show or hide window titles, filter quick switches, set the heatmap range, time format, and refresh interval.</p></section>
             <section><h3>Focus & reminders</h3><p>Configure break reminders and Focus Mode from one place. Block password options choose Strict-only or all-target protection and control protected tray exit.</p></section>
@@ -145,17 +165,20 @@
         </article>
 
         <article id="privacy" data-search="privacy local sqlite database storage retention export keyboard content telemetry cloud">
-          <header><span>13</span><div><p>REFERENCE</p><h2>Privacy & local data</h2></div></header>
+          <header><span>14</span><div><p>REFERENCE</p><h2>Privacy & local data</h2></div></header>
           <p>TimeLens has no account system, remote profile, analytics SDK, advertising identifier, or cloud synchronization. The dashboard listens on the loopback address rather than the public network.</p>
           <div class="path-card"><span>DATABASE</span><code>%LOCALAPPDATA%\TimeLens\activity.db</code></div>
-          <ul class="check-list"><li>Use Settings → Data & storage to control automatic retention.</li><li>CSV and JSON exports create portable copies; treat them as personal data.</li><li>Browser page-title storage can be disabled in Privacy center; timeline title visibility is a separate display setting.</li><li>Back up the TimeLens folder before reinstalling Windows if you want to retain history.</li></ul>
+          <ul class="check-list"><li>Use Settings → Data & storage to control automatic retention.</li><li>CSV and JSON exports create portable copies; treat them as personal data.</li><li>Browser page-title storage can be disabled in Privacy center; timeline title visibility is a separate display setting.</li><li>The extension sends aggregate counts and media timing metadata, never typed characters, page contents, screenshots, audio, or video.</li><li>Back up the TimeLens folder before reinstalling Windows if you want to retain history.</li></ul>
         </article>
 
         <article id="troubleshooting" data-search="troubleshooting dashboard not open extension disconnected blocks not working tray port antivirus reset">
-          <header><span>14</span><div><p>REFERENCE</p><h2>Troubleshooting</h2></div></header>
+          <header><span>15</span><div><p>REFERENCE</p><h2>Troubleshooting</h2></div></header>
           <div class="faq">
             <details><summary>The dashboard does not open</summary><p>Confirm the tray icon is running, then open <code>http://127.0.0.1:47821/</code>. The address intentionally remains local to your PC. If another TimeLens instance exists, close all copies and launch the newest EXE once.</p></details>
-            <details><summary>The extension says disconnected</summary><p>Keep the tray app running, confirm that <code>http://127.0.0.1:47821</code> opens, then generate a fresh code in Settings → Privacy center and pair from the extension popup. Codes expire after two minutes.</p></details>
+            <details><summary>The extension and dashboard show different connection states</summary><p>Install desktop and companion version 7.9, keep the tray app running, then press Connect once and wait for both surfaces to refresh. A saved profile normally survives PC restart. Generate a new code only when the extension says Pair/Not connected, the credential was revoked, the extension was reinstalled, or this is a different browser profile.</p></details>
+            <details><summary>YouTube or another web player shows much less time than I watched</summary><p>First compare Media playback—not only Active browsing. Background and picture-in-picture video is concurrent media. Confirm the popup says Connected, the desktop and extension both show 7.9, and test with a newly played video; an update cannot reconstruct old missing sessions. Restricted browser pages and private windows need separate permission or remain intentionally excluded. Pauses, seeks, buffering, and non-advancing media are not counted.</p></details>
+            <details><summary>I granted every permission but still see an attribution warning</summary><p>Permissions allow future events; they do not repair time before the extension connected. The diagnostic uses only the period where the extension was observed and requires substantial missing time before warning. Confirm the extension is installed and paired in the exact profile you are using. Internal browser pages and intentionally excluded private windows may remain unattributed.</p></details>
+            <details><summary>Refreshing returns me to another page</summary><p>Version 7.9 keeps the active dashboard view and relevant selected date in the URL. If an older tab still resets, close it, open the dashboard from the 7.9 tray app, and refresh once.</p></details>
             <details><summary>Website blocking does not work</summary><p>Website enforcement requires the extension. Confirm Focus Mode is enabled, the entry is a domain rather than a full URL, and the current browser has the TimeLens extension loaded.</p></details>
             <details><summary>An app is categorized incorrectly</summary><p>Open Rules, look for a custom rule that is too broad, and replace it with an exact executable or domain match.</p></details>
             <details><summary>Cards are in the wrong order</summary><p>Open Settings → Card layout, choose the affected page, and reset it. You can also reset all saved layouts.</p></details>
@@ -163,9 +186,9 @@
         </article>
 
         <article id="update" data-search="update upgrade uninstall remove backup data exe version">
-          <header><span>15</span><div><p>REFERENCE</p><h2>Update or remove TimeLens</h2></div></header>
+          <header><span>16</span><div><p>REFERENCE</p><h2>Update or remove TimeLens</h2></div></header>
           <div class="split">
-            <section><p class="mini">UPDATE</p><h3>Update from Settings</h3><p>Settings shows both your installed version and the available version. Choose Update now and TimeLens verifies the download, replaces the EXE, restarts, opens a fresh dashboard, and displays the release notes. Your local database stays in place. If Windows blocks replacement, download and run the current Setup installer once.</p></section>
+            <section><p class="mini">UPDATE</p><h3>Update from Settings</h3><p>Settings shows both your installed version and the available version. Choose Update now and TimeLens verifies the download, replaces the EXE, restarts, opens a fresh dashboard, and displays the centered release notes once. Your local database stays in place. If Windows blocks replacement, download and run the current Setup installer once. Update the browser companion separately when its store or release package changes.</p></section>
             <section><p class="mini">REMOVE</p><h3>Use Windows uninstall</h3><p>Exit TimeLens, then remove it from Windows Settings → Apps → Installed apps. Delete <code>%LOCALAPPDATA%\TimeLens</code> separately only if you also want to permanently erase history and settings.</p></section>
           </div>
         </article>

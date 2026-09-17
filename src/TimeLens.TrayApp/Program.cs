@@ -640,7 +640,7 @@ internal static class Program
 
         if (!smokeTest && (!firstRunDone || updatedRequested))
         {
-            var assemblyVersion = typeof(Program).Assembly.GetName().Version ?? new Version(7, 8, 0);
+            var assemblyVersion = typeof(Program).Assembly.GetName().Version ?? new Version(7, 9, 0);
             var currentVersion = $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(0, assemblyVersion.Build)}";
             settingsSvc.Save("release_notice_pending", "true");
             settingsSvc.Save("release_notice_version", string.IsNullOrWhiteSpace(updatedTo) ? currentVersion : updatedTo);

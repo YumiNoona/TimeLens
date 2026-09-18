@@ -15,9 +15,9 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 8.1.0
+## Version 8.2.0
 
-Version 8.1 removes the remaining unused horizontal space around contribution cards. Today and History anchor the unchanged 960-pixel contribution heatmap on the left and let Day snapshot or At a glance fill the remaining right-hand width. The browser companions remain at 8.0.0 because their tracking code and local protocol did not change.
+Version 8.2 makes browser reports use the same exclusive, idle-free foreground ledger as the rest of TimeLens, preventing stale browser sessions from claiming another app's time. Media-element checkpoints now exclude buffering, non-advancing playback, and seeks while retaining position-proven playback. The browser companions remain at 8.0.0 because their tracking code and local protocol did not change.
 
 - Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
 - Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
@@ -119,7 +119,7 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
 
-The desktop, dashboard, website, and installer are released as `v8.1.0`; the unchanged Chrome and Firefox companions remain version `8.0.0`. Vercel resolves the greatest complete stable GitHub release for every download, while installed apps discover the same separately checksummed desktop executable through the update feed. Firefox installations from Mozilla Add-ons update in place under the stable `timelens@timelens.app` ID.
+The desktop, dashboard, website, and installer are released as `v8.2.0`; the unchanged Chrome and Firefox companions remain version `8.0.0`. Vercel resolves the greatest complete stable GitHub release for every download, while installed apps discover the same separately checksummed desktop executable through the update feed. Firefox installations from Mozilla Add-ons update in place under the stable `timelens@timelens.app` ID.
 
 The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
@@ -158,4 +158,4 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
 
-TimeLens 8.1.0 uses the full Today and History content width without scaling the heatmap. See [8.1.0 release notes](docs/releases/8.1.0.md).
+TimeLens 8.2.0 unifies foreground browser attribution and tightens position-proven media timing. See [8.2.0 release notes](docs/releases/8.2.0.md).

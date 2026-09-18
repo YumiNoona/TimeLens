@@ -8,7 +8,6 @@ public static class BrowserAnalyticsService
 {
     public sealed record BrowserVisitDetail(string Domain, string Url, string Title, string Browser,
         string StartedAt, string EndedAt, double ActiveSeconds);
-    private sealed record Span(DateTime Start, DateTime End, string App);
     private sealed record Visit(string Domain, string Url, string Title, string Browser, DateTime Start, DateTime End);
     private sealed class Page(string domain, string url, string browser)
     {
@@ -23,26 +22,10 @@ public static class BrowserAnalyticsService
 
     public static async Task<BrowserEntryDto[]> ReadAsync(SqliteConnection conn, DateTime dayStart, DateTime dayEnd, Action<DateTime, DateTime>? recordInterval = null)
     {
-        var active = new List<Span>();
-        var idle = new List<Span>();
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = """
-                SELECT start_time,COALESCE(end_time,start_time),exe_name FROM app_events
-                WHERE session_state='active' AND julianday(start_time)<julianday($end)
-                  AND julianday(COALESCE(end_time,start_time))>julianday($start)
-                """;
-            cmd.Parameters.AddWithValue("$start", dayStart.ToString("o"));
-            cmd.Parameters.AddWithValue("$end", dayEnd.ToString("o"));
-            using (var r = await cmd.ExecuteReaderAsync())
-                while (await r.ReadAsync()) active.Add(new(Parse(r.GetString(0)), Parse(r.GetString(1)), r.GetString(2)));
-            cmd.CommandText = """
-                SELECT start_time,COALESCE(end_time,start_time) FROM idle_spans
-                WHERE julianday(start_time)<julianday($end) AND julianday(COALESCE(end_time,start_time))>julianday($start)
-                """;
-            using var ir = await cmd.ExecuteReaderAsync();
-            while (await ir.ReadAsync()) idle.Add(new(Parse(ir.GetString(0)), Parse(ir.GetString(1)), ""));
-        }
+        // Use the same repaired, idle-free foreground ledger as Apps, Timeline,
+        // categories and exports. A stale browser row must never keep claiming
+        // website time after a newer foreground application supersedes it.
+        var active = await ActivityIntervalService.ReadExclusiveAsync(conn, dayStart, dayEnd);
         var visits = new List<Visit>();
         using (var cmd = conn.CreateCommand())
         {
@@ -73,8 +56,8 @@ public static class BrowserAnalyticsService
             // supersedes the previous one, so those rows cannot multiply machine time.
             if (i + 1 < visits.Count && visits[i + 1].Start < end) end = visits[i + 1].Start;
             if (end <= start) continue;
-            var eligible = active.Where(a => BrowserTrackingService.MatchesForeground(v.Browser, a.App))
-                .Select(a => (Start: a.Start > start ? a.Start : start, End: a.End < end ? a.End : end))
+            var eligible = active.Where(a => BrowserTrackingService.MatchesForeground(v.Browser, a.ExeName))
+                .Select(a => (Start: a.StartUtc > start ? a.StartUtc : start, End: a.EndUtc < end ? a.EndUtc : end))
                 .Where(a => a.End > a.Start).OrderBy(a => a.Start).ToArray();
             double seconds = 0;
             var cursor = start;
@@ -83,14 +66,8 @@ public static class BrowserAnalyticsService
                 var from = span.Start > cursor ? span.Start : cursor;
                 var to = span.End;
                 if (to <= from) continue;
-                var idleCursor = from;
-                foreach (var away in idle.Where(a => a.End > from && a.Start < to).OrderBy(a => a.Start))
-                {
-                    var awayStart = away.Start > idleCursor ? away.Start : idleCursor;
-                    if (awayStart > idleCursor) { seconds += (awayStart - idleCursor).TotalSeconds; recordInterval?.Invoke(idleCursor, awayStart); }
-                    if (away.End > idleCursor) idleCursor = away.End < to ? away.End : to;
-                }
-                if (to > idleCursor) { seconds += (to - idleCursor).TotalSeconds; recordInterval?.Invoke(idleCursor, to); }
+                seconds += (to - from).TotalSeconds;
+                recordInterval?.Invoke(from, to);
                 cursor = to;
             }
             if (seconds <= 0) continue;
@@ -128,26 +105,7 @@ public static class BrowserAnalyticsService
 
     public static async Task<BrowserVisitDetail[]> ReadVisitsAsync(SqliteConnection conn, DateTime dayStart, DateTime dayEnd)
     {
-        var active = new List<Span>();
-        var idle = new List<Span>();
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = """
-                SELECT start_time,COALESCE(end_time,start_time),exe_name FROM app_events
-                WHERE session_state='active' AND julianday(start_time)<julianday($end)
-                  AND julianday(COALESCE(end_time,start_time))>julianday($start)
-                """;
-            cmd.Parameters.AddWithValue("$start", dayStart.ToString("o"));
-            cmd.Parameters.AddWithValue("$end", dayEnd.ToString("o"));
-            using (var reader = await cmd.ExecuteReaderAsync())
-                while (await reader.ReadAsync()) active.Add(new(Parse(reader.GetString(0)), Parse(reader.GetString(1)), reader.GetString(2)));
-            cmd.CommandText = """
-                SELECT start_time,COALESCE(end_time,start_time) FROM idle_spans
-                WHERE julianday(start_time)<julianday($end) AND julianday(COALESCE(end_time,start_time))>julianday($start)
-                """;
-            using var idleReader = await cmd.ExecuteReaderAsync();
-            while (await idleReader.ReadAsync()) idle.Add(new(Parse(idleReader.GetString(0)), Parse(idleReader.GetString(1)), ""));
-        }
+        var active = await ActivityIntervalService.ReadExclusiveAsync(conn, dayStart, dayEnd);
         var visits = new List<Visit>();
         using (var cmd = conn.CreateCommand())
         {
@@ -172,20 +130,12 @@ public static class BrowserAnalyticsService
             if (end <= start) continue;
             double seconds = 0;
             var cursor = start;
-            foreach (var foreground in active.Where(a => BrowserTrackingService.MatchesForeground(visit.Browser, a.App)).OrderBy(a => a.Start))
+            foreach (var foreground in active.Where(a => BrowserTrackingService.MatchesForeground(visit.Browser, a.ExeName)).OrderBy(a => a.StartUtc))
             {
-                var from = foreground.Start > cursor ? foreground.Start : cursor;
-                var to = foreground.End < end ? foreground.End : end;
+                var from = foreground.StartUtc > cursor ? foreground.StartUtc : cursor;
+                var to = foreground.EndUtc < end ? foreground.EndUtc : end;
                 if (to <= from) continue;
-                var idleCursor = from;
-                foreach (var away in idle.Where(a => a.End > from && a.Start < to).OrderBy(a => a.Start))
-                {
-                    var awayStart = away.Start > idleCursor ? away.Start : idleCursor;
-                    var awayEnd = away.End < to ? away.End : to;
-                    if (awayStart > idleCursor) seconds += (awayStart - idleCursor).TotalSeconds;
-                    if (awayEnd > idleCursor) idleCursor = awayEnd;
-                }
-                if (to > idleCursor) seconds += (to - idleCursor).TotalSeconds;
+                seconds += (to - from).TotalSeconds;
                 cursor = to;
             }
             if (seconds > 0) result.Add(new(visit.Domain, visit.Url, visit.Title, visit.Browser,

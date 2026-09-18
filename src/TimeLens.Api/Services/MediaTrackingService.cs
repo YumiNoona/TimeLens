@@ -29,25 +29,25 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
         if (!Validate(state, now, out var uri)) return false;
         var key = $"{state.Browser}:{state.TabId}:{state.MediaId}";
 
+        var normalized = state with
+        {
+            Url = PrivacyUrl(uri),
+            Title = LiveStatusStore.Settings.BrowserStoreTitles ? state.Title : string.Empty,
+            Kind = state.Kind is "audio" or "video" ? state.Kind : "unknown",
+            Visibility = state.Visibility is "foreground" or "background" or "pip" ? state.Visibility : "background",
+            Confidence = state.Confidence is "media-element" or "audible-fallback" ? state.Confidence : "media-element",
+            PositionSeconds = ValidPosition(state.PositionSeconds),
+            DurationSeconds = ValidPosition(state.DurationSeconds),
+            PlaybackRate = state.PlaybackRate is >= .1 and <= 16 ? state.PlaybackRate : 1
+        };
+
         lock (_gate)
         {
             if (!state.Playing || !LiveStatusStore.Settings.TrackAudio || !LiveStatusStore.Settings.TrackBrowser)
             {
-                Close(key, now);
+                Close(key, now, normalized);
                 return true;
             }
-
-            var normalized = state with
-            {
-                Url = PrivacyUrl(uri),
-                Title = LiveStatusStore.Settings.BrowserStoreTitles ? state.Title : string.Empty,
-                Kind = state.Kind is "audio" or "video" ? state.Kind : "unknown",
-                Visibility = state.Visibility is "foreground" or "background" or "pip" ? state.Visibility : "background",
-                Confidence = state.Confidence is "media-element" or "audible-fallback" ? state.Confidence : "media-element",
-                PositionSeconds = ValidPosition(state.PositionSeconds),
-                DurationSeconds = ValidPosition(state.DurationSeconds),
-                PlaybackRate = state.PlaybackRate is >= .1 and <= 16 ? state.PlaybackRate : 1
-            };
 
             if (_open.TryGetValue(key, out var current))
             {
@@ -58,21 +58,36 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
                 var sameIdentity = sameSource && SameIdentity(current.State, normalized);
                 if (continuous && sameIdentity)
                 {
-                    SaveEnd(current.Id, now);
-                    _open[key] = current with { State = normalized, LastSeenUtc = now };
-                    return true;
+                    // Media-element checkpoints prove playback with position
+                    // progress. This prevents a buffering player or a seek from
+                    // receiving the entire heartbeat interval as watched time.
+                    if (!HasPositionPair(current.State, normalized) || gap <= TimeSpan.FromSeconds(2))
+                    {
+                        SaveEnd(current.Id, now);
+                        _open[key] = current with { State = normalized, LastSeenUtc = now };
+                        return true;
+                    }
+                    if (TryRecoverPlayback(current, normalized, gap, strict: true, out var measuredEnd))
+                    {
+                        SaveEnd(current.Id, measuredEnd);
+                        if (now - measuredEnd <= TimeSpan.FromSeconds(2))
+                        {
+                            _open[key] = current with { State = normalized, LastSeenUtc = now };
+                            return true;
+                        }
+                    }
+                    _open.Remove(key);
                 }
-
-                if (continuous)
+                else if (continuous)
                 {
                     SaveEnd(current.Id, now);
                 }
-                else if (sameSource && gap <= RecoveryWindow && TryRecoverPlayback(current, normalized, gap, out var recoveredEnd))
+                else if (sameSource && gap <= RecoveryWindow && TryRecoverPlayback(current, normalized, gap, strict: false, out var recoveredEnd))
                 {
                     SaveEnd(current.Id, recoveredEnd);
                     // If position proves playback covered virtually the whole gap and
                     // the reporting state is unchanged, retain one continuous interval.
-                    if (sameIdentity && now - recoveredEnd <= TimeSpan.FromSeconds(20))
+                    if (sameIdentity && now - recoveredEnd <= TimeSpan.FromSeconds(2))
                     {
                         _open[key] = current with { State = normalized, LastSeenUtc = now };
                         return true;
@@ -128,10 +143,17 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
         lock (_gate) _open.Clear();
     }
 
-    private void Close(string key, DateTime now)
+    private void Close(string key, DateTime now, MediaStateDto currentState)
     {
         if (!_open.Remove(key, out var current)) return;
-        if (now >= current.LastSeenUtc && now - current.LastSeenUtc <= Lease) SaveEnd(current.Id, now);
+        var gap = now - current.LastSeenUtc;
+        if (gap < TimeSpan.Zero || gap > Lease) return;
+        if (HasPositionPair(current.State, currentState) && gap > TimeSpan.FromSeconds(2))
+        {
+            if (TryRecoverPlayback(current, currentState, gap, strict: true, out var measuredEnd)) SaveEnd(current.Id, measuredEnd);
+            return;
+        }
+        SaveEnd(current.Id, now);
     }
 
     private static bool SameIdentity(MediaStateDto left, MediaStateDto right) =>
@@ -144,7 +166,11 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
         left.Url == right.Url && left.Browser == right.Browser && left.TabId == right.TabId &&
         left.Kind == right.Kind && left.Confidence == right.Confidence;
 
-    private static bool TryRecoverPlayback(OpenMedia previous, MediaStateDto current, TimeSpan gap, out DateTime recoveredEnd)
+    private static bool HasPositionPair(MediaStateDto previous, MediaStateDto current) =>
+        previous.Confidence == "media-element" && current.Confidence == "media-element" &&
+        previous.PositionSeconds.HasValue && current.PositionSeconds.HasValue;
+
+    private static bool TryRecoverPlayback(OpenMedia previous, MediaStateDto current, TimeSpan gap, bool strict, out DateTime recoveredEnd)
     {
         recoveredEnd = previous.LastSeenUtc;
         if (previous.State.PositionSeconds is not { } before || current.PositionSeconds is not { } after || after <= before)
@@ -155,7 +181,7 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
         var expected = gap.TotalSeconds * rate;
         // A forward seek can resemble playback progress. Reject deltas that could not
         // have accrued naturally during the missing wall-clock interval.
-        var tolerance = Math.Max(20, expected * .15);
+        var tolerance = Math.Max(strict ? 3 : 20, expected * .15);
         if (progress > expected + tolerance) return false;
 
         var recoveredSeconds = Math.Min(gap.TotalSeconds, progress / rate);

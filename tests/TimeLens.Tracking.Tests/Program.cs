@@ -190,6 +190,25 @@ try
     Check(seekSummary.WebMedia.PlaybackSeconds == 0,
         "A forward seek must not be mistaken for unattended playback");
 
+    var checkpointMediaPath = Path.Combine(root, "checkpoint-media.db");
+    DatabaseInitializer.Initialize(checkpointMediaPath);
+    var checkpointClock = new FakeClock(ledgerStart.AddHours(16));
+    var checkpointTracker = new MediaTrackingService(checkpointMediaPath, checkpointClock);
+    var checkpointVideo = media with { MediaId = "youtube-checkpoints", PositionSeconds = 100,
+        DurationSeconds = 14400, ObservedAt = checkpointClock.GetUtcNow() };
+    checkpointTracker.Observe(checkpointVideo);
+    checkpointClock.Now = checkpointClock.Now.AddSeconds(15);
+    checkpointTracker.Observe(checkpointVideo with { PositionSeconds = 115, ObservedAt = checkpointClock.GetUtcNow() });
+    checkpointClock.Now = checkpointClock.Now.AddSeconds(15);
+    checkpointTracker.Observe(checkpointVideo with { PositionSeconds = 115, ObservedAt = checkpointClock.GetUtcNow() });
+    checkpointClock.Now = checkpointClock.Now.AddSeconds(15);
+    checkpointTracker.Observe(checkpointVideo with { PositionSeconds = 130, ObservedAt = checkpointClock.GetUtcNow() });
+    checkpointClock.Now = checkpointClock.Now.AddSeconds(15);
+    checkpointTracker.Observe(checkpointVideo with { PositionSeconds = 145, Playing = false, ObservedAt = checkpointClock.GetUtcNow() });
+    var checkpointSummary = await new AnalyticsService(checkpointMediaPath).GetDashboardAsync(checkpointClock.Now.ToLocalTime().Date);
+    Check(Math.Abs(checkpointSummary.WebMedia.PlaybackSeconds - 45) <= 1,
+        "Media-position checkpoints must omit buffering while retaining proven playback and the final pause interval");
+
     long inputAge = 0;
     var idle = new IdleMonitor(() => inputAge);
     idle.SetSessionState("locked");
@@ -366,6 +385,25 @@ try
         Check(corrected.Single(x => x.Domain == "a.example").TotalSeconds == 35 && corrected.Single(x => x.Domain == "b.example").TotalSeconds == 10,
             "Legacy overlapping tabs, overlapping idle spans and background app intervals must not inflate website time");
         Check(corrected.All(x => x.Keystrokes is null && x.Clicks is null), "Missing historical website input must remain unknown");
+    }
+    var staleBrowserPath = Path.Combine(root, "stale-browser.db");
+    DatabaseInitializer.Initialize(staleBrowserPath);
+    using (var conn = new SqliteConnection($"Data Source={staleBrowserPath}"))
+    {
+        conn.Open();
+        void Insert(string sql, int from, int to)
+        {
+            using var cmd = conn.CreateCommand(); cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$start", start.AddSeconds(from).ToString("o"));
+            cmd.Parameters.AddWithValue("$end", start.AddSeconds(to).ToString("o")); cmd.ExecuteNonQuery();
+        }
+        Insert("INSERT INTO app_events(exe_name,start_time,end_time) VALUES('chrome.exe',$start,$end)", 0, 100);
+        Insert("INSERT INTO app_events(exe_name,start_time,end_time) VALUES('Code.exe',$start,$end)", 40, 80);
+        Insert("INSERT INTO browser_events(domain,url,title,browser,start_time,end_time) VALUES('youtube.com','https://youtube.com/watch?v=test','Tutorial','chrome',$start,$end)", 0, 100);
+        var corrected = await BrowserAnalyticsService.ReadAsync(conn, start, start.AddSeconds(100));
+        var visits = await BrowserAnalyticsService.ReadVisitsAsync(conn, start, start.AddSeconds(100));
+        Check(corrected.Single().TotalSeconds == 40 && visits.Single().ActiveSeconds == 40,
+            "A stale browser window row must stop when a newer non-browser foreground observation supersedes it");
     }
     clock.Now = start.AddSeconds(55);
     var inputTracker = new BrowserTrackingService(accuracyPath, clock);

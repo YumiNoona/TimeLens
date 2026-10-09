@@ -15,18 +15,6 @@ TimeLens turns foreground apps, browser activity, input, audio, idle time, and s
 
 </div>
 
-## Version 8.2.0
-
-Version 8.2 makes browser reports use the same exclusive, idle-free foreground ledger as the rest of TimeLens, preventing stale browser sessions from claiming another app's time. Media-element checkpoints now exclude buffering, non-advancing playback, and seeks while retaining position-proven playback. The browser companions remain at 8.0.0 because their tracking code and local protocol did not change.
-
-- Native AOT Windows tray app with an embedded Svelte dashboard and no Electron/WebView process
-- Today and historical summaries, grouped timelines, heatmaps, categories, apps, sites, input, and audio activity
-- App and domain focus controls with timed targets, target-aware enforcement modes, custom media reminders, and optional password protection
-- User-arranged cards on Today and History, plus configurable density/motion/tracking, themes, reminders, retention, exports, and goals
-- Store-managed browser extension installation from Mozilla Add-ons
-- Per-user Windows installer with install-location, startup, desktop-shortcut, and launch options plus a clean uninstaller
-- Built-in updater with SHA-256 verification, verified replacement, automatic restart, and fresh dashboard reload
-
 ## Install
 
 1. [Download the latest TimeLens installer](https://timelens.venusapp.in/api/download).
@@ -118,10 +106,6 @@ The release workflow builds the dashboard, publishes the Native AOT app, verifie
 - `TimeLens-Setup.exe`
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
-
-The desktop, dashboard, website, and installer are released as `v8.2.0`; the unchanged Chrome and Firefox companions remain version `8.0.0`. Vercel resolves the greatest complete stable GitHub release for every download, while installed apps discover the same separately checksummed desktop executable through the update feed. Firefox installations from Mozilla Add-ons update in place under the stable `timelens@timelens.app` ID.
-
-The desktop updater downloads only over HTTPS, limits the payload size, checks the PE signature and exact file length, verifies SHA-256 against the release manifest, and then uses a hidden replacement helper to restart the app and open a fresh dashboard. It refuses to run from `dotnet` development hosts or from an unwritable install folder.
 
 ## Local API
 

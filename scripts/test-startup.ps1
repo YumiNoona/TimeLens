@@ -86,6 +86,29 @@ try {
     $null = Invoke-WebRequest "http://127.0.0.1:48721$asset" -UseBasicParsing -TimeoutSec 5
     $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/summary' -TimeoutSec 10
 
+    # Verify new endpoints against the trimmed Native AOT executable, not just JIT tests.
+    $offlineStart = [DateTimeOffset]::UtcNow.AddHours(-2)
+    $offlineEnd = $offlineStart.AddMinutes(15)
+    $offlineBody = @{ startTime = $offlineStart.ToString('o'); endTime = $offlineEnd.ToString('o'); kind = 'meeting'; project = 'Smoke test'; notes = 'Offline reconciliation' } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/offline' -Method Post -ContentType 'application/json' -Body $offlineBody
+    $offlineDate = $offlineStart.ToLocalTime().ToString('yyyy-MM-dd')
+    $offlineRows = @(Invoke-RestMethod "http://127.0.0.1:48721/api/offline?date=$offlineDate")
+    if ($offlineRows.Count -ne 1 -or $offlineRows[0].kind -ne 'meeting') { throw 'Offline time did not round-trip through the AOT API.' }
+    $offlineExport = Invoke-RestMethod "http://127.0.0.1:48721/api/export?format=json&range=$offlineDate"
+    if (@($offlineExport | Where-Object state -eq 'offline').Count -ne 1) { throw "Offline work is missing from export: $($offlineExport | ConvertTo-Json -Depth 5 -Compress)" }
+    $null = Invoke-RestMethod ("http://127.0.0.1:48721/api/offline/{0}" -f $offlineRows[0].id) -Method Delete
+    $privacyBody = @{ ignoredApps = 'private.exe'; hiddenTitleApps = 'test.exe'; ignoredDomains = 'bank.example'; titleRedactionPatterns = 'secret'; pauseUntil = [DateTimeOffset]::UtcNow.AddMinutes(1).ToString('o') } | ConvertTo-Json -Compress
+    $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings' -Method Post -ContentType 'application/json' -Body $privacyBody
+    $privacySettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings'
+    if ($privacySettings.ignoredApps -ne 'private.exe' -or $privacySettings.ignoredDomains -ne 'bank.example') { throw 'Privacy settings were not saved.' }
+    $extensionSettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings'
+    if ($extensionSettings.trackBrowser -or $extensionSettings.trackInput -or $extensionSettings.trackAudio) { throw 'Paused recording was not communicated to browser companions.' }
+    $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings' -Method Post -ContentType 'application/json' -Body '{"pauseUntil":""}'
+    $legacySettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings'
+    if ($legacySettings.trackBrowser -or $legacySettings.trackInput -or $legacySettings.trackAudio) { throw 'An outdated companion can collect despite configured privacy rules.' }
+    $currentSettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings' -Headers @{ 'X-TimeLens-Extension-Version' = '8.3.0' }
+    if (-not $currentSettings.trackBrowser) { throw 'The current companion did not resume browser collection.' }
+
     # Exercise the production custom-reminder API, image pipeline, and the native
     # toast dispatch that marshals API calls onto the tray message-loop thread.
     $notificationBody = @{ blockTitle = 'Deep Work'; blockMessage = 'Close {target} — {mode} mode is active.'; blockNotifyIntervalSeconds = 5; blockNotifyPosition = 'bottom-left'; blockMediaLayout = 'banner' } | ConvertTo-Json -Compress

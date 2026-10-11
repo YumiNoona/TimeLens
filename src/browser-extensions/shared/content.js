@@ -1,3 +1,17 @@
+// Fail closed until the paired background confirms collection is enabled. Dormant
+// pages have no polling timer; actual input/playback requests refresh cached policy.
+const timeLensCollection = { input: false, media: false, checkedAt: 0, checking: null };
+function refreshCollection() {
+  if (timeLensCollection.checking) return timeLensCollection.checking;
+  const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
+  timeLensCollection.checking = runtime.sendMessage({ type: 'timelens-collection-state' }).then(policy => {
+    timeLensCollection.input = policy?.input === true;
+    timeLensCollection.media = policy?.media === true;
+    timeLensCollection.checkedAt = Date.now();
+  }).catch(() => { timeLensCollection.input = timeLensCollection.media = false; })
+    .finally(() => { timeLensCollection.checking = null; });
+  return timeLensCollection.checking;
+}
 // Aggregate counts only. Never read event.key, event.code, input values or page text.
 (() => {
   const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
@@ -10,6 +24,8 @@
     flushTimer = window.setTimeout(() => { flushTimer = 0; void flush(); }, delay);
   }
   function collect(keys, clicks) {
+    if (Date.now() - timeLensCollection.checkedAt > 30000) void refreshCollection();
+    if (!timeLensCollection.input) { current = null; pending.length = 0; return; }
     if (!document.hasFocus() || document.visibilityState !== 'visible') return;
     const now = Date.now();
     const url = location.href;
@@ -48,13 +64,13 @@
   window.addEventListener('focus', () => { if (window === window.top) collect(0, 0); void flush(); });
   document.addEventListener('visibilitychange', flush);
   // Embedded frames remain dormant until actual input occurs.
-  if (window === window.top) { collect(0, 0); scheduleFlush(250); }
+  void refreshCollection().then(() => { if (window === window.top && timeLensCollection.input) { collect(0, 0); scheduleFlush(250); } });
 })();
 
 // Media state is a separate, concurrent signal. It is never treated as keyboard/
 // pointer activity and never inflates the exclusive foreground-app clock.
 (() => {
-  if (!document.querySelectorAll || typeof MutationObserver === 'undefined') return;
+  if (!document.querySelectorAll) return;
   const runtime = (typeof browser !== 'undefined' ? browser : chrome).runtime;
   const ids = new WeakMap();
   const known = new Set();
@@ -91,10 +107,14 @@
     };
   }
   function report(media, forcePlaying) {
+    if (Date.now() - timeLensCollection.checkedAt > 30000) void refreshCollection();
+    if (!timeLensCollection.media) { known.clear(); updateHeartbeat(); return; }
     if (!/^https?:\/\//.test(location.href)) return;
     const state = snapshot(media, forcePlaying);
     if (state.playing) known.add(media); else known.delete(media);
-    try { void runtime.sendMessage({ type: 'timelens-media-state', state }); } catch (_) {}
+    try { void runtime.sendMessage({ type: 'timelens-media-state', state }).then(response => {
+      if (response?.accepted === false) { known.clear(); timeLensCollection.media = false; updateHeartbeat(); }
+    }).catch(() => {}); } catch (_) {}
     updateHeartbeat();
   }
   function heartbeat() {
@@ -127,8 +147,8 @@
     }, true);
   document.addEventListener('visibilitychange', () => { for (const media of known) report(media); });
   window.addEventListener('pagehide', () => { for (const media of [...known]) report(media, false); });
-  new MutationObserver(records => {
-    for (const record of records) for (const node of record.addedNodes) scan(node);
-  }).observe(document.documentElement || document, { childList: true, subtree: true });
-  scan(document);
+  // Captured play/playing events discover dynamically inserted media without
+  // rescanning every DOM mutation on every page and embedded frame.
+  window.addEventListener('pageshow', () => scan(document));
+  void refreshCollection().then(() => { if (timeLensCollection.media) scan(document); });
 })();

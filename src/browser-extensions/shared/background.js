@@ -18,9 +18,9 @@ const INPUT_QUEUE_KEY = 'timelens_pending_input_v1';
 const MAX_INPUT_QUEUE_LENGTH = 5000;
 const MEDIA_API = ROOT + '/api/media-state';
 
-let trackingEnabled = true;
-let inputTrackingEnabled = true;
-let audioTrackingEnabled = true;
+let trackingEnabled = false;
+let inputTrackingEnabled = false;
+let audioTrackingEnabled = false;
 let blockingEnabled = false;
 let browserUrlMode = 'domain';
 let browserStoreTitles = false;
@@ -32,6 +32,32 @@ const notifiedTabs = new Set();
 let inputQueue = [];
 let inputQueueReady = null;
 let drainingInput = false;
+let ignoredDomains = [];
+let redactions = [];
+let initialized = false;
+let initialization = null;
+let collectionSince = 0;
+let inputPersistence = Promise.resolve();
+
+function excludedUrl(url) {
+  try { const host = new URL(url).hostname.toLowerCase(); return ignoredDomains.some(domain => host === domain || host.endsWith('.' + domain)); }
+  catch (_) { return true; }
+}
+function safeTitle(title) {
+  if (!browserStoreTitles) return '';
+  // Regex rules are enforced by the desktop with a timeout. Never execute arbitrary
+  // user regex on the browser's main thread or persist a potentially sensitive title.
+  return redactions.length ? '' : String(title || '');
+}
+
+api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || message.type !== 'timelens-collection-state') return false;
+  initialize().then(function() {
+    const allowed = !!sender.tab && !sender.tab.incognito && trackingEnabled && !excludedUrl(sender.tab.url);
+    sendResponse({ input: allowed && inputTrackingEnabled, media: allowed && audioTrackingEnabled });
+  }).catch(() => sendResponse({ input: false, media: false }));
+  return true;
+});
 
 function loadInputQueue() {
   if (inputQueueReady) return inputQueueReady;
@@ -46,7 +72,8 @@ function loadInputQueue() {
 }
 
 function saveInputQueue() {
-  return api.storage.local.set({ [INPUT_QUEUE_KEY]: inputQueue });
+  inputPersistence = inputPersistence.catch(() => {}).then(() => api.storage.local.set({ [INPUT_QUEUE_KEY]: inputQueue }));
+  return inputPersistence;
 }
 
 function privacySafeInput(batch) {
@@ -54,7 +81,7 @@ function privacySafeInput(batch) {
   const url = browserUrlMode === 'full' ? parsed.href
     : browserUrlMode === 'path' ? parsed.origin + parsed.pathname
       : parsed.origin + '/';
-  return { ...batch, url: url, title: browserStoreTitles ? String(batch.title || '') : '' };
+  return { ...batch, url: url, title: safeTitle(batch.title) };
 }
 
 async function drainInputQueue() {
@@ -64,13 +91,17 @@ async function drainInputQueue() {
   try {
     while (inputQueue.length && pairToken && trackingEnabled && inputTrackingEnabled) {
       const batch = inputQueue[0];
+      if (excludedUrl(batch.url) || Date.parse(batch.observedAt) < collectionSince || Date.now() - Date.parse(batch.observedAt) > 120000) {
+        inputQueue.shift(); await saveInputQueue(); continue;
+      }
       const response = await checkedFetch(ROOT + '/api/browser-input', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(privacySafeInput(batch))
       });
       const result = await response.json();
-      // Keep rejected batches: tracking may have been paused between collection and delivery.
-      if (!result || result.accepted !== true) break;
-      inputQueue.shift();
+      // A privacy rejection is final. Replaying after resume would undo a pause.
+      if (!result) break;
+      const delivered = inputQueue.findIndex(item => item.batchId === batch.batchId);
+      if (delivered >= 0) inputQueue.splice(delivered, 1);
       await saveInputQueue();
     }
   } catch (_) {
@@ -101,6 +132,7 @@ function checkedFetch(url, options) {
   const request = options || {};
   const headers = Object.assign({}, request.headers || {});
   if (pairToken) headers['X-TimeLens-Extension'] = pairToken;
+  headers['X-TimeLens-Extension-Version'] = EXTENSION_VERSION;
   return fetch(url, { ...request, headers: headers, redirect: 'error', signal: AbortSignal.timeout(3000) }).then(function(response) {
     // A desktop restart or isolated test instance can temporarily reject an otherwise
     // valid token. Preserve it until the user explicitly disconnects or replaces it.
@@ -158,6 +190,17 @@ function fetchSettings() {
     blockingEnabled = settings.focusMode === true;
     browserUrlMode = settings.browserUrlMode === 'full' || settings.browserUrlMode === 'path' ? settings.browserUrlMode : 'domain';
     browserStoreTitles = settings.browserStoreTitles === true;
+    if (settings.hideBrowserTitles) browserStoreTitles = false;
+    ignoredDomains = String(settings.ignoredDomains || '').split(/[\r\n]+/).map(x => x.trim().toLowerCase().replace(/^\.+|\.+$/g, '')).filter(Boolean);
+    redactions = String(settings.titleRedactionPatterns || '').split(/[\r\n]+/).filter(Boolean);
+    collectionSince = Date.parse(settings.collectionSince) || 0;
+    const excludedApps = String(settings.ignoredApps || '').toLowerCase().split(/[\r\n]+/).map(x => x.trim());
+    const familyApps = BROWSER === 'firefox' ? ['firefox.exe','zen.exe','floorp.exe','waterfox.exe','librewolf.exe']
+      : BROWSER === 'edge' ? ['msedge.exe'] : BROWSER === 'opera' ? ['opera.exe'] : ['chrome.exe','brave.exe','vivaldi.exe','arc.exe','thorium.exe'];
+    if (excludedApps.some(app => familyApps.includes(app))) trackingEnabled = false;
+    inputQueue = inputQueue.filter(batch => trackingEnabled && inputTrackingEnabled && !excludedUrl(batch.url) && Date.parse(batch.observedAt) >= collectionSince)
+      .map(privacySafeInput);
+    void saveInputQueue().catch(() => {});
     return settings;
   }).catch(function(error) {
     connectionState = error && (error.status === 401 || error.status === 403) ? 'rejected' : 'offline';
@@ -351,13 +394,15 @@ function applyBlockResponse(tabId, originalUrl, response) {
   }
 }
 
-api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+api.runtime.onMessage.addListener(function handleInput(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-input') return false;
+  if (!initialized) { initialize().then(() => handleInput(message, sender, sendResponse)); return true; }
   if (!sender.tab || sender.tab.incognito || !trackingEnabled || !inputTrackingEnabled) { sendResponse({ accepted: false }); return false; }
   const batch = message.batch;
   try {
     const topUrl = new URL(sender.tab.url);
     if (!['http:', 'https:'].includes(topUrl.protocol)) throw new Error('Unsupported tab');
+    if (excludedUrl(topUrl.href)) throw new Error('Excluded site');
     // Inputs in embedded frames belong to the selected top-level website.
     const pageUrl = sender.frameId === 0 ? new URL(batch.url) : topUrl;
     if (sender.frameId === 0 && pageUrl.origin !== topUrl.origin) throw new Error('Navigation changed origin');
@@ -378,8 +423,9 @@ function postMediaState(state) {
   }).then(function(response) { return response.json(); });
 }
 
-api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+api.runtime.onMessage.addListener(function handleMedia(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-media-state') return false;
+  if (!initialized) { initialize().then(() => handleMedia(message, sender, sendResponse)); return true; }
   const tab = sender.tab;
   if (!tab || tab.incognito || !trackingEnabled || !audioTrackingEnabled) {
     sendResponse({ accepted: false }); return false;
@@ -387,6 +433,7 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   try {
     const top = new URL(tab.url);
     if (!/^https?:$/.test(top.protocol)) throw new Error('Unsupported media page');
+    if (excludedUrl(top.href)) throw new Error('Excluded site');
     recentMediaTabs.set(tab.id, Date.now());
     const fallback = fallbackMediaTabs.get(tab.id);
     if (fallback) {
@@ -395,7 +442,7 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         observedAt: new Date().toISOString() }).catch(function() {});
     }
     const state = { ...message.state, mediaId: `${profileId}:${sender.frameId || 0}:${message.state.mediaId}`,
-      url: top.href, title: tab.title || message.state.title || '', browser: BROWSER, tabId: tab.id,
+      url: privacySafeInput({ url: top.href }).url, title: safeTitle(tab.title || message.state.title), browser: BROWSER, tabId: tab.id,
       observedAt: new Date().toISOString() };
     postMediaState(state).then(sendResponse).catch(function() { sendResponse({ retry: true }); });
   } catch (_) { sendResponse({ accepted: false }); }
@@ -409,10 +456,10 @@ async function sampleAudibleTabs() {
     const now = Date.now();
     const current = new Set();
     for (const tab of tabs || []) {
-      if (!tab || !tab.id || tab.incognito || !tab.audible || !/^https?:\/\//.test(tab.url || '')) continue;
+      if (!tab || !tab.id || tab.incognito || !tab.audible || !/^https?:\/\//.test(tab.url || '') || excludedUrl(tab.url)) continue;
       if (now - (recentMediaTabs.get(tab.id) || 0) < 35000) continue;
       current.add(tab.id);
-      const state = { mediaId: profileId + ':audible-fallback', url: tab.url, title: tab.title || '', browser: BROWSER,
+      const state = { mediaId: profileId + ':audible-fallback', url: privacySafeInput({ url: tab.url }).url, title: safeTitle(tab.title), browser: BROWSER,
         tabId: tab.id, kind: 'unknown', playing: true, audible: true, muted: false,
         pictureInPicture: false, visibility: 'background', confidence: 'audible-fallback',
         observedAt: new Date().toISOString() };
@@ -432,8 +479,8 @@ async function sampleAudibleTabs() {
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-pair') return false;
-  fetch(ROOT + '/api/pair/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: String(message.code || '') }), signal: AbortSignal.timeout(3000) })
+  initialize().then(() => fetch(ROOT + '/api/pair/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: String(message.code || '') }), signal: AbortSignal.timeout(3000) }))
     .then(function(response) { if (!response.ok) throw new Error('Pairing failed'); return response.json(); })
     .then(function(result) {
       pairToken = result.token || '';
@@ -449,7 +496,7 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-status') return false;
-  fetchSettings().then(function(settings) {
+  initialize().then(fetchSettings).then(function(settings) {
     sendResponse({ paired: !!pairToken && connectionState !== 'rejected', hasToken: !!pairToken,
       needsPair: connectionState === 'rejected', connected: connectionState === 'connected' && !!settings,
       trackingEnabled: settings && settings.trackBrowser !== false });
@@ -459,7 +506,7 @@ api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-check-block') return false;
-  stateFor(message.domain).then(hydrateNotifyMedia).then(sendResponse).catch(function() { sendResponse({ action: 'none' }); });
+  initialize().then(() => stateFor(message.domain)).then(hydrateNotifyMedia).then(sendResponse).catch(function() { sendResponse({ action: 'none' }); });
   return true;
 });
 
@@ -477,6 +524,7 @@ async function focusedTab() {
 }
 
 async function sampleFocusedTab() {
+  if (!initialized) { await initialize(); return; }
   if (!pairToken) return;
   if (sampling) { sampleAgain = true; return; }
   sampling = true;
@@ -490,9 +538,9 @@ async function sampleFocusedTab() {
       reportAudible(false);
       return;
     }
-    if (trackingEnabled || blockingEnabled) {
+    if (trackingEnabled && !excludedUrl(tab.url) || blockingEnabled) {
       const body = { tabId: tab.id, domain: new URL(tab.url).hostname, url: tab.url,
-        title: tab.title || '', browser: BROWSER, audible: !!tab.audible, observedAt: new Date().toISOString() };
+        title: excludedUrl(tab.url) ? '' : safeTitle(tab.title), browser: BROWSER, audible: !!tab.audible, observedAt: new Date().toISOString() };
       const response = await checkedFetch(EVENT_API, { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const block = await hydrateNotifyMedia(await response.json());
@@ -500,6 +548,8 @@ async function sampleFocusedTab() {
       const current = await focusedTab();
       if (current && current.id === tab.id && current.url === tab.url)
         await applyBlockResponse(tab.id, tab.url, block);
+    } else if (excludedUrl(tab.url)) {
+      await checkedFetch(LEAVE_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ browser: BROWSER, tabId: 0 }) });
     }
     reportAudible(!!tab.audible);
   } catch (_) {
@@ -526,32 +576,36 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
 api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
 function initialize() {
-  return Promise.all([api.storage.local.get(['timelens_pair_token', 'timelens_profile_id']), loadInputQueue()]).then(function(results) {
+  if (initialization) return initialization;
+  initialization = Promise.all([api.storage.local.get(['timelens_pair_token', 'timelens_profile_id']), loadInputQueue()]).then(function(results) {
     const saved = results[0];
     pairToken = saved && saved.timelens_pair_token || '';
     connectionState = pairToken ? 'checking' : 'not-paired';
     profileId = saved && saved.timelens_profile_id || crypto.randomUUID();
     if (!saved || !saved.timelens_profile_id) void api.storage.local.set({ timelens_profile_id: profileId });
-    if (!pairToken) return null;
-    sendHeartbeat();
-    return fetchSettings().then(function() { void drainInputQueue(); return sampleFocusedTab(); });
+    if (!pairToken) { initialized = true; return null; }
+    return sendHeartbeat().then(fetchSettings).then(function() { initialized = true; void drainInputQueue(); void sampleAudibleTabs(); return sampleFocusedTab(); });
   });
+  return initialization;
 }
-api.runtime.onStartup.addListener(initialize);
-api.runtime.onInstalled.addListener(initialize);
+async function refreshBridge() {
+  await initialize();
+  if (!pairToken) return;
+  void sendHeartbeat();
+  await fetchSettings();
+  void drainInputQueue(); void sampleAudibleTabs();
+  await sampleFocusedTab();
+}
+api.runtime.onStartup.addListener(refreshBridge);
+api.runtime.onInstalled.addListener(refreshBridge);
 
 initialize();
-// Best-effort five-second samples while the worker lives; alarms recover after
-// suspension/restart. Chrome 120+ supports a 30-second minimum alarm period.
-setInterval(sampleFocusedTab, 5000);
-setInterval(sampleAudibleTabs, 15000);
+// Event-driven observations plus a bounded recovery alarm; no keep-alive polling.
 if (api.alarms) {
   api.alarms.create('timelens-heartbeat', { periodInMinutes: 0.5 });
   api.alarms.onAlarm.addListener(function(alarm) {
     if (alarm.name === 'timelens-heartbeat') {
-      if (!pairToken) return;
-      sendHeartbeat();
-      fetchSettings().then(function() { void drainInputQueue(); void sampleAudibleTabs(); return sampleFocusedTab(); });
+      void refreshBridge();
     }
   });
 }

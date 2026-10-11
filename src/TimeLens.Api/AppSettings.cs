@@ -4,6 +4,18 @@ namespace TimeLens.Api;
 
 public record AppSettings
 {
+    [JsonPropertyName("collectionSince")]
+    public string CollectionSince { get; init; } = "";
+    [JsonPropertyName("ignoredApps")]
+    public string IgnoredApps { get; init; } = "";
+    [JsonPropertyName("hiddenTitleApps")]
+    public string HiddenTitleApps { get; init; } = "";
+    [JsonPropertyName("ignoredDomains")]
+    public string IgnoredDomains { get; init; } = "";
+    [JsonPropertyName("titleRedactionPatterns")]
+    public string TitleRedactionPatterns { get; init; } = "";
+    [JsonPropertyName("pauseUntil")]
+    public string PauseUntil { get; init; } = "";
     [JsonPropertyName("trackAudio")]
     public bool TrackAudio { get; init; } = true;
 

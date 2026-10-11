@@ -40,7 +40,7 @@ public static class ActivityIntervalService
                 FROM app_events
                 WHERE session_state='active'
                   AND julianday(start_time) < julianday($end)
-                  AND julianday(COALESCE(end_time,$end)) > julianday($start)
+                  AND COALESCE(julianday(end_time), 1e99) > julianday($start)
                 ORDER BY start_time, id
                 """;
             cmd.Parameters.AddWithValue("$start", rangeStartUtc.ToString("o"));
@@ -65,7 +65,7 @@ public static class ActivityIntervalService
             cmd.CommandText = """
                 SELECT start_time, COALESCE(end_time,$end) FROM idle_spans
                 WHERE julianday(start_time) < julianday($end)
-                  AND julianday(COALESCE(end_time,$end)) > julianday($start)
+                  AND COALESCE(julianday(end_time), 1e99) > julianday($start)
                 """;
             cmd.Parameters.AddWithValue("$start", rangeStartUtc.ToString("o"));
             cmd.Parameters.AddWithValue("$end", rangeEndUtc.ToString("o"));
@@ -137,7 +137,7 @@ public static class ActivityIntervalService
         cmd.CommandText = """
             SELECT start_time, COALESCE(end_time,$end) FROM idle_spans
             WHERE julianday(start_time) < julianday($end)
-              AND julianday(COALESCE(end_time,$end)) > julianday($start)
+              AND COALESCE(julianday(end_time), 1e99) > julianday($start)
             ORDER BY start_time
             """;
         cmd.Parameters.AddWithValue("$start", rangeStartUtc.ToString("o"));

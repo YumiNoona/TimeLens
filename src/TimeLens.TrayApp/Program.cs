@@ -188,11 +188,11 @@ internal static class Program
         if (settings.TrackAudio)
             idleMonitor.AudioMonitorRef = audioMonitor;
 
-        void WriteAppEvent()
+        void WriteAppEvent((string Exe, string Title, int Pid)? foreground = null)
         {
             lock (trackingLock)
             {
-                var (exe, title, pid) = Win32.GetForegroundWindowInfo();
+                var (exe, title, pid) = foreground ?? Win32.GetForegroundWindowInfo();
                 if (string.Equals(exe, "conhost.exe", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(exe, "openconsole.exe", StringComparison.OrdinalIgnoreCase))
                     exe = ResolveConsoleExe(title) ?? exe;
@@ -208,6 +208,7 @@ internal static class Program
                     writer.CloseCurrentAppEvent();
                     return;
                 }
+                title = PrivacyPolicy.Title(title, exe);
                 var project = CategoryClassifier.ExtractProject(exe, title);
                 writer.OpenAppEvent(exe, title, pid, state, cat, project);
             }
@@ -446,78 +447,7 @@ internal static class Program
             }
         }, null, 5_000, 5_000);
 
-        var goalDbPath = $"Data Source={dbPath}";
-        using var goalTimer = new Timer(_ =>
-        {
-            try
-            {
-                using var conn = new Microsoft.Data.Sqlite.SqliteConnection(goalDbPath);
-                conn.Open();
-
-                // Goals are no longer configured from the dashboard. Preserve any
-                // legacy goals, but avoid an activity aggregation every five minutes
-                // when a user has none.
-                var goals = new List<(int Id, string Type, string Target, int Threshold, int NotifyAt, string LastNotified)>();
-                using (var goalCmd = conn.CreateCommand())
-                {
-                    goalCmd.CommandText = "SELECT id, goal_type, target, threshold_minutes, notify_at, COALESCE(last_notified,'') FROM goals WHERE enabled = 1";
-                    using var goalReader = goalCmd.ExecuteReader();
-                    while (goalReader.Read())
-                    {
-                        goals.Add((
-                            goalReader.GetInt32(0), goalReader.GetString(1), goalReader.GetString(2),
-                            goalReader.GetInt32(3), goalReader.GetInt32(4), goalReader.GetString(5)));
-                    }
-                }
-                if (goals.Count == 0) return;
-
-                var today = DateTime.Now.ToString("yyyy-MM-dd");
-
-                // Query today's active time per app and category
-                using var timeCmd = conn.CreateCommand();
-                timeCmd.CommandText = """
-                    SELECT COALESCE(category,''), exe_name, SUM((julianday(COALESCE(end_time,$now)) - julianday(start_time)) * 86400)
-                    FROM app_events
-                    WHERE local_date = $date AND session_state = 'active'
-                    GROUP BY 1, 2
-                    """;
-                timeCmd.Parameters.AddWithValue("$date", today);
-                timeCmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
-                var times = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                var catTimes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                using var tr = timeCmd.ExecuteReader();
-                while (tr.Read())
-                {
-                    var cat = tr.GetString(0);
-                    var exe = tr.GetString(1);
-                    var secs = tr.IsDBNull(2) ? 0 : (int)Math.Round(tr.GetDouble(2));
-                    var mins = secs / 60;
-                    if (!string.IsNullOrEmpty(exe)) times[exe] = times.GetValueOrDefault(exe) + mins;
-                    if (!string.IsNullOrEmpty(cat)) catTimes[cat] = catTimes.GetValueOrDefault(cat) + mins;
-                }
-
-                var now = DateTime.UtcNow;
-                foreach (var goal in goals)
-                {
-                    var notifyPct = goal.NotifyAt > 0 ? goal.NotifyAt : 80;
-                    var limit = goal.Threshold * notifyPct / 100;
-                    var current = goal.Type == "max_time"
-                        ? (catTimes.GetValueOrDefault(goal.Target) > 0 ? catTimes.GetValueOrDefault(goal.Target) : times.GetValueOrDefault(goal.Target))
-                        : catTimes.GetValueOrDefault(goal.Target);
-                    if (current < limit) continue;
-                    if (!string.IsNullOrEmpty(goal.LastNotified) && DateTime.TryParse(goal.LastNotified, null, System.Globalization.DateTimeStyles.RoundtripKind, out var ln) && (now - ln).TotalMinutes < 5)
-                        continue;
-                    tray?.ShowBalloon("Goal Alert", $"'{goal.Target}' has reached {current}/{goal.Threshold} min today", false);
-                    using var upd = conn.CreateCommand();
-                    upd.CommandText = "UPDATE goals SET last_notified = $now WHERE id = $id";
-                    upd.Parameters.AddWithValue("$now", now.ToString("o"));
-                    upd.Parameters.AddWithValue("$id", goal.Id);
-                    upd.ExecuteNonQuery();
-                }
-            }
-            catch { }
-        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
-
+        // Legacy goal data is retained; no background polling for removed UI features.
         using var retentionTimer = new Timer(_ =>
         {
             try { DataRetentionService.Purge(dbPath, LiveStatusStore.Settings.RetentionDays); }
@@ -526,7 +456,7 @@ internal static class Program
 
         winWatcher.ForegroundChanged += (exe, title, pid) =>
         {
-            WriteAppEvent();
+            WriteAppEvent((exe, title, pid));
 
             // Focus mode — blocklist check on foreground switch
             if (LiveStatusStore.Settings.FocusMode && !LiveStatusStore.IsIdle)
@@ -740,7 +670,7 @@ internal static class Program
                     LiveStatusStore.AudibleTab = null;
                     WriteAppEvent();
                 }
-            }, port: apiPort);
+            }, port: apiPort, classify: classifier.Classify);
         _ = apiTask.ContinueWith(task => RuntimeDiagnostics.Write($"Local API failed: {task.Exception}"),
             CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 
@@ -916,6 +846,9 @@ internal static class Program
         finally
         {
             idleTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            blockTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            retentionTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            audioCheckpointTimer.DisposeAsync().AsTask().GetAwaiter().GetResult();
             apiCts.Cancel();
             // Release queued cross-thread dispatches before joining Kestrel; an
             // in-flight settings request may otherwise wait on a message loop

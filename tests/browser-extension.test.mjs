@@ -13,11 +13,13 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   let offline = false;
   let unauthorized = false;
   let blockAction = 'none';
+  let settings = { trackBrowser: true, trackInput: true, trackAudio: true, focusMode: true };
+  let intervals = 0;
   const injections = [], redirects = [];
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '8.0.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '8.3.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -31,12 +33,12 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
     alarms: { create() {}, onAlarm: event() }
   };
   const sandbox = { [family === 'firefox' ? 'browser' : 'chrome']: api, navigator: { userAgent: 'Chrome' }, URL, Date, AbortSignal, crypto: globalThis.crypto,
-    setInterval() {}, clearInterval() {}, fetch: async (url, options) => {
+    setInterval() { intervals++; }, clearInterval() {}, fetch: async (url, options) => {
       if (offline) throw new Error('offline');
       if (unauthorized) return { ok: false, status: 401, json: async () => ({}) };
       calls.push({ url, body: options?.body ? JSON.parse(options.body) : null, headers: options?.headers || {} });
       return { ok: true, json: async () => url.endsWith('/api/extension/settings')
-        ? { trackBrowser: true, trackInput: true, focusMode: true }
+        ? settings
         : url.endsWith('/api/browser-input') ? { accepted: true }
           : { action: blockAction, presentation: { target: 'example.com' } } };
     } };
@@ -44,10 +46,12 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(setImmediate); };
   const observations = () => calls.filter(x => x.url.endsWith('/api/browser-event'));
   await settle();
+  assert.equal(intervals, 0, 'Background workers must not be kept alive by periodic timers');
   await assert.rejects(sandbox.checkedFetch('https://example.net/private'), /Non-local/);
   assert.equal(observations().at(-1).body.tabId, 1);
   assert.ok(observations().at(-1).body.observedAt);
   assert.equal(observations().at(-1).headers['X-TimeLens-Extension'], 'test-token');
+  assert.equal(observations().at(-1).headers['X-TimeLens-Extension-Version'], '8.3.0');
   tab = { ...tab, id: 2, url: 'https://example.com/b' };
   api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.equal(observations().at(-1).body.tabId, 2);
@@ -106,14 +110,40 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   offline = false;
   api.runtime.onInstalled.listener({ reason: 'update', previousVersion: '7.3.0' }); await settle();
   assert.equal(stored.timelens_pending_input_v1.length, 0, 'A preserved pending batch must drain after update');
+
+  offline = true;
+  await sandbox.enqueueInput({ batchId: crypto.randomUUID(), url: tab.url, title: 'private', observedAt: new Date().toISOString(), keystrokes: 1, clicks: 0 });
+  await settle();
+  offline = false;
+  settings = { ...settings, ignoredDomains: new URL(tab.url).hostname };
+  await sandbox.fetchSettings(); await settle();
+  assert.equal(stored.timelens_pending_input_v1.length, 0, 'New exclusions purge pending data before disk retry');
+  const rejected = await new Promise(resolve => {
+    for (const listener of messageListeners) if (listener({ type: 'timelens-input', batch: { batchId: crypto.randomUUID(), url: tab.url, observedAt: new Date().toISOString(), keystrokes: 1, clicks: 0 } }, { tab, frameId: 0 }, resolve)) break;
+  });
+  assert.equal(rejected.accepted, false);
+  settings = { ...settings, ignoredDomains: '', trackBrowser: false };
+  await sandbox.fetchSettings();
+  const collection = await new Promise(resolve => {
+    for (const listener of messageListeners) if (listener({ type: 'timelens-collection-state' }, { tab }, resolve)) break;
+  });
+  assert.equal(collection.input, false); assert.equal(collection.media, false);
+
+  settings = { ...settings, trackBrowser: true };
+  messageListeners.length = 0;
+  vm.runInNewContext(source, { ...sandbox }); // Fresh event-page/worker globals, same durable storage.
+  api.tabs.onActivated.listener({ tabId: tab.id });
+  await settle();
+  assert.equal(observations().at(-1).body.tabId, tab.id, 'Events arriving during worker initialization must survive wakeup');
 });
 
 test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '8.0.0');
+    assert.equal(manifest.version, '8.3.0');
     if (family === 'firefox') {
+      assert.equal(manifest.background.persistent, false);
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');
       assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, '142.0');
       assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions.required,
@@ -132,7 +162,7 @@ test('content input counts trusted focused events only and retries stable batche
   let timer, focused = true, now = Date.now(), retry = false;
   const content = readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8');
   const addEventListener = (name, fn) => { listeners[name] = fn; };
-  const sandbox = { chrome: { runtime: { sendMessage: async msg => { sent.push(structuredClone(msg)); if (retry) { retry = false; return { retry: true }; } return { accepted: true }; } } },
+  const sandbox = { chrome: { runtime: { sendMessage: async msg => { if (msg.type === 'timelens-collection-state') return { input: true, media: true }; sent.push(structuredClone(msg)); if (retry) { retry = false; return { retry: true }; } return { accepted: true }; } } },
     document: { hasFocus: () => focused, visibilityState: 'visible', title: 'Test', addEventListener },
     window: { addEventListener }, location: { href: 'https://example.com/page' },
     Date: class extends Date { static now() { return now; } }, crypto: globalThis.crypto,
@@ -166,9 +196,9 @@ test('content media collector reports background, PiP, checkpoints and stop with
     documentElement: {}, hasFocus: () => false, querySelectorAll: () => [media], addEventListener: on };
   const window = { addEventListener: on, setTimeout(fn, delay) { timers.push({ fn, delay }); return timers.length; }, clearTimeout() {} };
   window.top = window;
-  class MutationObserver { observe() {} }
+  class MutationObserver { constructor() { throw new Error('Media collection must not watch the entire DOM'); } }
   const content = readFileSync(new URL('../src/browser-extensions/shared/content.js', import.meta.url), 'utf8');
-  vm.runInNewContext(content, { chrome: { runtime: { sendMessage: async msg => { sent.push(structuredClone(msg)); return { accepted: true }; } } },
+  vm.runInNewContext(content, { chrome: { runtime: { sendMessage: async msg => { if (msg.type === 'timelens-collection-state') return { input: true, media: true }; sent.push(structuredClone(msg)); return { accepted: true }; } } },
     document, window, location: { href: 'https://youtube.com/watch?v=tutorial' }, Date, crypto: globalThis.crypto,
     MutationObserver, setTimeout: window.setTimeout });
   await new Promise(setImmediate);

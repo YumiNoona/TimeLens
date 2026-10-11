@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import PrivacyRules from './PrivacyRules.svelte';
   import {
     heatmapDays as heatmapDaysStore,
     showSeconds as showSecondsStore,
@@ -516,6 +517,7 @@
     </div>
   </section>
 
+  <PrivacyRules />
   <section class="card card-wide privacy-card">
     <div class="card-header">
       <span class="section-icon"><i class="ti ti-shield-lock" aria-hidden="true"></i></span>
@@ -690,7 +692,7 @@
         <select class="select" bind:value={exportRange} aria-label="Export period"><option value="today">Today</option><option value="30days">Last 30 days</option><option value="month">Specific month</option><option value="year">Whole year</option><option value="custom">Custom dates</option></select>
         {#if exportRange === 'month'}<input type="month" bind:value={exportMonth} max={localDate().slice(0,7)} aria-label="Export month" />{/if}
         {#if exportRange === 'year'}<select class="select" bind:value={exportYear} aria-label="Export year">{#each Array.from({length:10},(_,i)=>new Date().getFullYear()-i) as year}<option value={year}>{year}</option>{/each}</select>{/if}
-        {#if exportRange === 'custom'}<input type="date" bind:value={exportStart} max={exportEnd} aria-label="Export start date" /><span>to</span><input type="date" bind:value={exportEnd} min={exportStart} max={new Date().toISOString().slice(0,10)} aria-label="Export end date" />{/if}
+        {#if exportRange === 'custom'}<input type="date" bind:value={exportStart} max={exportEnd} aria-label="Export start date" /><span>to</span><input type="date" bind:value={exportEnd} min={exportStart} max={localDate()} aria-label="Export end date" />{/if}
         <select class="select" bind:value={exportFormat} aria-label="Export format"><option value="csv">CSV</option><option value="json">JSON</option></select>
         <button class="primary-btn" onclick={exportActivity} disabled={exportRange === 'custom' && (!exportStart || !exportEnd || exportEnd < exportStart)}><i class="ti ti-download"></i>Export</button>
       </div>

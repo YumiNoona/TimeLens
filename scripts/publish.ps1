@@ -92,7 +92,9 @@ if ($LASTEXITCODE -ne 0) { throw "Browser extension regression checks failed" }
 
 # --- Publish .NET ---
 & $header "=== Checking database startup regressions ==="
-dotnet test --solution "$root\src\TimeLens.sln" -c Release
+dotnet run --project "$root\tests\TimeLens.Startup.Tests" -c Release
+if ($LASTEXITCODE -ne 0) { throw "Startup regression checks failed" }
+dotnet run --project "$root\tests\TimeLens.Tracking.Tests" -c Release
 if ($LASTEXITCODE -ne 0) { throw "Regression checks failed" }
 
 & $header "=== Publishing TimeLens (Native AOT, $Config) ==="

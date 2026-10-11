@@ -120,24 +120,10 @@ public sealed class WriterQueue : IDisposable
             {
                 await System.Threading.Tasks.Task.Delay(5_000, ct).ConfigureAwait(false);
 
-                var batch = new List<Action<SqliteCommand>>();
-                while (_queue.TryDequeue(out var op))
-                {
-                    Interlocked.Decrement(ref _pendingOperations);
-                    batch.Add(op);
-                }
-                if (batch.Count == 0) continue;
-
                 lock (_syncLock)
                 {
-                    try
-                    {
-                        ExecuteBatch(batch);
-                    }
-                    catch (Exception ex)
-                    {
-                        RecoverBatch(batch, ex);
-                    }
+                    // Dequeue under the same lock as synchronous writes, preserving order.
+                    DrainAll();
                 }
             }
             catch (OperationCanceledException) { break; }

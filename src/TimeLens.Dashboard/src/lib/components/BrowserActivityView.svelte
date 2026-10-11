@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { AudioEntry, BrowserEntry, ExtensionStatus, WebMediaSummary } from '../types';
+  import type { AudioEntry, BrowserEntry, DashboardData, ExtensionStatus, WebMediaSummary } from '../types';
   import { fmtPrecise } from '../utils';
   import { showSeconds } from '../stores/settings';
   import TopSites from './TopSites.svelte';
@@ -24,6 +24,8 @@
   let shownMedia = $state<WebMediaSummary>({ playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] });
   let extensionStatus = $state<ExtensionStatus | null>(null);
   let loading = $state(false);
+  let loadError = $state('');
+  let requestSequence = 0;
   let query = $state('');
   let domain = $state('all');
   let sort = $state<'recent'|'time'>('recent');
@@ -37,24 +39,45 @@
     .toSorted((a,b) => sort === 'time' ? b.totalSeconds-a.totalSeconds : b.lastSeen.localeCompare(a.lastSeen)));
   const clock = (value:string) => new Date(value).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:$showSeconds ? '2-digit' : undefined});
   async function loadDate() {
-    loading = true;
+    const sequence = ++requestSequence;
+    const day = selectedDate;
+    const today = day === localDate();
+    loading = true; loadError = '';
     const query = `?date=${encodeURIComponent(selectedDate)}`;
     try {
-      const [visitResponse, siteResponse, timeResponse, hourlyResponse, audioResponse, mediaResponse, statusResponse] = await Promise.all([
-        fetch('/api/browser-visits'+query), fetch('/api/browser-summary'+query),
-        fetch('/api/browser-time-summary'+query), fetch('/api/browser-hourly'+query),
-        fetch('/api/audio-summary'+query), fetch('/api/media-summary'+query), fetch('/api/extension-status')
+      const [visitResponse, dashboardResponse, hourlyResponse, statusResponse] = await Promise.all([
+        fetch('/api/browser-visits'+query), today ? Promise.resolve(null) : fetch('/api/summary'+query),
+        today ? Promise.resolve(null) : fetch('/api/browser-hourly'+query), fetch('/api/extension-status')
       ]);
+      if (sequence !== requestSequence) return;
       visits = visitResponse.ok ? await visitResponse.json() : [];
-      shownSites = siteResponse.ok ? await siteResponse.json() : [];
-      shownTime = timeResponse.ok ? await timeResponse.json() : [];
-      shownHourly = hourlyResponse.ok ? await hourlyResponse.json() : [];
-      shownAudio = audioResponse.ok ? await audioResponse.json() : [];
-      shownMedia = mediaResponse.ok ? await mediaResponse.json() : { playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] };
+      if (dashboardResponse?.ok) {
+        const dashboard: DashboardData = await dashboardResponse.json();
+        if (sequence !== requestSequence) return;
+        shownSites = dashboard.browserSites;
+        shownTime = shownSites.map(site => ({ domain: site.domain, totalSeconds: site.totalSeconds, totalMinutes: site.totalSeconds / 60 }));
+        shownAudio = dashboard.audioSessions; shownMedia = dashboard.webMedia;
+      }
+      if (hourlyResponse?.ok) shownHourly = await hourlyResponse.json();
       extensionStatus = statusResponse.ok ? await statusResponse.json() : null;
     }
-    finally { loading = false; }
+    catch (error) { if (sequence === requestSequence) loadError = String(error); }
+    finally { if (sequence === requestSequence) loading = false; }
   }
+  async function refreshLiveVisits() {
+    const day = selectedDate;
+    try {
+      const response = await fetch(`/api/browser-visits?date=${encodeURIComponent(day)}`);
+      if (!response.ok) throw new Error(`Visit refresh failed (${response.status})`);
+      const rows: Visit[] = await response.json();
+      if (selectedDate === day) visits = rows;
+    } catch (error) { if (selectedDate === day) loadError = String(error); }
+  }
+  $effect(() => {
+    if (selectedDate !== localDate()) return;
+    shownSites = sites; shownTime = browserTime; shownHourly = browserHourly; shownAudio = audioSessions; shownMedia = webMedia;
+    if (tab === 'visits') void refreshLiveVisits();
+  });
   onMount(() => { shownSites=sites; shownTime=browserTime; shownHourly=browserHourly; shownAudio=audioSessions; shownMedia=webMedia; void loadDate(); });
 </script>
 
@@ -66,6 +89,7 @@
  </div>
  <label class="date-picker"><i class="ti ti-calendar"></i><input type="date" bind:value={selectedDate} max={localDate()} onchange={loadDate} aria-label="Browser activity date" /></label>
 </div>
+{#if loadError}<div class="coverage-warning" role="alert">{loadError}<button onclick={loadDate}>Retry</button></div>{/if}
 {#if selectedDate === localDate() && extensionStatus && (!extensionStatus.connected || !extensionStatus.compatible || (extensionStatus.focusedBrowserSeconds >= 1800 && extensionStatus.missingSeconds >= 900 && extensionStatus.coveragePercent < 70))}
   <div class="coverage-warning">
     <i class="ti ti-alert-triangle"></i>

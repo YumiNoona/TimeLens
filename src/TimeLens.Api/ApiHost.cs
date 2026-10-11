@@ -40,7 +40,7 @@ public static class ApiHost
         "breakIntervalMinutes", "focusMode", "focusBlocklist", "blockAction", "blockTitle",
         "blockMessage", "blockNotifyIntervalSeconds", "blockNotifyPosition", "blockMediaLayout",
         "pollIntervalSeconds", "timeFormat", "showSeconds", "defaultView", "density", "motionEnabled",
-        "timelineMinSegmentSeconds", "heatmapDays"
+        "timelineMinSegmentSeconds", "heatmapDays", "ignoredApps", "hiddenTitleApps", "ignoredDomains", "titleRedactionPatterns", "pauseUntil"
     };
 
     private static string NormalizeNotifyPosition(string? value) => value?.Trim().ToLowerInvariant() switch
@@ -164,12 +164,14 @@ public static class ApiHost
         Action? requestShutdown = null,
         Action? clearActivityData = null,
         int port = DefaultPort,
-        bool requireAuthentication = true)
+        bool requireAuthentication = true,
+        Func<string, string?, string?, string>? classify = null)
     {
         var dashboardPath = Path.Combine(
             AppContext.BaseDirectory, "dashboard");
 
         var analytics = new AnalyticsService(dbPath);
+        var offline = new OfflineTimeService(dbPath);
 
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
@@ -247,7 +249,7 @@ public static class ApiHost
             {
                 ctx.Response.Headers.AccessControlAllowOrigin = origin;
                 ctx.Response.Headers.Vary = "Origin";
-                ctx.Response.Headers.AccessControlAllowHeaders = $"Content-Type, {LocalApiSecurity.ExtensionHeaderName}";
+                ctx.Response.Headers.AccessControlAllowHeaders = $"Content-Type, {LocalApiSecurity.ExtensionHeaderName}, X-TimeLens-Extension-Version";
                 ctx.Response.Headers.AccessControlAllowMethods = "GET, POST, OPTIONS";
             }
 
@@ -398,11 +400,61 @@ public static class ApiHost
                 LiveStatusStore.Settings, AppJsonContext.Default.AppSettings);
         });
 
+        app.MapGet("/api/offline/pending", async (HttpContext ctx) =>
+            await ctx.Response.WriteAsJsonAsync(offline.Pending(), AppJsonContext.Default.IdleReviewArray));
+        app.MapGet("/api/offline", async (HttpContext ctx) =>
+        {
+            var date = DateTime.Now.Date;
+            var query = ctx.Request.Query["date"].FirstOrDefault();
+            if (query is not null && !DateTime.TryParseExact(query, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+            { ctx.Response.StatusCode = 400; return; }
+            await ctx.Response.WriteAsJsonAsync(offline.Read(date), AppJsonContext.Default.OfflineEntryArray);
+        });
+        app.MapPost("/api/offline", async (HttpContext ctx) =>
+        {
+            var request = await ctx.Request.ReadFromJsonAsync(AppJsonContext.Default.OfflineRequest);
+            try
+            {
+                if (request is null) throw new ArgumentException("Missing offline activity.");
+                offline.Save(request);
+                await ctx.Response.WriteAsync("{\"ok\":true}");
+            }
+            catch (ArgumentException ex)
+            {
+                ctx.Response.StatusCode = 400;
+                await ctx.Response.WriteAsJsonAsync(new[] { ex.Message }, AppJsonContext.Default.StringArray);
+            }
+        });
+        app.MapDelete("/api/offline/{id:long}", (HttpContext ctx) =>
+        {
+            if (!long.TryParse(ctx.Request.RouteValues["id"]?.ToString(), out var id)) { ctx.Response.StatusCode = 400; return Task.CompletedTask; }
+            offline.Delete(id); ctx.Response.StatusCode = 204; return Task.CompletedTask;
+        });
+
         app.MapGet("/api/extension/settings", async (HttpContext ctx) =>
         {
             var settings = LiveStatusStore.Settings;
+            var privacyRules = settings.IgnoredApps.Length > 0 || settings.HiddenTitleApps.Length > 0 || settings.IgnoredDomains.Length > 0 || settings.TitleRedactionPatterns.Length > 0;
+            var currentCompanion = Version.TryParse(ctx.Request.Headers["X-TimeLens-Extension-Version"].FirstOrDefault(), out var companionVersion) && companionVersion >= new Version(8, 3, 0);
+            // Legacy companions cannot apply exclusion rules before their own queue
+            // persistence. Fail closed until they are upgraded when filters are used.
+            var canCollect = !PrivacyPolicy.IsPaused && (!privacyRules || currentCompanion);
             ctx.Response.ContentType = "application/json";
-            await ctx.Response.WriteAsync($$"""{"trackBrowser":{{settings.TrackBrowser.ToString().ToLowerInvariant()}},"trackInput":{{settings.TrackInput.ToString().ToLowerInvariant()}},"trackAudio":{{settings.TrackAudio.ToString().ToLowerInvariant()}},"focusMode":{{settings.FocusMode.ToString().ToLowerInvariant()}},"browserUrlMode":"{{settings.BrowserUrlMode}}","browserStoreTitles":{{settings.BrowserStoreTitles.ToString().ToLowerInvariant()}}}""");
+            await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
+            json.WriteStartObject();
+            json.WriteBoolean("trackBrowser", settings.TrackBrowser && canCollect);
+            json.WriteBoolean("trackInput", settings.TrackInput && canCollect);
+            json.WriteBoolean("trackAudio", settings.TrackAudio && canCollect);
+            json.WriteBoolean("focusMode", settings.FocusMode);
+            json.WriteString("browserUrlMode", settings.BrowserUrlMode);
+            json.WriteBoolean("browserStoreTitles", settings.BrowserStoreTitles);
+            json.WriteString("ignoredDomains", settings.IgnoredDomains);
+            json.WriteString("ignoredApps", settings.IgnoredApps);
+            json.WriteString("titleRedactionPatterns", settings.TitleRedactionPatterns);
+            json.WriteBoolean("hideBrowserTitles", PrivacyPolicy.HideBrowserTitles);
+            json.WriteString("collectionSince", settings.CollectionSince);
+            json.WriteEndObject();
+            await json.FlushAsync(ctx.RequestAborted);
         });
 
         app.MapPost("/api/pair/code", async (HttpContext ctx) =>
@@ -672,6 +724,20 @@ public static class ApiHost
                     System.Text.Json.JsonValueKind.String => prop.Value.GetString() ?? "",
                     _ => prop.Value.GetRawText()
                 };
+                if (prop.Name is "ignoredApps" or "hiddenTitleApps" or "ignoredDomains" or "titleRedactionPatterns" or "pauseUntil")
+                {
+                    try
+                    {
+                        if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.String) throw new ArgumentException("Privacy settings must be strings.");
+                        PrivacyPolicy.ValidateSetting(prop.Name, value);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        ctx.Response.StatusCode = 400;
+                        await ctx.Response.WriteAsJsonAsync(new[] { ex.Message }, AppJsonContext.Default.StringArray);
+                        return;
+                    }
+                }
 
                 if (prop.Name is "trackAudio" or "trackBrowser" or "trackInput" or "timelineGrouped" or
                     "showTitles" or "showSeconds" or "breakReminder" or "motionEnabled" or "browserStoreTitles" && prop.Value.ValueKind is not
@@ -891,12 +957,22 @@ public static class ApiHost
                     "motionEnabled" => "motion_enabled",
                     "timelineMinSegmentSeconds" => "timeline_min_segment_seconds",
                     "heatmapDays" => "heatmap_days",
+                    "ignoredApps" => "ignored_apps",
+                    "hiddenTitleApps" => "hidden_title_apps",
+                    "ignoredDomains" => "ignored_domains",
+                    "titleRedactionPatterns" => "title_redaction_patterns",
+                    "pauseUntil" => "pause_until",
                     _ => name
                 }, value);
 
                 // Apply live toggles
                 switch (name)
                 {
+                    case "ignoredApps": LiveStatusStore.Settings = LiveStatusStore.Settings with { IgnoredApps = value }; break;
+                    case "hiddenTitleApps": LiveStatusStore.Settings = LiveStatusStore.Settings with { HiddenTitleApps = value }; break;
+                    case "ignoredDomains": LiveStatusStore.Settings = LiveStatusStore.Settings with { IgnoredDomains = value }; break;
+                    case "titleRedactionPatterns": LiveStatusStore.Settings = LiveStatusStore.Settings with { TitleRedactionPatterns = value }; break;
+                    case "pauseUntil": LiveStatusStore.Settings = LiveStatusStore.Settings with { PauseUntil = value }; break;
                     case "trackAudio":
                         setTrackAudio?.Invoke(value == "true");
                         break;
@@ -1003,6 +1079,15 @@ public static class ApiHost
                 }
             }
 
+            if (normalizedSettings.Any(item => item.Name is "ignoredApps" or "ignoredDomains" or "hiddenTitleApps" or "titleRedactionPatterns" or "pauseUntil"))
+            {
+                _browserTracker?.Reset(); _mediaTracker?.Reset();
+                var since = DateTimeOffset.UtcNow.ToString("o");
+                saveSetting?.Invoke("collection_since", since);
+                LiveStatusStore.Settings = LiveStatusStore.Settings with { CollectionSince = since };
+            }
+            if (normalizedSettings.Any(item => item.Name == "retentionDays")) analytics.Invalidate();
+
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
@@ -1018,6 +1103,10 @@ public static class ApiHost
             _browserTracker?.Reset();
             _mediaTracker?.Reset();
             clearActivityData();
+            var since = DateTimeOffset.UtcNow.ToString("o");
+            saveSetting?.Invoke("collection_since", since);
+            LiveStatusStore.Settings = LiveStatusStore.Settings with { CollectionSince = since };
+            analytics.Invalidate();
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
         });
@@ -1121,19 +1210,49 @@ public static class ApiHost
 
             upsertRule?.Invoke(pattern, category, ruleType, target, priority);
 
-            // Backfill existing uncategorized events matching this pattern
+            // Use the live classifier so substring, glob, regex and title/domain
+            // rules have the same meaning for old uncategorized data as new data.
+            if (classify is not null)
+            {
+                foreach (var table in new[] { "app_events", "browser_events" })
+                {
+                    using var read = conn.CreateCommand();
+                    read.CommandText = table == "app_events"
+                        ? "SELECT id,exe_name,window_title,'' FROM app_events WHERE category IS NULL OR category='other'"
+                        : "SELECT id,'',title,domain FROM browser_events WHERE category IS NULL OR category='other'";
+                    var updates = new List<(long Id, string Category)>();
+                    using (var rows = await read.ExecuteReaderAsync())
+                        while (await rows.ReadAsync())
+                        {
+                            var cat = classify(rows.GetString(1), rows.IsDBNull(2) ? null : rows.GetString(2), rows.GetString(3));
+                            if (cat != "other") updates.Add((rows.GetInt64(0), cat));
+                        }
+                    using var transaction = conn.BeginTransaction();
+                    foreach (var item in updates)
+                    {
+                        using var update = conn.CreateCommand();
+                        update.CommandText = $"UPDATE {table} SET category=$cat WHERE id=$id";
+                        update.Parameters.AddWithValue("$cat", item.Category);
+                        update.Parameters.AddWithValue("$id", item.Id);
+                        await update.ExecuteNonQueryAsync();
+                    }
+                    transaction.Commit();
+                }
+            }
+            else if (ruleType == "substring" && target == "exe")
             using (var bfCmd = conn.CreateCommand())
             {
                 bfCmd.CommandText = """
                     UPDATE app_events SET category = $cat
                     WHERE (category = 'other' OR category IS NULL)
                       AND session_state = 'active'
-                      AND exe_name = $pattern
+                      AND instr(lower(exe_name), lower($pattern)) > 0
                     """;
                 bfCmd.Parameters.AddWithValue("$cat", category);
                 bfCmd.Parameters.AddWithValue("$pattern", pattern);
                 await bfCmd.ExecuteNonQueryAsync();
             }
+            analytics.Invalidate();
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
@@ -1152,6 +1271,7 @@ public static class ApiHost
             await cmd.ExecuteNonQueryAsync();
 
             deleteRule?.Invoke(pattern);
+            analytics.Invalidate();
 
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
@@ -1178,13 +1298,19 @@ public static class ApiHost
                         cmd.Parameters.AddWithValue("$pri", idx++);
                         cmd.Parameters.AddWithValue("$id", id);
                         await cmd.ExecuteNonQueryAsync();
+                        using var rule = conn.CreateCommand();
+                        rule.CommandText = "SELECT exe_pattern,category,rule_type,target,priority FROM custom_rules WHERE id=$id";
+                        rule.Parameters.AddWithValue("$id", id);
+                        using var row = await rule.ExecuteReaderAsync();
+                        if (await row.ReadAsync()) upsertRule?.Invoke(row.GetString(0), row.GetString(1), row.GetString(2), row.GetString(3), row.GetInt32(4));
                     }
                 }
             }
+            analytics.Invalidate();
             ctx.Response.StatusCode = 200;
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync("{\"ok\":true}");
-        }        );
+        });
 
         app.MapGet("/api/uncategorized", async (HttpContext ctx) =>
         {
@@ -1490,7 +1616,7 @@ public static class ApiHost
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
             var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
-                             extensionVersion >= new Version(8, 0, 0);
+                             extensionVersion >= new Version(8, 3, 0);
             double focusedBrowserSeconds = 0;
             double attributedSeconds = 0;
             double diagnosticWindowSeconds = 0;
@@ -1539,7 +1665,7 @@ public static class ApiHost
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
             json.WriteBoolean("compatible", compatible);
-            json.WriteString("minimumVersion", "8.0.0");
+            json.WriteString("minimumVersion", "8.3.0");
             json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
             json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
             json.WriteNumber("missingSeconds", (int)Math.Round(Math.Max(0, focusedBrowserSeconds - attributedSeconds)));
@@ -1893,7 +2019,7 @@ public static class ApiHost
                 using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
                 await conn.OpenAsync();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "UPDATE app_events SET idle_reason = $reason WHERE start_time = $start AND session_state = 'idle'";
+                cmd.CommandText = "UPDATE idle_spans SET idle_reason = $reason, reviewed=1 WHERE start_time = $start AND reviewed=0";
                 cmd.Parameters.AddWithValue("$reason", reason);
                 cmd.Parameters.AddWithValue("$start", startTime);
                 await cmd.ExecuteNonQueryAsync();
@@ -1966,6 +2092,7 @@ public static class ApiHost
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
             await conn.OpenAsync();
             var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, rangeStart, rangeEnd);
+            var offlineRows = offline.ReadRange(rangeStart, rangeEnd);
             if (format == "json")
             {
                 await using var json = new System.Text.Json.Utf8JsonWriter(ctx.Response.BodyWriter);
@@ -1981,20 +2108,35 @@ public static class ApiHost
                     json.WriteNumber("secs", (int)Math.Round(segment.Seconds));
                     json.WriteEndObject();
                 }
+                foreach (var entry in offlineRows)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("start", entry.StartTime);
+                    json.WriteString("exe", "");
+                    json.WriteString("title", entry.Notes);
+                    json.WriteString("category", entry.Kind);
+                    json.WriteString("state", "offline");
+                    json.WriteString("project", entry.Project);
+                    json.WriteNumber("secs", (int)Math.Round((DateTimeOffset.Parse(entry.EndTime) - DateTimeOffset.Parse(entry.StartTime)).TotalSeconds));
+                    json.WriteEndObject();
+                }
                 json.WriteEndArray();
                 await json.FlushAsync(ctx.RequestAborted);
             }
             else
             {
                 await using var w = new System.IO.StreamWriter(ctx.Response.Body);
-                await w.WriteLineAsync("start_time,exe_name,window_title,category,session_state,duration_secs");
+                await w.WriteLineAsync("start_time,exe_name,window_title,category,session_state,duration_secs,project");
                 foreach (var segment in segments)
                 {
                     await w.WriteLineAsync(
                         string.Join(",", CsvCell(segment.StartUtc.ToString("o")), CsvCell(segment.ExeName),
                             CsvCell(segment.WindowTitle ?? ""), CsvCell(segment.Category), CsvCell("active"),
-                            ((int)Math.Round(segment.Seconds)).ToString(CultureInfo.InvariantCulture)));
+                            ((int)Math.Round(segment.Seconds)).ToString(CultureInfo.InvariantCulture), CsvCell(segment.Project ?? "")));
                 }
+                foreach (var entry in offlineRows)
+                    await w.WriteLineAsync(string.Join(",", CsvCell(entry.StartTime), CsvCell(""), CsvCell(entry.Notes), CsvCell(entry.Kind), CsvCell("offline"),
+                        ((int)Math.Round((DateTimeOffset.Parse(entry.EndTime) - DateTimeOffset.Parse(entry.StartTime)).TotalSeconds)).ToString(CultureInfo.InvariantCulture), CsvCell(entry.Project)));
             }
         });
 
@@ -2252,6 +2394,9 @@ public static class ApiHost
 [JsonSerializable(typeof(AudioSessionDto[]))]
 [JsonSerializable(typeof(WebMediaSummaryDto))]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(IdleReview[]))]
+[JsonSerializable(typeof(OfflineEntry[]))]
+[JsonSerializable(typeof(OfflineRequest))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(BlockEntry[]))]
 [JsonSerializable(typeof(BrowserBlockResponseDto))]

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import OfflineTime from './lib/components/OfflineTime.svelte';
   import NavRail from './lib/components/NavRail.svelte';
   import StatCard from './lib/components/StatCard.svelte';
 
@@ -61,7 +62,7 @@
       if (historyMode === 'replace' || currentView === id) window.history.replaceState({ view: id }, '', next);
       else window.history.pushState({ view: id }, '', next);
     }
-    if (needsCompanionData(id)) void loadCompanionData();
+    if (needsCompanionData(id)) void refreshVisibleData();
   }
 
   function onPopState() {
@@ -124,19 +125,15 @@
   let refreshInFlight = $state(false);
 
   async function loadCompanionData(): Promise<void> {
-    const [sites, time, audio, media, hours] = await Promise.allSettled([
-      fetchJson<BrowserEntry[]>('/api/browser-summary'),
-      fetchJson<{domain: string; totalMinutes: number; totalSeconds?: number}[]>('/api/browser-time-summary'),
-      fetchJson<AudioEntry[]>('/api/audio-summary'),
-      fetchJson<WebMediaSummary>('/api/media-summary'),
-      getBrowserHourly()
-    ]);
-
-    if (sites.status === 'fulfilled') browserSites = sites.value;
-    if (time.status === 'fulfilled') browserTime = time.value;
-    if (audio.status === 'fulfilled') audioSessions = audio.value;
-    if (media.status === 'fulfilled') webMedia = media.value;
-    if (hours.status === 'fulfilled') browserHourlyRaw = hours.value;
+    if ($data) {
+      browserSites = $data.browserSites ?? [];
+      browserTime = browserSites.map(site => ({ domain: site.domain, totalSeconds: site.totalSeconds, totalMinutes: site.totalSeconds / 60 }));
+      audioSessions = $data.audioSessions ?? [];
+      webMedia = $data.webMedia ?? { playbackSeconds: 0, backgroundSeconds: 0, pictureInPictureSeconds: 0, entries: [] };
+    }
+    if (view === 'browser') {
+      try { browserHourlyRaw = await getBrowserHourly(); } catch { }
+    }
   }
 
   async function loadSettings(): Promise<void> {
@@ -158,11 +155,11 @@
 
   async function refreshVisibleData(isBackground = true): Promise<void> {
     if (refreshInFlight) return;
+    if (isBackground && ['settings','block','rules','history'].includes(view)) return;
     refreshInFlight = true;
     try {
-      const work: Promise<void>[] = [refresh(isBackground)];
-      if (needsCompanionData()) work.push(loadCompanionData());
-      await Promise.all(work);
+      await refresh(isBackground);
+      if (needsCompanionData()) await loadCompanionData();
     } finally {
       refreshInFlight = false;
     }
@@ -182,7 +179,7 @@
   onMount(() => {
     let disposed = false;
     void (async () => {
-      await Promise.all([refresh(), loadSettings(), loadCompanionData()]);
+      await Promise.all([refresh(), loadSettings()]);
       if (disposed) return;
       const requestedView = new URLSearchParams(window.location.search).get('view');
       goTo(requestedView && allowedViews.includes(requestedView) ? requestedView : view, 'replace');
@@ -234,6 +231,7 @@
         </div>
 
         <div class="today-content">
+          <OfflineTime review />
           <section class="today-hero" use:reorderable={{ key: 'today:stats' }}>
             <StatCard
               label="Active time"

@@ -142,6 +142,17 @@ public static class DatabaseInitializer
                 last_notified TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS offline_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                idle_span_id INTEGER UNIQUE,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                project TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_offline_start ON offline_entries(start_time);
+
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_audio', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_browser', 'true');
             INSERT OR IGNORE INTO settings (key, value) VALUES ('track_input', 'true');
@@ -166,9 +177,7 @@ public static class DatabaseInitializer
               INSERT OR IGNORE INTO settings (key, value) VALUES ('block_media_layout', 'large');
 
             CREATE INDEX IF NOT EXISTS idx_app_start ON app_events(start_time);
-            CREATE INDEX IF NOT EXISTS idx_app_local_date_state ON app_events(local_date, session_state);
             CREATE INDEX IF NOT EXISTS idx_browser_start ON browser_events(start_time);
-            CREATE INDEX IF NOT EXISTS idx_browser_local_date ON browser_events(local_date);
             CREATE INDEX IF NOT EXISTS idx_input_activity_ts ON input_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audio_activity_ts ON audio_activity(timestamp);
             CREATE INDEX IF NOT EXISTS idx_web_media_time ON web_media_events(start_time, end_time);
@@ -188,6 +197,18 @@ public static class DatabaseInitializer
         MigrateAddColumn(conn, "custom_rules", "rule_type", "TEXT NOT NULL DEFAULT 'substring'");
         MigrateAddColumn(conn, "custom_rules", "target", "TEXT NOT NULL DEFAULT 'exe'");
         MigrateAddColumn(conn, "custom_rules", "priority", "INTEGER NOT NULL DEFAULT 0");
+        MigrateAddColumn(conn, "idle_spans", "reviewed", "INTEGER NOT NULL DEFAULT 1");
+        // Expression indexes preserve legacy offset timestamps while making date predicates seekable.
+        using var intervalIndexes = conn.CreateCommand();
+        intervalIndexes.CommandText = """
+            CREATE INDEX IF NOT EXISTS idx_app_local_date_state ON app_events(local_date, session_state);
+            CREATE INDEX IF NOT EXISTS idx_browser_local_date ON browser_events(local_date);
+            CREATE INDEX IF NOT EXISTS idx_app_range_end ON app_events(COALESCE(julianday(end_time), 1e99));
+            CREATE INDEX IF NOT EXISTS idx_browser_range_end ON browser_events(julianday(COALESCE(end_time,start_time)));
+            CREATE INDEX IF NOT EXISTS idx_idle_range_end ON idle_spans(COALESCE(julianday(end_time), 1e99));
+            CREATE INDEX IF NOT EXISTS idx_media_range_end ON web_media_events(julianday(end_time));
+            """;
+        intervalIndexes.ExecuteNonQuery();
         // Older installations do not have priority until the migration above runs.
         using var rulesIndex = conn.CreateCommand();
         rulesIndex.CommandText = "CREATE INDEX IF NOT EXISTS idx_custom_rules_priority ON custom_rules(priority)";

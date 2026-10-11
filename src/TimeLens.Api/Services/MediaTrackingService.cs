@@ -27,12 +27,14 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         if (!Validate(state, now, out var uri)) return false;
+        if (PrivacyPolicy.IgnoreDomain(uri.Host) || PrivacyPolicy.IgnoreBrowser(state.Browser))
+        { Reset(); return false; }
         var key = $"{state.Browser}:{state.TabId}:{state.MediaId}";
 
         var normalized = state with
         {
             Url = PrivacyUrl(uri),
-            Title = LiveStatusStore.Settings.BrowserStoreTitles ? state.Title : string.Empty,
+            Title = LiveStatusStore.Settings.BrowserStoreTitles ? PrivacyPolicy.BrowserTitle(state.Title, state.Browser) : string.Empty,
             Kind = state.Kind is "audio" or "video" ? state.Kind : "unknown",
             Visibility = state.Visibility is "foreground" or "background" or "pip" ? state.Visibility : "background",
             Confidence = state.Confidence is "media-element" or "audible-fallback" ? state.Confidence : "media-element",
@@ -43,6 +45,8 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
 
         lock (_gate)
         {
+            if (PrivacyPolicy.IsPaused || !LiveStatusStore.Settings.TrackAudio || !LiveStatusStore.Settings.TrackBrowser)
+            { _open.Clear(); return false; }
             if (!state.Playing || !LiveStatusStore.Settings.TrackAudio || !LiveStatusStore.Settings.TrackBrowser)
             {
                 Close(key, now, normalized);
@@ -132,6 +136,8 @@ public sealed class MediaTrackingService(string dbPath, TimeProvider? clock = nu
         var now = _clock.GetUtcNow().UtcDateTime;
         lock (_gate)
         {
+            if (PrivacyPolicy.IsPaused || !LiveStatusStore.Settings.TrackAudio || !LiveStatusStore.Settings.TrackBrowser)
+            { _open.Clear(); return; }
             foreach (var key in _open.Where(pair => now < pair.Value.LastSeenUtc || now - pair.Value.LastSeenUtc > RecoveryWindow)
                          .Select(pair => pair.Key).ToArray())
                 _open.Remove(key);

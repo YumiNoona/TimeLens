@@ -34,6 +34,7 @@ dist/
 .vite/
 .svelte-kit/
 *.tsbuildinfo
+src/TimeLens.Dashboard/src/icons.css
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

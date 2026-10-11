@@ -20,12 +20,12 @@ public static class BrowserAnalyticsService
     private static DateTime Parse(string value) => DateTime.Parse(value, null,
         DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
 
-    public static async Task<BrowserEntryDto[]> ReadAsync(SqliteConnection conn, DateTime dayStart, DateTime dayEnd, Action<DateTime, DateTime>? recordInterval = null)
+    public static async Task<BrowserEntryDto[]> ReadAsync(SqliteConnection conn, DateTime dayStart, DateTime dayEnd, Action<DateTime, DateTime>? recordInterval = null, ActivityIntervalService.Segment[]? foreground = null)
     {
         // Use the same repaired, idle-free foreground ledger as Apps, Timeline,
         // categories and exports. A stale browser row must never keep claiming
         // website time after a newer foreground application supersedes it.
-        var active = await ActivityIntervalService.ReadExclusiveAsync(conn, dayStart, dayEnd);
+        var active = foreground ?? await ActivityIntervalService.ReadExclusiveAsync(conn, dayStart, dayEnd);
         var visits = new List<Visit>();
         using (var cmd = conn.CreateCommand())
         {

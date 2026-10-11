@@ -1,4 +1,5 @@
 <script lang="ts">
+  import OfflineTime from './OfflineTime.svelte';
   import { onMount } from 'svelte';
   import type { BlockAttemptEntry, BrowserHourEntry, DashboardData } from '../types';
   import { getBlockAttempts, getBrowserHourly, getDashboardData } from '../api';
@@ -280,6 +281,7 @@
         </section>
       {/if}
 
+      <OfflineTime date={selectedDate} />
       {#if !hasActivity}
         <div class="empty-day">
           <i class="ti ti-calendar-off" aria-hidden="true"></i>

@@ -27,13 +27,19 @@ public sealed class SettingsService
 
         return new AppSettings
         {
+            IgnoredApps = dict.GetValueOrDefault("ignored_apps", ""),
+            CollectionSince = dict.GetValueOrDefault("collection_since", ""),
+            HiddenTitleApps = dict.GetValueOrDefault("hidden_title_apps", ""),
+            IgnoredDomains = dict.GetValueOrDefault("ignored_domains", ""),
+            TitleRedactionPatterns = dict.GetValueOrDefault("title_redaction_patterns", ""),
+            PauseUntil = dict.GetValueOrDefault("pause_until", ""),
             TrackAudio = dict.GetValueOrDefault("track_audio", "true") == "true",
             TrackBrowser = dict.GetValueOrDefault("track_browser", "true") == "true",
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",
             BrowserUrlMode = dict.GetValueOrDefault("browser_url_mode", "full") switch { "domain" => "domain", "path" => "path", _ => "full" },
             BrowserStoreTitles = dict.GetValueOrDefault("browser_store_titles", "true") == "true",
             IdleThresholdSeconds = ReadInt(dict, "idle_threshold_seconds", 180, 15, 3600),
-            Theme = ReadChoice(dict, "theme", "default", "default", "terminal", "copper", "arctic", "moss", "crimson", "gold", "ember", "rose", "clay", "sunset"),
+            Theme = ReadChoice(dict, "theme", "default", "default", "terminal", "copper", "arctic", "moss", "crimson", "gold", "ember", "rose", "clay", "sunset", "paper"),
             TimelineGrouped = dict.GetValueOrDefault("timeline_grouped", "true") == "true",
             AutoStart = dict.GetValueOrDefault("auto_start", "false") == "true",
             RetentionDays = int.TryParse(dict.GetValueOrDefault("retention_days", "90"), out var rd) && rd is >= 1 and <= 3650 ? rd : 90,

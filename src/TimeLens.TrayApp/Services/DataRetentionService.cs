@@ -44,6 +44,9 @@ public static class DataRetentionService
             DELETE FROM input_activity WHERE julianday(timestamp) < julianday($cutoff);
             DELETE FROM audio_activity WHERE julianday(timestamp) < julianday($cutoff);
             DELETE FROM block_log WHERE julianday(timestamp) < julianday($cutoff);
+            DELETE FROM offline_entries WHERE julianday(end_time) <= julianday($cutoff);
+            UPDATE offline_entries SET start_time=$cutoff
+              WHERE julianday(start_time) < julianday($cutoff) AND julianday(end_time) > julianday($cutoff);
             """;
         cmd.Parameters.AddWithValue("$cutoff", cutoff);
         cmd.Parameters.AddWithValue("$localDate", localDate);

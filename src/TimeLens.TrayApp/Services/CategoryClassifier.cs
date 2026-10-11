@@ -203,7 +203,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
         var escaped = Regex.Escape(pattern)
             .Replace("\\*", ".*")
             .Replace("\\?", ".");
-        return Regex.IsMatch(text, $"^{escaped}$", RegexOptions.IgnoreCase);
+        return RegexMatch($"^{escaped}$", text);
     }
 
     private static bool RegexMatch(string pattern, string text)

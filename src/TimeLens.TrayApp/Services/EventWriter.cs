@@ -17,18 +17,23 @@ public sealed class EventWriter : IDisposable
     private readonly TimeProvider _clock;
     private (string Exe, string Title, int Pid, string State, string? Category, string? Project)? _identity;
     private DateTime _lastObservation;
+    private DateTime _lastPersisted;
+    private static readonly TimeSpan CheckpointInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaximumGap = TimeSpan.FromSeconds(30);
 
     public void OpenAppEvent(string exeName, string windowTitle, int pid, string sessionState, string? category, string? project = null)
     {
         lock (_openEventLock)
         {
+            if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exeName)) { CloseCurrentAppEvent(); return; }
+            windowTitle = TimeLens.Api.PrivacyPolicy.Title(windowTitle, exeName);
+            if (windowTitle.Length == 0) project = null;
             var now = _clock.GetUtcNow().UtcDateTime;
             var identity = (exeName, windowTitle, pid, sessionState, category, project);
             var continuous = now >= _lastObservation && now - _lastObservation <= MaximumGap;
             if (_lastOpenEventId is long current && _identity == identity && continuous)
             {
-                SaveEnd(current, now);
+                if (now - _lastPersisted >= CheckpointInterval) { SaveEnd(current, now); _lastPersisted = now; }
                 _lastObservation = now;
                 return;
             }
@@ -54,6 +59,7 @@ public sealed class EventWriter : IDisposable
             _lastOpenEventId = newId;
             _identity = identity;
             _lastObservation = now;
+            _lastPersisted = now;
         }
     }
 
@@ -85,7 +91,7 @@ public sealed class EventWriter : IDisposable
         _queue.ExecuteSync(conn =>
         {
             using var tx = conn.BeginTransaction();
-            foreach (var table in new[] { "browser_input_batches", "browser_events", "web_media_events", "app_events", "session_events", "input_activity", "audio_activity", "block_log", "idle_spans" })
+            foreach (var table in new[] { "browser_input_batches", "browser_events", "web_media_events", "app_events", "session_events", "input_activity", "audio_activity", "block_log", "offline_entries", "idle_spans" })
             {
                 using var delete = conn.CreateCommand();
                 delete.Transaction = tx;
@@ -105,6 +111,8 @@ public sealed class EventWriter : IDisposable
 
     public void InsertInputActivity(int keystrokes, int clicks, int? pid, string? exeName, DateTime? observedAt = null)
     {
+        if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exeName ?? "") ||
+            !TimeLens.Api.PrivacyPolicy.AcceptObservation(new DateTimeOffset((observedAt ?? _clock.GetUtcNow().UtcDateTime).ToUniversalTime()))) return;
         var ts = (observedAt ?? _clock.GetUtcNow().UtcDateTime).ToUniversalTime().ToString("o");
         _queue.Enqueue(cmd =>
         {
@@ -122,6 +130,7 @@ public sealed class EventWriter : IDisposable
 
     public void InsertAudioActivity(int? pid, string? exeName, bool isPlaying)
     {
+        if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exeName ?? "")) return;
         var ts = DateTime.UtcNow.ToString("o");
         _queue.Enqueue(cmd =>
         {
@@ -138,6 +147,7 @@ public sealed class EventWriter : IDisposable
 
     public void InsertSessionEvent(string eventType)
     {
+        if (TimeLens.Api.PrivacyPolicy.IsPaused) return;
         var ts = DateTime.UtcNow.ToString("o");
         _queue.Enqueue(cmd =>
         {
@@ -152,6 +162,8 @@ public sealed class EventWriter : IDisposable
 
     public void InsertBlockLog(string exeName, string action)
     {
+        if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exeName) ||
+            (!exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && TimeLens.Api.PrivacyPolicy.IgnoreDomain(exeName))) return;
         var ts = DateTime.UtcNow.ToString("o");
         _queue.Enqueue(cmd =>
         {
@@ -167,6 +179,7 @@ public sealed class EventWriter : IDisposable
 
     private long? _idleSpanId;
     private DateTime _lastIdleObservation;
+    private DateTime _lastIdlePersisted;
     private string? _idleReason;
     private readonly object _idleSpanLock = new();
 
@@ -174,18 +187,19 @@ public sealed class EventWriter : IDisposable
     {
         lock (_idleSpanLock)
         {
+            if (TimeLens.Api.PrivacyPolicy.IsPaused) { EndIdleSpan(); return false; }
+            if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exeName)) exeName = "";
             var now = _clock.GetUtcNow().UtcDateTime;
             if (_idleSpanId is not null)
             {
                 var continuous = now >= _lastIdleObservation && now - _lastIdleObservation <= MaximumGap;
                 if (continuous && reason == _idleReason)
                 {
-                    SaveIdleEnd(now);
+                    if (now - _lastIdlePersisted >= CheckpointInterval) { SaveIdleEnd(now); _lastIdlePersisted = now; }
                     _lastIdleObservation = now;
                     return false;
                 }
-                if (continuous) SaveIdleEnd(now);
-                _idleSpanId = null;
+                EndIdleSpan();
             }
             _idleSpanId = _queue.ExecuteSyncWithRowId(conn =>
             {
@@ -200,6 +214,7 @@ public sealed class EventWriter : IDisposable
                 insert.ExecuteNonQuery();
             });
             _lastIdleObservation = now;
+            _lastIdlePersisted = now;
             _idleReason = reason;
             return true;
         }
@@ -221,6 +236,13 @@ public sealed class EventWriter : IDisposable
             if (_idleSpanId is null) return false;
             var now = _clock.GetUtcNow().UtcDateTime;
             if (now >= _lastIdleObservation && now - _lastIdleObservation <= MaximumGap) SaveIdleEnd(now);
+            _queue.ExecuteSync(conn =>
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE idle_spans SET reviewed=0 WHERE id=$id AND (julianday(end_time)-julianday(start_time))*86400 >= 60";
+                cmd.Parameters.AddWithValue("$id", _idleSpanId.Value);
+                cmd.ExecuteNonQuery();
+            });
             _idleSpanId = null;
             return true;
         }

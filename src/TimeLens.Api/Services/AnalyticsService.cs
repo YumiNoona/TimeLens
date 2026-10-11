@@ -8,6 +8,13 @@ namespace TimeLens.Api.Services;
 
 public sealed class AnalyticsService
 {
+    public void Invalidate()
+    {
+        _refreshGate.Wait();
+        try { _cache.Clear(); _historicalHeatmaps.Clear(); }
+        finally { _refreshGate.Release(); }
+    }
+    private readonly Dictionary<string, (HeatmapEntryDto[] Entries, DateTime At)> _historicalHeatmaps = new();
     // Keep one year available so the dashboard can switch ranges without
     // returning a visually incomplete heatmap.
     private const int HeatmapDays = 365;
@@ -53,6 +60,7 @@ public sealed class AnalyticsService
             var today = TimeZoneInfo.ConvertTimeToUtc(localDate);
             var tomorrow = TimeZoneInfo.ConvertTimeToUtc(localDate.AddDays(1));
             var rangeEnd = isToday ? DateTime.UtcNow : tomorrow;
+            var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
 
             var summary = await GetSummaryAsync(
                 conn,
@@ -60,11 +68,11 @@ public sealed class AnalyticsService
                 localDate.AddDays(-1).ToString("yyyy-MM-dd"),
                 today,
                 tomorrow,
-                rangeEnd);
-            var timeline = await GetTimelineAsync(conn, localDate.ToString("yyyy-MM-dd"), rangeEnd);
-            var topApps = await GetTopAppsAsync(conn, localDate.ToString("yyyy-MM-dd"), today, tomorrow, rangeEnd);
-            var heatmap = await GetHeatmapAsync(conn, localDate, rangeEnd);
-            var categories = await GetCategoriesAsync(conn, localDate.ToString("yyyy-MM-dd"), today, rangeEnd);
+                rangeEnd, segments);
+            var timeline = await GetTimelineAsync(conn, localDate.ToString("yyyy-MM-dd"), rangeEnd, segments);
+            var topApps = await GetTopAppsAsync(conn, localDate.ToString("yyyy-MM-dd"), today, tomorrow, rangeEnd, segments);
+            var heatmap = await CachedHeatmapAsync(conn, localDate, segments);
+            var categories = GetCategories(segments);
             var live = new LiveStatusDto(
                 LiveStatusStore.CurrentApp,
                 LiveStatusStore.IdleSeconds / 60,
@@ -75,7 +83,7 @@ public sealed class AnalyticsService
                 LiveStatusStore.PendingIdleReturn
             );
 
-            var browserSites = await BrowserAnalyticsService.ReadAsync(conn, today, rangeEnd);
+            var browserSites = await BrowserAnalyticsService.ReadAsync(conn, today, rangeEnd, foreground: segments);
             var audioSessions = await MediaAnalyticsService.ReadNativeAsync(conn, today, tomorrow, DateTime.UtcNow);
             var webMedia = await MediaAnalyticsService.ReadWebAsync(conn, today, rangeEnd);
 
@@ -112,9 +120,8 @@ public sealed class AnalyticsService
         string yesterdayDate,
         DateTime today,
         DateTime tomorrow,
-        DateTime rangeEnd)
+        DateTime rangeEnd, ActivityIntervalService.Segment[] segments)
     {
-        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
         var previousStart = today.ToLocalTime().Date.AddDays(-1).ToUniversalTime();
         var previousSegments = await ActivityIntervalService.ReadExclusiveAsync(conn, previousStart, today);
         var activeSecs = (int)Math.Round(segments.Sum(x => x.Seconds));
@@ -199,11 +206,10 @@ public sealed class AnalyticsService
     }
 
     private static async Task<TimelineBlockDto[]> GetTimelineAsync(
-        SqliteConnection conn, string localDate, DateTime localEndOfDayUtc)
+        SqliteConnection conn, string localDate, DateTime localEndOfDayUtc, ActivityIntervalService.Segment[] segments)
     {
         var localStartOfDayUtc = DateTime.SpecifyKind(DateTime.ParseExact(localDate, "yyyy-MM-dd", null), DateTimeKind.Local).ToUniversalTime();
         var blocks = new List<TimelineBlockDto>();
-        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, localStartOfDayUtc, localEndOfDayUtc);
         foreach (var segment in segments)
         {
             var localStart = TimeZoneInfo.ConvertTimeFromUtc(segment.StartUtc, TimeZoneInfo.Local);
@@ -235,7 +241,7 @@ public sealed class AnalyticsService
         idleCmd.CommandText = """
             SELECT MAX(julianday(start_time), julianday($t0)), MIN(julianday(COALESCE(end_time, $eod)), julianday($eod)), COALESCE(idle_reason, 'idle')
             FROM idle_spans
-            WHERE julianday(start_time) < julianday($t1) AND julianday(COALESCE(end_time, $eod)) > julianday($t0)
+            WHERE julianday(start_time) < julianday($t1) AND COALESCE(julianday(end_time), 1e99) > julianday($t0)
             ORDER BY start_time
             """;
         var localEndOfDayStr = localEndOfDayUtc.ToString("o");
@@ -269,9 +275,8 @@ public sealed class AnalyticsService
     }
 
     private static async Task<TopAppDto[]> GetTopAppsAsync(
-        SqliteConnection conn, string localDate, DateTime today, DateTime tomorrow, DateTime rangeEnd)
+        SqliteConnection conn, string localDate, DateTime today, DateTime tomorrow, DateTime rangeEnd, ActivityIntervalService.Segment[] segments)
     {
-        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
         var durations = segments.GroupBy(x => x.ExeName, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.Sum(y => y.Seconds), StringComparer.OrdinalIgnoreCase);
         using var cmd = conn.CreateCommand();
@@ -327,10 +332,8 @@ public sealed class AnalyticsService
         return entries.ToArray();
     }
 
-    private static async Task<CategoryEntryDto[]> GetCategoriesAsync(
-        SqliteConnection conn, string localDate, DateTime today, DateTime rangeEnd)
+    private static CategoryEntryDto[] GetCategories(ActivityIntervalService.Segment[] segments)
     {
-        var segments = await ActivityIntervalService.ReadExclusiveAsync(conn, today, rangeEnd);
         var cats = segments.GroupBy(x => x.Category)
             .Select(x => new CategoryEntryDto(x.Key, 0, x.Sum(y => y.Seconds) / 60.0))
             .OrderByDescending(x => x.Minutes).ToList();
@@ -343,6 +346,20 @@ public sealed class AnalyticsService
         }
 
         return cats.ToArray();
+    }
+
+    private async Task<HeatmapEntryDto[]> CachedHeatmapAsync(SqliteConnection conn, DateTime localDate, ActivityIntervalService.Segment[] today)
+    {
+        var key = localDate.ToString("yyyy-MM-dd");
+        if (!_historicalHeatmaps.TryGetValue(key, out var cache) || DateTime.UtcNow - cache.At > TimeSpan.FromMinutes(10))
+        {
+            var entries = await GetHeatmapAsync(conn, localDate, localDate.ToUniversalTime());
+            if (_historicalHeatmaps.Count >= MaxCacheEntries) _historicalHeatmaps.Clear();
+            cache = (entries, DateTime.UtcNow);
+            _historicalHeatmaps[key] = cache;
+        }
+        return cache.Entries.Select(entry => entry.Date == key
+            ? entry with { Value = today.Sum(segment => segment.Seconds) / 60.0 } : entry).ToArray();
     }
 
     private static async Task<InputSummaryDto[]> GetInputSummaryAsync(

@@ -23,8 +23,11 @@ No frames, audio samples, captions or page text are captured.
 ## Reliability
 
 - Foreground hooks provide immediate updates, with a one-second poll as a fallback.
-- Repeated observations extend one persisted event. Its end is saved on every
-  observation, so a crash cannot reduce a three-hour session to a 30-minute guess.
+- Repeated observations extend one event in memory. Identical app, idle and browser
+  intervals checkpoint at most every ten seconds, with immediate writes at switches,
+  leave events and normal shutdown. An unexpected crash can lose up to ten seconds
+  of the last interval, rather than inventing unobserved time or rewriting SQLite
+  every second.
 - A gap longer than 30 seconds starts a new event rather than crediting unobserved
   sleep, downtime or a stalled tracker. A backwards wall-clock jump also splits it.
 - Normal shutdown closes the current app/idle segments and drains queued writes.
@@ -60,7 +63,38 @@ Short foreground segments remain visible instead of discarding all under five
 seconds. Historical records are read with corrected boundaries, not rewritten
 merely to change the date allocation.
 
-## Verification
+## Offline time and privacy
+
+Today offers review of completed idle/away spans lasting at least a minute. Confirm
+meetings, calls, brainstorming or other offline work, or label the span as a break
+or personal time. Reconciliation is durable and idempotent. History and Today also
+accept manual past intervals within retention, up to 24 hours, rejecting overlaps
+with recorded foreground or offline work. Offline work is shown separately from
+automatic active time and media; CSV/JSON export labels it `offline`.
+
+Settings supports exact executable exclusions, title/project hiding by app,
+hostname exclusions including subdomains, regex title redaction, and timed pauses.
+Filters run before SQLite/extension queue persistence. Title regexes have a bounded
+timeout and fail closed; browser queue titles are conservatively blank whenever a
+redaction pattern is configured. Website exclusions also hide native browser
+window titles, while anonymous browser-app time can still be counted. Browser
+family exclusions are conservative because extension messages identify the family,
+not whether it is Firefox, Zen, Floorp, Chrome, Brave, etc.
+
+Pause and privacy edits invalidate older queued input. Delete-all includes offline
+entries and rejects delayed pre-deletion input. Browser companions older than 8.3
+are marked outdated and collection is disabled when privacy filters are configured,
+because legacy companions cannot safely filter their own persistent queues.
+New rules do not erase previously
+recorded history; use Delete all activity if that is needed. Focus enforcement stays
+enabled during a recording pause, but privacy-excluded block attempts are not stored.
+
+Firefox uses an event page; both browser families use navigation/focus events plus
+a 30-second recovery alarm, without background keep-alive intervals. Content scripts
+stay dormant while disabled, and media discovery uses captured playback events
+instead of observing every DOM mutation.
+
+## Verification commands
 
 ```powershell
 dotnet run --project tests/TimeLens.Tracking.Tests -c Release --self-contained true -r win-x64

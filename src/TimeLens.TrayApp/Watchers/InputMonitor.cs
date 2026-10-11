@@ -74,6 +74,7 @@ public sealed class InputMonitor : IDisposable
 
     internal void RecordInput(int pid, string exe, int keys, int clicks, DateTime? observedAt = null)
     {
+        if (TimeLens.Api.PrivacyPolicy.IgnoreApp(exe)) return;
         var captured = (observedAt ?? DateTime.UtcNow).ToUniversalTime();
         var second = new DateTime(captured.Ticks - captured.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc);
         lock (_countsLock)
@@ -85,7 +86,7 @@ public sealed class InputMonitor : IDisposable
 
     private void CaptureInput(int keys, int clicks) => RuntimeDiagnostics.TryRun("Input capture", () =>
     {
-        var (exe, _, pid) = Win32.GetForegroundWindowInfo();
+        var (exe, pid) = Win32.GetForegroundProcessInfo();
         RecordInput(pid, exe, keys, clicks);
     });
 

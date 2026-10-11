@@ -12,6 +12,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
     private long _id;
     private DateTime _lastSeen;
     private DateTime _lastCheckpoint;
+    private DateTime _lastTick;
     private static readonly TimeSpan Lease = TimeSpan.FromSeconds(65);
 
     public static bool MatchesForeground(string browser, string app) => browser.ToLowerInvariant() switch
@@ -23,7 +24,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
         _ => false
     };
 
-    private bool Eligible(string browser) => LiveStatusStore.Settings.TrackBrowser &&
+    private bool Eligible(string browser) => !PrivacyPolicy.IgnoreBrowser(browser) && !PrivacyPolicy.IgnoreApp(LiveStatusStore.CurrentApp) && LiveStatusStore.Settings.TrackBrowser &&
         !LiveStatusStore.IsIdle && LiveStatusStore.SystemState == "active" &&
         MatchesForeground(browser, LiveStatusStore.CurrentApp);
 
@@ -41,8 +42,9 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             {
                 Domain = uri.Host.ToLowerInvariant(),
                 Url = PrivacyUrl(uri),
-                Title = LiveStatusStore.Settings.BrowserStoreTitles ? (evt.Title ?? "") : ""
+                Title = LiveStatusStore.Settings.BrowserStoreTitles ? PrivacyPolicy.BrowserTitle(evt.Title ?? "", evt.Browser) : ""
             };
+            if (PrivacyPolicy.IgnoreDomain(uri.Host)) { Leave(evt.Browser, 0); return; }
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             if (_current is not null && now >= _lastCheckpoint && now - _lastCheckpoint <= TimeSpan.FromSeconds(30) && now - _lastSeen <= Lease)
@@ -57,7 +59,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
                     title.Parameters.AddWithValue("$id", _id);
                     title.ExecuteNonQuery();
                     tx.Commit();
-                    _lastSeen = _lastCheckpoint = now;
+                    _lastSeen = _lastCheckpoint = _lastTick = now;
                     _current = evt;
                     return;
                 }
@@ -79,23 +81,27 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             tx.Commit();
             _id = id;
             _current = evt;
-            _lastSeen = _lastCheckpoint = now;
+            _lastSeen = _lastCheckpoint = _lastTick = now;
         }
     }
 
-    public void Tick()
+    public void Tick() => Tick(false);
+    private void Tick(bool flush)
     {
         lock (_gate)
         {
             if (_current is null) return;
             var now = _clock.GetUtcNow().UtcDateTime;
             // Missing desktop samples represent an unknown/suspended interval.
-            if (now < _lastCheckpoint || now - _lastCheckpoint > TimeSpan.FromSeconds(30) || now - _lastSeen > Lease)
+            if (now < _lastTick || now - _lastTick > TimeSpan.FromSeconds(30) || now - _lastSeen > Lease)
             { _current = null; return; }
+            _lastTick = now;
+            var eligible = Eligible(_current.Browser) && !PrivacyPolicy.IgnoreDomain(_current.Domain);
+            if (!flush && eligible && now - _lastCheckpoint < TimeSpan.FromSeconds(10)) return;
             using var conn = Open();
             SaveEnd(conn, now);
             _lastCheckpoint = now;
-            if (!Eligible(_current.Browser)) _current = null;
+            if (!eligible) _current = null;
         }
     }
 
@@ -104,15 +110,16 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
         lock (_gate)
         {
             if (_current is null || _current.Browser != browser || (tabId > 0 && _current.TabId != tabId)) return;
-            Tick();
+            Tick(true);
             _current = null;
         }
     }
 
     public bool RecordInput(BrowserInputDto input)
     {
-        if (!LiveStatusStore.Settings.TrackBrowser || !LiveStatusStore.Settings.TrackInput) return false;
+        if (!LiveStatusStore.Settings.TrackBrowser || !LiveStatusStore.Settings.TrackInput || PrivacyPolicy.IgnoreBrowser(input.Browser) || PrivacyPolicy.IgnoreApp(LiveStatusStore.CurrentApp)) return false;
         var now = _clock.GetUtcNow();
+        if (!PrivacyPolicy.AcceptObservation(input.ObservedAt)) return false;
         var oldestRetainedInput = now.AddDays(-Math.Clamp(LiveStatusStore.Settings.RetentionDays, 1, 3650));
         if (!Guid.TryParse(input.BatchId, out _) || input.Keystrokes is < 0 or > 1000 || input.Clicks is < 0 or > 1000 ||
             input.ObservedAt > now.AddSeconds(5) || input.ObservedAt < oldestRetainedInput ||
@@ -121,6 +128,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             input.Browser is not ("firefox" or "chrome" or "edge" or "opera")) return false;
         lock (_gate)
         {
+            if (PrivacyPolicy.IgnoreDomain(uri.Host)) return false;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             // Retries use the original batch ID, so an ambiguous network failure cannot double counts.
@@ -131,7 +139,7 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
             cmd.Parameters.AddWithValue("$id", input.BatchId);
             cmd.Parameters.AddWithValue("$domain", uri.Host.ToLowerInvariant());
             cmd.Parameters.AddWithValue("$url", PrivacyUrl(uri));
-            cmd.Parameters.AddWithValue("$title", LiveStatusStore.Settings.BrowserStoreTitles ? input.Title : "");
+            cmd.Parameters.AddWithValue("$title", LiveStatusStore.Settings.BrowserStoreTitles ? PrivacyPolicy.BrowserTitle(input.Title, input.Browser) : "");
             cmd.Parameters.AddWithValue("$browser", input.Browser);
             cmd.Parameters.AddWithValue("$time", input.ObservedAt.UtcDateTime.ToString("o"));
             cmd.Parameters.AddWithValue("$keys", input.Keystrokes);

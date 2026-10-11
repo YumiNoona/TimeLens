@@ -57,6 +57,26 @@ internal static class Win32
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(IntPtr parent, EnumWindowDelegate callback, IntPtr param);
 
+    private static readonly object InputForegroundGate = new();
+    private static IntPtr _inputWindow;
+    private static uint _inputFramePid;
+    private static long _inputExpires;
+    private static (string exe, int pid) _inputForeground;
+
+    public static (string exe, int pid) GetForegroundProcessInfo()
+    {
+        var window = GetForegroundWindow();
+        GetWindowThreadProcessId(window, out var framePid);
+        lock (InputForegroundGate)
+        {
+            var ticks = Environment.TickCount64;
+            if (window == _inputWindow && framePid == _inputFramePid && ticks < _inputExpires) return _inputForeground;
+            var (exe, _, pid) = GetForegroundWindowInfo();
+            _inputWindow = window; _inputFramePid = framePid; _inputExpires = ticks + 500;
+            return _inputForeground = (exe, pid);
+        }
+    }
+
     public static (string exe, string title, int pid) GetForegroundWindowInfo()
     {
         var hwnd = GetForegroundWindow();

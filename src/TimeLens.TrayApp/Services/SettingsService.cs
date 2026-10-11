@@ -33,6 +33,7 @@ public sealed class SettingsService
             IgnoredDomains = dict.GetValueOrDefault("ignored_domains", ""),
             TitleRedactionPatterns = dict.GetValueOrDefault("title_redaction_patterns", ""),
             PauseUntil = dict.GetValueOrDefault("pause_until", ""),
+            OfflineWorkEnabled = dict.GetValueOrDefault("offline_work_enabled", "false") == "true",
             TrackAudio = dict.GetValueOrDefault("track_audio", "true") == "true",
             TrackBrowser = dict.GetValueOrDefault("track_browser", "true") == "true",
             TrackInput = dict.GetValueOrDefault("track_input", "true") == "true",

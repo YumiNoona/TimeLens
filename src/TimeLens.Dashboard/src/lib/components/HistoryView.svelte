@@ -12,7 +12,7 @@
   import MediaCard from './MediaCard.svelte';
   import TimelineView from './TimelineView.svelte';
   import { normalizeTimeline, fmtPrecise } from '../utils';
-  import { showSeconds } from '../stores/settings';
+  import { showSeconds, offlineWorkEnabled } from '../stores/settings';
   import UsageDetails from './UsageDetails.svelte';
   import { reorderable } from '../actions/reorderable';
 
@@ -281,7 +281,7 @@
         </section>
       {/if}
 
-      <OfflineTime date={selectedDate} />
+      {#if $offlineWorkEnabled}<OfflineTime date={selectedDate} />{/if}
       {#if !hasActivity}
         <div class="empty-day">
           <i class="ti ti-calendar-off" aria-hidden="true"></i>

@@ -4,6 +4,8 @@ namespace TimeLens.Api;
 
 public record AppSettings
 {
+    [JsonPropertyName("offlineWorkEnabled")]
+    public bool OfflineWorkEnabled { get; init; } = false;
     [JsonPropertyName("collectionSince")]
     public string CollectionSince { get; init; } = "";
     [JsonPropertyName("ignoredApps")]

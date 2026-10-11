@@ -80,6 +80,11 @@ try {
         Start-Sleep -Milliseconds 200
     }
     if (-not $ready) { throw 'The packaged app did not register its tray icon and start the settings API.' }
+    if ($settings.offlineWorkEnabled -ne $false) { throw 'Offline work must be disabled by default.' }
+    $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings' -Method Post -ContentType 'application/json' -Body '{"offlineWorkEnabled":true}'
+    if (-not (Invoke-RestMethod 'http://127.0.0.1:48721/api/settings').offlineWorkEnabled) { throw 'Offline work did not enable.' }
+    $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings' -Method Post -ContentType 'application/json' -Body '{"offlineWorkEnabled":false}'
+    if ((Invoke-RestMethod 'http://127.0.0.1:48721/api/settings').offlineWorkEnabled) { throw 'Offline work did not disable.' }
     $dashboard = Invoke-WebRequest 'http://127.0.0.1:48721/' -UseBasicParsing -TimeoutSec 5
     if ($dashboard.Content -notmatch '<script[^>]+src="([^"]+)"') { throw 'Embedded dashboard entry or JavaScript is missing.' }
     $asset = $Matches[1]

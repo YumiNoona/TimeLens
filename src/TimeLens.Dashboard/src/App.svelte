@@ -21,7 +21,7 @@
   import type { BrowserEntry, AudioEntry, WebMediaSummary } from './lib/types';
   import { fetchJson, getBrowserHourly } from './lib/api';
   import { data, loading, error, refresh } from './lib/stores/activity';
-  import { timeFormat as timeFormatStore, showSeconds, timelineMinSegmentSeconds, heatmapDays } from './lib/stores/settings';
+  import { timeFormat as timeFormatStore, showSeconds, timelineMinSegmentSeconds, heatmapDays, offlineWorkEnabled } from './lib/stores/settings';
   import { reorderable } from './lib/actions/reorderable';
 
   let browserSites = $state<BrowserEntry[]>([]);
@@ -139,6 +139,7 @@
   async function loadSettings(): Promise<void> {
     try {
       const s = await fetchJson<Record<string, unknown>>('/api/settings');
+      offlineWorkEnabled.set(s.offlineWorkEnabled === true);
       if (typeof s.theme === 'string') applyTheme(s.theme);
       timelineGrouped = typeof s.timelineGrouped === 'boolean' ? s.timelineGrouped : true;
       showTitles = typeof s.showTitles === 'boolean' ? s.showTitles : false;
@@ -231,7 +232,7 @@
         </div>
 
         <div class="today-content">
-          <OfflineTime review />
+          {#if $offlineWorkEnabled}<OfflineTime review />{/if}
           <section class="today-hero" use:reorderable={{ key: 'today:stats' }}>
             <StatCard
               label="Active time"

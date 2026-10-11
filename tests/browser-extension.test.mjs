@@ -19,7 +19,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '8.3.0' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '8.3.1' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -51,7 +51,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   assert.equal(observations().at(-1).body.tabId, 1);
   assert.ok(observations().at(-1).body.observedAt);
   assert.equal(observations().at(-1).headers['X-TimeLens-Extension'], 'test-token');
-  assert.equal(observations().at(-1).headers['X-TimeLens-Extension-Version'], '8.3.0');
+  assert.equal(observations().at(-1).headers['X-TimeLens-Extension-Version'], '8.3.1');
   tab = { ...tab, id: 2, url: 'https://example.com/b' };
   api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.equal(observations().at(-1).body.tabId, 2);
@@ -141,7 +141,7 @@ test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '8.3.0');
+    assert.equal(manifest.version, '8.3.1');
     if (family === 'firefox') {
       assert.equal(manifest.background.persistent, false);
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');

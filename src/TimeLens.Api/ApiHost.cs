@@ -34,7 +34,7 @@ public static class ApiHost
     private static readonly ConcurrentDictionary<string, byte[]> IconCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> PublicSettingNames = new(StringComparer.Ordinal)
     {
-        "trackAudio", "trackBrowser", "trackInput", "idleThresholdSeconds", "theme",
+        "offlineWorkEnabled", "trackAudio", "trackBrowser", "trackInput", "idleThresholdSeconds", "theme",
         "browserUrlMode", "browserStoreTitles",
         "timelineGrouped", "autoStart", "retentionDays", "showTitles", "breakReminder",
         "breakIntervalMinutes", "focusMode", "focusBlocklist", "blockAction", "blockTitle",
@@ -739,7 +739,7 @@ public static class ApiHost
                     }
                 }
 
-                if (prop.Name is "trackAudio" or "trackBrowser" or "trackInput" or "timelineGrouped" or
+                if (prop.Name is "offlineWorkEnabled" or "trackAudio" or "trackBrowser" or "trackInput" or "timelineGrouped" or
                     "showTitles" or "showSeconds" or "breakReminder" or "motionEnabled" or "browserStoreTitles" && prop.Value.ValueKind is not
                     (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
                 {
@@ -928,6 +928,7 @@ public static class ApiHost
             {
                 saveSetting?.Invoke(name switch
                 {
+                    "offlineWorkEnabled" => "offline_work_enabled",
                     "trackAudio" => "track_audio",
                     "trackBrowser" => "track_browser",
                     "trackInput" => "track_input",
@@ -968,6 +969,7 @@ public static class ApiHost
                 // Apply live toggles
                 switch (name)
                 {
+                    case "offlineWorkEnabled": LiveStatusStore.Settings = LiveStatusStore.Settings with { OfflineWorkEnabled = value == "true" }; break;
                     case "ignoredApps": LiveStatusStore.Settings = LiveStatusStore.Settings with { IgnoredApps = value }; break;
                     case "hiddenTitleApps": LiveStatusStore.Settings = LiveStatusStore.Settings with { HiddenTitleApps = value }; break;
                     case "ignoredDomains": LiveStatusStore.Settings = LiveStatusStore.Settings with { IgnoredDomains = value }; break;

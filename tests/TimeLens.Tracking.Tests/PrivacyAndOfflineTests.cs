@@ -31,6 +31,17 @@ public sealed class PrivacyAndOfflineTests : IDisposable
         using var cmd = conn.CreateCommand(); cmd.CommandText = sql; cmd.ExecuteNonQuery();
     }
     [Fact]
+    public void OfflineWorkIsOptInAndSurvivesSettingsReload()
+    {
+        var settings = new SettingsService(Db);
+        Assert.False(new AppSettings().OfflineWorkEnabled);
+        Assert.False(settings.Load().OfflineWorkEnabled);
+        settings.Save("offline_work_enabled", "true");
+        Assert.True(new SettingsService(Db).Load().OfflineWorkEnabled);
+        settings.Save("offline_work_enabled", "false");
+        Assert.False(new SettingsService(Db).Load().OfflineWorkEnabled);
+    }
+    [Fact]
     public void ExcludedAppsAndPauseNeverPersistInputAudioOrTitles()
     {
         LiveStatusStore.Settings = LiveStatusStore.Settings with { IgnoredApps = "SECRET.EXE" };

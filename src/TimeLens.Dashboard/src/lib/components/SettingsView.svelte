@@ -3,6 +3,7 @@
   import PrivacyRules from './PrivacyRules.svelte';
   import {
     heatmapDays as heatmapDaysStore,
+    offlineWorkEnabled,
     showSeconds as showSecondsStore,
     timeFormat as timeFormatStore
   } from '../stores/settings';
@@ -127,6 +128,7 @@
       const response = await fetch(API);
       if (!response.ok) throw new Error();
       const s = await response.json();
+      offlineWorkEnabled.set(s.offlineWorkEnabled === true);
       trackAudio = s.trackAudio ?? true;
       trackBrowser = s.trackBrowser ?? true;
       trackInput = s.trackInput ?? true;
@@ -181,6 +183,7 @@
       if (!response.ok) throw new Error();
       apiReachable = true;
       saveMessage = 'Saved';
+      if (key === 'offlineWorkEnabled') offlineWorkEnabled.set(value === true);
       setTimeout(() => { if (saveMessage === 'Saved') saveMessage = ''; }, 1200);
     } catch {
       apiReachable = false;
@@ -500,6 +503,10 @@
     <label class="setting-row">
       <div class="setting-info"><span class="setting-label">Audio activity</span><span class="setting-desc">Treat audible media as active time</span></div>
       <input type="checkbox" class="toggle" checked={trackAudio} onchange={(e) => setToggle('trackAudio', e, value => trackAudio = value)} />
+    </label>
+    <label class="setting-row">
+      <div class="setting-info"><span class="setting-label">Offline work</span><span class="setting-desc">Show offline work panels in Today and History to review idle time or add meetings and calls. Off by default; turning it off keeps existing entries.</span></div>
+      <input type="checkbox" class="toggle" checked={$offlineWorkEnabled} disabled={savingKey === 'offlineWorkEnabled'} onchange={(e) => save('offlineWorkEnabled', e.currentTarget.checked)} />
     </label>
     <label class="setting-row">
       <div class="setting-info"><span class="setting-label">Browser activity</span><span class="setting-desc">Accept domains and tabs from the extension</span></div>

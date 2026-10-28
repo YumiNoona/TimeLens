@@ -4,6 +4,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import `in`.venusapp.timelens.MainActivity
+import `in`.venusapp.timelens.BuildConfig
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -11,6 +12,20 @@ import org.junit.Test
 /** Real Compose actions reproduce the reported refresh/toggle/navigation regression. */
 class NavigationRegressionTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun yearReportLoadsAndBuildLabelsAreNotShown() {
+        compose.onNodeWithContentDescription("History", useUnmergedTree = true).performClick()
+        compose.onNodeWithText("1 year").performClick()
+        val model = androidx.lifecycle.ViewModelProvider(compose.activity)[AppModel::class.java]
+        compose.waitUntil(15_000) { model.state.value.report?.days == 365 && !model.state.value.loading }
+        compose.onNodeWithText("1 year").assertIsSelected()
+        assertEquals(365, model.state.value.report?.daily?.size)
+        compose.onAllNodes(hasText("ON THIS PHONE", substring = true)).assertCountEquals(0)
+        compose.onNodeWithContentDescription("Settings", useUnmergedTree = true).performClick()
+        compose.onAllNodes(hasText("ANDROID ${BuildConfig.VERSION_NAME}", substring = true)).assertCountEquals(0)
+        compose.onAllNodes(hasText("Android ${BuildConfig.VERSION_NAME}", substring = true)).assertCountEquals(0)
+    }
 
     private fun scroll(page: Int) =
         compose

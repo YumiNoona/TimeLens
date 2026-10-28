@@ -11,10 +11,10 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 - Android-only smoothness improvements are documented in [PERFORMANCE-REVIEW.md](PERFORMANCE-REVIEW.md).
 
 - Five independent destinations: Today, Apps, History, Block and Settings. Phone navigation uses accessible icons; larger screens use a rail. Each page keeps its own scroll and form state. Refresh indicators no longer change the content position.
-- Space Grotesk bundled offline, with a complete type scale. Black-and-white dark/light themes; real app icons with grayscale on/off. Refresh is the only top-right action.
+- Space Grotesk bundled offline, with a complete type scale. Light/dark/system themes use a circular reveal; real app icons keep original colors by default. The top-right action switches appearance. Repeated build/device labels are not shown.
 - Today contains current-day screen time, goals, productive-category score, switches, longest session, yesterday comparison, hourly activity and a short top-app preview.
 - Apps contains the app inventory, details, categories and optional daily comparison goals. Search opens from its icon. Filters open a dedicated dialog for used/installed, category and sorting.
-- History contains 7/30/90-day totals, averages, weekly patterns, categories, a calendar, selected-day app visits and observed website domains.
+- History contains short-range and full-year totals, averages, app/category breakdowns, a calendar and detailed visits for each saved day. Selecting a day keeps the year overview stable. Deleted history cannot be reconstructed.
 - Block contains app rules, website rules, a custom banner preview and activity. **Comfort** permits an allowance in a rolling 24-hour window. **Strict** blocks access while the rule and blocking are enabled. Neither has an overlay pause shortcut. Optional PIN protects changes.
 - App Comfort measurement reads Android usage directly, independent of history exclusion, collection pause and archive deletion. Time under TimeLens's blocking overlay is subtracted while the service is running.
 - Optional, separately disclosed browser integration recognizes known address-bar controls for Chrome, Firefox, Edge and Samsung Internet. It saves canonical hostnames and observed foreground time only. Website rules include subdomains. A Strict parent rule takes precedence over a Comfort child rule.

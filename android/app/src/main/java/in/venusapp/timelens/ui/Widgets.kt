@@ -64,12 +64,13 @@ internal fun EmptyActivity() =
 @Composable
 internal fun DateSelector(date: LocalDate, onDate: (LocalDate) -> Unit) {
     val context = LocalContext.current
+    val earliest = LocalDate.now().minusDays(364)
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { onDate(date.minusDays(1)) }) {
+        IconButton(onClick = { onDate(date.minusDays(1)) }, enabled = date > earliest) {
             Icon(Icons.Outlined.ChevronLeft, "Previous day")
         }
         TextButton(
@@ -82,7 +83,10 @@ internal fun DateSelector(date: LocalDate, onDate: (LocalDate) -> Unit) {
                         date.monthValue - 1,
                         date.dayOfMonth,
                     )
-                    .apply { datePicker.maxDate = System.currentTimeMillis() }
+                    .apply {
+                        datePicker.minDate = earliest.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        datePicker.maxDate = System.currentTimeMillis()
+                    }
                     .show()
             }
         ) {

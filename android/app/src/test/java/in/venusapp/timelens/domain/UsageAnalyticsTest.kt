@@ -6,6 +6,32 @@ import org.junit.Test
 
 class UsageAnalyticsTest {
     @Test
+    fun fullYearBucketsPreserveEveryIntervalAndEmptyDay() {
+        val zone = ZoneId.of("Asia/Kolkata")
+        val first = LocalDate.of(2025, 11, 1)
+        val rows = (0 until 365).flatMap { day ->
+            if (day == 180) emptyList() else (0 until 200).map { visit ->
+                val start = first.plusDays(day.toLong()).atStartOfDay(zone).toInstant().toEpochMilli() + visit*120_000
+                Session("app", start, start+60_000)
+            }
+        }
+        val result = UsageAnalytics.daily(rows, first, 365, zone)
+        assertEquals(365, result.size)
+        assertEquals(0L, result[180].second)
+        assertEquals(12_000_000L, result.first().second)
+        assertEquals(rows.sumOf { it.milliseconds }, result.sumOf { it.second })
+    }
+
+    @Test
+    fun dailyBucketsRespectDstAndRangeClipping() {
+        val zone = ZoneId.of("America/New_York")
+        val first = LocalDate.of(2026, 3, 7)
+        val start = first.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = first.plusDays(4).atStartOfDay(zone).toInstant().toEpochMilli()
+        assertEquals(listOf(86_400_000L, 82_800_000L, 86_400_000L),
+            UsageAnalytics.daily(listOf(Session("app", start, end)), first, 3, zone).map { it.second })
+    }
+    @Test
     fun hourlyAndDailyTotalsConserveMidnightClipping() {
         val zone = ZoneId.of("Asia/Kolkata")
         val day = LocalDate.of(2026, 10, 28)

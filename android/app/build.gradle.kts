@@ -15,8 +15,8 @@ android {
         applicationId = "in.venusapp.timelens"
         minSdk = 29
         targetSdk = 36
-        versionCode = 80701
-        versionName = "2.0.0"
+        versionCode = 80702
+        versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -38,6 +38,12 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if(signingFile.exists()) signingConfig = signingConfigs.getByName("localRelease")
+        }
+        create("preview") {
+            initWith(getByName("release"))
+            // Small, installable testing artifact, explicitly not production signing.
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
     lint { abortOnError = true; checkReleaseBuilds = true }

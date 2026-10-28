@@ -25,6 +25,11 @@ class Preferences(context: Context) {
             prefs.edit().putLong("since", initialBoundary).commit()
         }
         migrateBlockControls()
+        if (!prefs.contains("originalIconColorsDefault")) {
+            // Retire the old monochrome default once; later explicit choices remain respected.
+            prefs.edit().putBoolean("grayIcons", false)
+                .putBoolean("originalIconColorsDefault", true).apply()
+        }
     }
 
     private fun migrateBlockControls() {
@@ -53,7 +58,7 @@ class Preferences(context: Context) {
         }
 
     var retention: Int
-        get() = prefs.getInt("retention", 90)
+        get() = prefs.getInt("retention", 365)
         set(value) {
             prefs.edit().putInt("retention", value.coerceIn(7, 365)).apply()
         }
@@ -144,7 +149,7 @@ class Preferences(context: Context) {
         }
 
     var grayIcons: Boolean
-        get() = prefs.getBoolean("grayIcons", true)
+        get() = prefs.getBoolean("grayIcons", false)
         set(value) {
             prefs.edit().putBoolean("grayIcons", value).apply()
         }

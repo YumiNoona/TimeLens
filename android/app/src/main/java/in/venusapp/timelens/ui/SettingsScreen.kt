@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import `in`.venusapp.timelens.BuildConfig
 import `in`.venusapp.timelens.data.*
 import `in`.venusapp.timelens.domain.PinSecurity
 import `in`.venusapp.timelens.domain.ThemeMode
@@ -29,6 +28,7 @@ import kotlinx.coroutines.*
 @Composable
 internal fun SettingsScreen(
     model: AppModel,
+    onTheme: (String) -> Unit = model::setTheme,
     onAccess: () -> Unit,
     onExport: (Boolean, Int) -> Unit,
     onImport: () -> Unit,
@@ -78,7 +78,7 @@ internal fun SettingsScreen(
                 ThemeMode.options.forEach { value ->
                     FilterChip(
                         theme == value,
-                        onClick = { model.edit(refreshActivity = false) { it.preferences.theme = value } },
+                        onClick = { onTheme(value) },
                         label = { Text(if (value == "system") "Follow system" else value.replaceFirstChar(Char::uppercase)) },
                     )
                 }
@@ -295,7 +295,7 @@ internal fun SettingsScreen(
         }
         InfoCard(
             "Independent. Private. Local.",
-            "Android ${BuildConfig.VERSION_NAME} · No account, analytics or Internet permission. This app tracks this phone independently. Optional website tracking reads supported browser address bars only. PC pairing is not connected.",
+            "No account, analytics or Internet permission. Activity stays on your device. Optional website tracking reads supported browser address bars only. PC pairing is not connected.",
         )
         OutlinedButton(onClick = { guard { delete = true } }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all saved phone activity", color = MaterialTheme.colorScheme.error)

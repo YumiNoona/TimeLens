@@ -1,3 +1,8 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#EEEEEE" android:strokeWidth="4.8" android:strokeLineCap="round" android:fillColor="@android:color/transparent" android:pathData="M54,27a27,27 0,1 0,0 54a27,27 0,1 0,0 -54M54,39v16l11,7" />
+    <!-- Vector rendering of the existing TimeLens stopwatch identity, not a tinted app glyph. -->
+    <path android:fillColor="#B9C9D0" android:pathData="M48,19h12v7h-12zM51,25h6v10h-6zM74,29l5,5l-6,6l-5,-5z" />
+    <path android:fillColor="#F7FAFB" android:strokeColor="#B9C9D0" android:strokeWidth="4" android:pathData="M54,32a24,24 0,1 0,0 48a24,24 0,1 0,0 -48" />
+    <path android:strokeColor="#546E7A" android:strokeWidth="2.4" android:strokeLineCap="round" android:fillColor="@android:color/transparent" android:pathData="M54,38v4M54,70v4M36,56h4M68,56h4M41,43l2,2M65,67l2,2M41,69l2,-2M65,45l2,-2" />
+    <path android:strokeColor="#E34D59" android:strokeWidth="3.6" android:strokeLineCap="round" android:fillColor="@android:color/transparent" android:pathData="M47,65l16,-19" />
+    <path android:fillColor="#37474F" android:pathData="M54,53a3,3 0,1 0,0 6a3,3 0,1 0,0 -6" />
 </vector>

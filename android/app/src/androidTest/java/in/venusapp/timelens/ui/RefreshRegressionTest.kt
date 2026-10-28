@@ -16,6 +16,33 @@ import org.junit.Test
 
 class RefreshRegressionTest {
     @Test
+    fun themeChangeIsImmediateEvenWhenHistoryWorkHoldsTheGate() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val models = ViewModelStore()
+        val model = withContext(Dispatchers.Main) {
+            AppModel(context.applicationContext as Application).also { models.put("test", it) }
+        }
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val previous = model.preferences.theme
+        try {
+            withContext(Dispatchers.Main) { model.edit {
+                entered.countDown()
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            } }
+            withContext(Dispatchers.IO) { org.junit.Assert.assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS)) }
+            withContext(Dispatchers.Main) {
+                val revision = model.state.value.revision
+                model.setTheme("light")
+                assertEquals("light", model.preferences.theme)
+                assertEquals(revision+1, model.state.value.revision)
+            }
+        } finally {
+            release.countDown()
+            withContext(Dispatchers.Main) { model.setTheme(previous); models.clear() }
+        }
+    }
+    @Test
     fun appearanceEditsDoNotStartAnActivityScan() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val models = ViewModelStore()

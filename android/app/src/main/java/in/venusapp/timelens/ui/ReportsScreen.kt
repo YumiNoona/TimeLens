@@ -176,43 +176,23 @@ internal fun WeekChart(state: UiState, onDate: (java.time.LocalDate) -> Unit) {
 
 @Composable
 internal fun HistoryScreen(state: UiState, model: AppModel) {
-    var range by rememberSaveable { mutableIntStateOf(7) }
-    val from = state.date.minusDays(range.toLong() - 1)
-    val zone = ZoneId.systemDefault()
-    val boundary = from.atStartOfDay(zone).toInstant().toEpochMilli()
-    val rows =
-        remember(state.history, boundary) {
-            state.history
-                .filter { it.end > boundary }
-                .map { it.copy(start = maxOf(it.start, boundary)) }
-        }
-    val total = remember(rows) { rows.sumOf { it.milliseconds } }
-    val series = remember(rows, from, range, zone) { UsageAnalytics.daily(rows, from, range, zone) }
-    val labels = remember(state.installed) { state.installed.associate { it.app to it.label } }
-    val apps =
-        remember(rows, labels, state.revision) {
-            rows
-                .groupBy { it.app }
-                .map { (app, sessions) ->
-                    AppUsage(
-                        app,
-                        labels[app] ?: app.substringAfterLast('.'),
-                        sessions.sumOf { it.milliseconds },
-                        sessions.size,
-                        model.preferences.category(app),
-                        model.preferences.limit(app),
-                    )
-                }
-                .sortedByDescending { it.milliseconds }
-        }
+    val range = state.historyRange
+    val reportEnd = if (range == 365) java.time.LocalDate.now() else state.date
+    val report = state.report?.takeIf { it.end == reportEnd && it.days == range }
+    val series = report?.daily.orEmpty()
+    val apps = report?.apps.orEmpty()
+    val total = report?.total ?: 0L
+    var visibleApps by rememberSaveable { mutableIntStateOf(8) }
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         SectionTitle("Your history.", "Trends across days, plus every visit in order.")
+        if (range == 365) Text("Last year · choose any saved day to inspect its visits below.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(7, 30, 90).forEach { value ->
+            listOf(7, 30, 90, 365).forEach { value ->
                 FilterChip(
                     range == value,
-                    onClick = { range = value },
-                    label = { Text("$value days") },
+                    onClick = { model.setHistoryRange(value) },
+                    label = { Text(if (value == 365) "1 year" else "$value days") },
                 )
             }
         }
@@ -223,8 +203,31 @@ internal fun HistoryScreen(state: UiState, model: AppModel) {
             Metric("Total time", usage(total), "${apps.size} apps", Modifier.weight(1f))
             Metric("Daily average", usage(total / range), "Saved activity", Modifier.weight(1f))
         }
+        if (model.preferences.retention < range) {
+            InfoCard("Shorter retention is enabled", "Only the last ${model.preferences.retention} days are retained. Choose one-year retention to keep future activity for a full year. Previously deleted history cannot be recovered.")
+            TextButton(onClick = { model.edit { it.preferences.retention = 365 } }) { Text("Keep one year of history") }
+        }
         WeekChart(state) { model.refresh(it) }
         CategoryChart(apps)
+        if (apps.isNotEmpty()) {
+            Text("Apps in this period", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            apps.take(visibleApps).forEach { app ->
+                key(app.app) {
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            AppIcon(app.app, app.label)
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label, fontWeight = FontWeight.Medium)
+                                Text("${app.sessions} visits · ${app.category}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text(usage(app.milliseconds))
+                        }
+                    }
+                }
+            }
+            if (apps.size > visibleApps) TextButton(onClick = { visibleApps += 20 }) { Text("Show more apps in this period") }
+        }
         Text(
             "Activity calendar",
             style = MaterialTheme.typography.titleMedium,

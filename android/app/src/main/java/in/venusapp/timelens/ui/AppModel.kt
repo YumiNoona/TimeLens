@@ -9,6 +9,7 @@ import `in`.venusapp.timelens.data.InstalledApp
 import `in`.venusapp.timelens.data.Preferences
 import `in`.venusapp.timelens.data.SiteStore
 import `in`.venusapp.timelens.data.UsageRepository
+import `in`.venusapp.timelens.data.HistoryReport
 import `in`.venusapp.timelens.domain.Session
 import `in`.venusapp.timelens.domain.WebAddress
 import `in`.venusapp.timelens.platform.AppBlockService
@@ -38,6 +39,8 @@ data class UiState(
     val blocksWeek: Int = 0,
     val webHistory: List<Session> = emptyList(),
     val allowances: Map<String, Long?> = emptyMap(),
+    val historyRange: Int = 7,
+    val report: HistoryReport? = null,
 )
 
 class AppModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +50,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private var refreshJob: Job? = null
     private var installedCache: List<InstalledApp>? = null
     private var installedAt = 0L
+    private var historyVisible = false
+    private var reportCache: HistoryReport? = null
+    private var reportAt = 0L
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
 
@@ -54,6 +60,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         // Timer ticks must not repeatedly cancel a slow refresh before it can finish.
         if (!force && refreshJob?.isActive == true && date == mutable.value.date) return
         refreshJob?.cancel()
+        val reportDays = mutable.value.historyRange
+        val reportEnd = if (reportDays == 365) LocalDate.now() else date
+        val includeReport = historyVisible
         mutable.value =
             mutable.value.copy(
                 date = date,
@@ -84,16 +93,27 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                                 SiteStore(getApplication()).use { it.read(now - 86_400_000L, now) }
                             else emptyList()
                             ensureActive()
+                            val report = if (includeReport) {
+                                reportCache?.takeIf {
+                                    !force && it.end == reportEnd && it.days == reportDays &&
+                                        android.os.SystemClock.elapsedRealtime() - reportAt < 60_000
+                                } ?: repository.report(reportEnd, reportDays).also {
+                                    reportCache = it
+                                    reportAt = android.os.SystemClock.elapsedRealtime()
+                                }
+                            } else null
                             UiState(
                                 date = date,
                                 day = day,
-                                history = repository.history(date, 91),
+                                history = repository.history(date, 7),
+                                historyRange = reportDays,
+                                report = report,
                                 installed = installed,
                                 blocks = repository.blockHistory(),
                                 focusCompleted = repository.completedFocusToday(),
                                 blocksToday = repository.blockedCount(1),
                                 blocksWeek = repository.blockedCount(7),
-                                webHistory = repository.websites(date, 91),
+                                webHistory = repository.websites(date, 1),
                                 allowances =
                                     comfortRules
                                         .associate { rule ->
@@ -130,6 +150,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             try {
                 withContext(Dispatchers.IO) { gate.withLock { action(repository) } }
                 if (refreshActivity) {
+                    reportCache = null
                     BackgroundTasks.setup(getApplication())
                     AppBlockService.changed(getApplication())
                 }
@@ -146,6 +167,24 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun archiveNow() {
         edit { it.forceArchive() }
+    }
+
+    fun setTheme(theme: String) {
+        // apply() updates memory immediately; appearance must not wait for the history lock.
+        preferences.theme = theme
+        mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
+    }
+
+    fun setHistoryVisible(visible: Boolean) {
+        if (historyVisible == visible) return
+        historyVisible = visible
+        if (visible) refresh(force = true)
+    }
+
+    fun setHistoryRange(days: Int) {
+        if (days !in listOf(7, 30, 90, 365) || days == mutable.value.historyRange) return
+        mutable.value = mutable.value.copy(historyRange = days)
+        refresh(force = true)
     }
 
     override fun onCleared() {

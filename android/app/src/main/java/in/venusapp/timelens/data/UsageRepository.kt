@@ -35,6 +35,14 @@ data class DayUsage(
         get() = sessions.sumOf { it.milliseconds }
 }
 
+data class HistoryReport(
+    val end: LocalDate,
+    val days: Int,
+    val daily: List<Pair<LocalDate, Long>>,
+    val apps: List<AppUsage>,
+    val total: Long,
+)
+
 class UsageRepository(private val context: Context, val preferences: Preferences) : AutoCloseable {
     private val store = ActivityStore(context)
     private val labels = ConcurrentHashMap<String, String>()
@@ -115,8 +123,10 @@ class UsageRepository(private val context: Context, val preferences: Preferences
     fun history(end: LocalDate, days: Int): List<Session> =
         synchronized(ActivityStore.lock) {
             val zone = ZoneId.systemDefault()
-            val from =
-                end.minusDays(days.toLong() - 1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val from = maxOf(
+                end.minusDays(days.toLong() - 1).atStartOfDay(zone).toInstant().toEpochMilli(),
+                LocalDate.now().minusDays(preferences.retention.toLong()-1)
+                    .atStartOfDay(zone).toInstant().toEpochMilli())
             val until =
                 minOf(
                     end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
@@ -137,6 +147,19 @@ class UsageRepository(private val context: Context, val preferences: Preferences
                     .toEpochMilli()
             )
         }
+
+    /** Aggregate a long range on the I/O worker; keep only selected-day raw detail in the UI. */
+    fun report(end: LocalDate, days: Int): HistoryReport {
+        require(days in 1..365)
+        val rows = history(end, days)
+        val apps = rows.groupBy { it.app }.map { (app, sessions) ->
+            AppUsage(app, label(app), sessions.sumOf { it.milliseconds }, sessions.size,
+                preferences.category(app), preferences.limit(app))
+        }.sortedByDescending { it.milliseconds }
+        return HistoryReport(end, days,
+            `in`.venusapp.timelens.domain.UsageAnalytics.daily(rows, end.minusDays(days.toLong()-1), days, ZoneId.systemDefault()),
+            apps, rows.sumOf { it.milliseconds })
+    }
 
     fun restoreActivity(rows: List<Session>) =
         synchronized(ActivityStore.lock) {

@@ -8,7 +8,7 @@
 
 Private activity insights for your computer and phone. Understand your habits, see your day clearly, and make room for focused work—without an account or a cloud activity store.
 
-[**Explore TimeLens**](https://timelens.venusapp.in) · [**Downloads**](https://github.com/YumiNoona/TimeLens/releases/latest) · [**Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [**Documentation**](https://timelens.venusapp.in/docs)
+[**Explore TimeLens**](https://timelens.venusapp.in) · [**Downloads**](https://github.com/YumiNoona/TimeLens/releases) · [**Firefox extension**](https://addons.mozilla.org/en-US/firefox/addon/timelens-tracker/) · [**Documentation**](https://timelens.venusapp.in/docs)
 
 </div>
 
@@ -82,7 +82,7 @@ Blocking is a personal focus aid, not device-owner lockdown. Android's owner can
 
 **Browser companions:** use the official Firefox listing or review the developer packages in Releases. Companions need the local Windows app; they are not standalone cloud trackers.
 
-[Browse downloads →](https://github.com/YumiNoona/TimeLens/releases/latest) · [Read the documentation →](https://timelens.venusapp.in/docs)
+[Browse downloads →](https://github.com/YumiNoona/TimeLens/releases) · [Read the documentation →](https://timelens.venusapp.in/docs)
 
 ## Explore the project
 

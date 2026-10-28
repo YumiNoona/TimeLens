@@ -146,12 +146,6 @@ internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Mo
             }
         }
         items(apps, key = { "app:${it.app}" }, contentType = { "app" }) { app -> AppCard(app, model) }
-        item(key = "footer") {
-            Text("ON THIS PHONE · ANDROID " + `in`.venusapp.timelens.BuildConfig.VERSION_NAME,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 12.dp))
-        }
     }
     if (filters) {
         var selection by remember { mutableStateOf(category) }

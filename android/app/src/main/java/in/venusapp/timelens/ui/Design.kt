@@ -28,7 +28,7 @@ internal data class DisplayOptions(
     val seconds: Boolean = false,
     val use24Hour: Boolean = true,
     val compact: Boolean = false,
-    val grayIcons: Boolean = true,
+    val grayIcons: Boolean = false,
 )
 
 internal val LocalDisplay = staticCompositionLocalOf { DisplayOptions() }

@@ -5,11 +5,30 @@ on:
     tags: ["v*"]
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.scope.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: scope
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          [xml]$project = Get-Content 'src/TimeLens.TrayApp/TimeLens.TrayApp.csproj'
+          $desktop = [string]$project.Project.PropertyGroup.Version
+          $androidSource = Get-Content 'android/app/build.gradle.kts' -Raw
+          $android = [regex]::Match($androidSource, 'versionName = "([^"]+)"').Groups[1].Value
+          if ($version -ne $desktop -and $version -ne $android) { throw 'Tag does not match either application version.' }
+          "desktop=$($version -eq $desktop)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+
   android:
+    needs: scope
     uses: ./.github/workflows/android.yml
 
   build:
-    needs: android
+    needs: [scope, android]
+    if: needs.scope.outputs.desktop == 'true'
     runs-on: windows-latest
     permissions:
       contents: write

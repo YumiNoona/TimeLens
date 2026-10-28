@@ -17,6 +17,7 @@ internal fun TimelineScreen(state: UiState, model: AppModel) {
     var category by rememberSaveable { mutableStateOf("All") }
     var grouped by rememberSaveable { mutableStateOf(false) }
     var visible by rememberSaveable { mutableIntStateOf(150) }
+    var expandedApps by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val day = state.day ?: return
     val labels =
         (state.installed.associate { it.app to it.label } +
@@ -80,13 +81,16 @@ internal fun TimelineScreen(state: UiState, model: AppModel) {
                                 }
                                 Text(usage(visits.sumOf { it.milliseconds }))
                             }
-                            visits.take(8).forEach { row ->
+                            visits.take(if (app in expandedApps) visits.size else 8).forEach { row ->
                                 Text(
                                     "${timeLabel(row.start)} – ${timeLabel(row.end)} · ${usage(row.milliseconds)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            if (visits.size > 8) TextButton(onClick = {
+                                expandedApps = if (app in expandedApps) expandedApps - app else expandedApps + app
+                            }) { Text(if (app in expandedApps) "Show fewer visits" else "Show all ${visits.size} visits") }
                         }
                     }
                 }

@@ -29,9 +29,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and check Android preview
         working-directory: android
-        run: bash gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease --console=plain
+        run: bash gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:assemblePreview :app:lintPreview --console=plain
       - name: Name preview package
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk TimeLens-Android-preview.apk
+        run: cp android/app/build/outputs/apk/preview/app-preview.apk TimeLens-Android-preview.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TimeLens-Android-preview

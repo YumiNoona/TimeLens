@@ -30,7 +30,8 @@ class Preferences(context: Context) {
             blockRules = blockRules.map { rule ->
                 when (rule.mode) {
                     "always" -> rule.copy(mode = "strict")
-                    "budget" -> rule.copy(mode = "comfort")
+                    "budget" ->
+                        rule.copy(mode = "comfort", enabled = rule.enabled && limit(rule.app) > 0)
                     "focus",
                     "schedule" -> rule.copy(mode = "comfort", enabled = false)
                     else -> rule

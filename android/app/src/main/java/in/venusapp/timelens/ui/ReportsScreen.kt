@@ -74,10 +74,12 @@ internal fun HourlyChart(day: DayUsage) {
 @Composable
 internal fun CategoryChart(apps: List<AppUsage>) {
     val categories =
-        apps
-            .groupBy { it.category }
-            .map { (name, rows) -> name to rows.sumOf { it.milliseconds } }
-            .sortedByDescending { it.second }
+        remember(apps) {
+            apps
+                .groupBy { it.category }
+                .map { (name, rows) -> name to rows.sumOf { it.milliseconds } }
+                .sortedByDescending { it.second }
+        }
     val total = maxOf(1, categories.sumOf { it.second })
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -179,26 +181,30 @@ internal fun HistoryScreen(state: UiState, model: AppModel) {
     val zone = ZoneId.systemDefault()
     val boundary = from.atStartOfDay(zone).toInstant().toEpochMilli()
     val rows =
-        state.history
-            .filter { it.end > boundary }
-            .map { it.copy(start = maxOf(it.start, boundary)) }
-    val total = rows.sumOf { it.milliseconds }
-    val series = UsageAnalytics.daily(rows, from, range, zone)
-    val labels = state.installed.associate { it.app to it.label }
+        remember(state.history, boundary) {
+            state.history
+                .filter { it.end > boundary }
+                .map { it.copy(start = maxOf(it.start, boundary)) }
+        }
+    val total = remember(rows) { rows.sumOf { it.milliseconds } }
+    val series = remember(rows, from, range, zone) { UsageAnalytics.daily(rows, from, range, zone) }
+    val labels = remember(state.installed) { state.installed.associate { it.app to it.label } }
     val apps =
-        rows
-            .groupBy { it.app }
-            .map { (app, sessions) ->
-                AppUsage(
-                    app,
-                    labels[app] ?: app.substringAfterLast('.'),
-                    sessions.sumOf { it.milliseconds },
-                    sessions.size,
-                    model.preferences.category(app),
-                    model.preferences.limit(app),
-                )
-            }
-            .sortedByDescending { it.milliseconds }
+        remember(rows, labels, state.revision) {
+            rows
+                .groupBy { it.app }
+                .map { (app, sessions) ->
+                    AppUsage(
+                        app,
+                        labels[app] ?: app.substringAfterLast('.'),
+                        sessions.sumOf { it.milliseconds },
+                        sessions.size,
+                        model.preferences.category(app),
+                        model.preferences.limit(app),
+                    )
+                }
+                .sortedByDescending { it.milliseconds }
+        }
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         SectionTitle("Your history.", "Trends across days, plus every visit in order.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -217,7 +223,7 @@ internal fun HistoryScreen(state: UiState, model: AppModel) {
             Metric("Total time", usage(total), "${apps.size} apps", Modifier.weight(1f))
             Metric("Daily average", usage(total / range), "Saved activity", Modifier.weight(1f))
         }
-        WeekChart(state, model::refresh)
+        WeekChart(state) { model.refresh(it) }
         CategoryChart(apps)
         Text(
             "Activity calendar",

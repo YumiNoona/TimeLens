@@ -6,10 +6,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import `in`.venusapp.timelens.BuildConfig
 import `in`.venusapp.timelens.data.*
+import `in`.venusapp.timelens.domain.ThemeMode
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -32,15 +34,15 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.coroutines.*
 
-private data class Page(val title: String, val icon: ImageVector)
+private data class Page(val title: String, val icon: ImageVector, val selectedIcon: ImageVector)
 
 private val Pages =
     listOf(
-        Page("Today", Icons.Outlined.Today),
-        Page("Apps", Icons.Outlined.Apps),
-        Page("History", Icons.Outlined.History),
-        Page("Block", Icons.Outlined.Shield),
-        Page("Settings", Icons.Outlined.Settings),
+        Page("Today", Icons.Outlined.Today, Icons.Filled.Today),
+        Page("Apps", Icons.Outlined.Widgets, Icons.Filled.Widgets),
+        Page("History", Icons.Outlined.Assessment, Icons.Filled.Assessment),
+        Page("Block", Icons.Outlined.Shield, Icons.Filled.Shield),
+        Page("Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
     )
 
 fun duration(ms: Long, precise: Boolean = false): String {
@@ -66,8 +68,13 @@ fun TimeLensApp(model: AppModel = viewModel()) {
     val state by model.state.collectAsStateWithLifecycle()
     val prefs = model.preferences
     var page by rememberSaveable { mutableIntStateOf(0) }
-    val dark = prefs.theme != "light"
-    val scheme = monoScheme(dark)
+    // Preferences are not Snapshot state: explicitly observe the edit revision at this scope.
+    val theme = remember(state.revision) { prefs.theme }
+    val display = remember(state.revision) {
+        DisplayOptions(prefs.showSeconds, prefs.use24Hour, prefs.compact, prefs.grayIcons)
+    }
+    val dark = ThemeMode.isDark(theme, isSystemInDarkTheme())
+    val scheme = animatedMonoScheme(dark)
     val pageStates = rememberSaveableStateHolder()
     var historyDate by rememberSaveable { mutableStateOf(java.time.LocalDate.now().toString()) }
     val focusManager = LocalFocusManager.current
@@ -77,7 +84,7 @@ fun TimeLensApp(model: AppModel = viewModel()) {
         page = index
         val date =
             if (index == 2) java.time.LocalDate.parse(historyDate) else java.time.LocalDate.now()
-        if (state.date != date) model.refresh(date)
+        if (state.date != date || index == 3) model.refresh(date)
     }
     BackHandler(page != 0) { navigate(0) }
     MaterialTheme(
@@ -91,7 +98,7 @@ fun TimeLensApp(model: AppModel = viewModel()) {
     ) {
         CompositionLocalProvider(
             LocalDisplay provides
-                DisplayOptions(prefs.showSeconds, prefs.use24Hour, prefs.compact, prefs.grayIcons)
+                display
         ) {
             val wide =
                 with(LocalDensity.current) {
@@ -240,14 +247,18 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                     },
                 )
             }
-            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refresh() }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                model.refresh(if (page == 2) state.date else java.time.LocalDate.now())
+            }
             val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
             val lifecycleState by lifecycle.currentStateFlow.collectAsState()
-            LaunchedEffect(lifecycleState) {
-                if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED))
+            LaunchedEffect(lifecycleState, page) {
+                if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && page in 0..3)
                     while (true) {
                         delay(30_000)
-                        model.refresh()
+                        // History is immutable while browsing a past date. Today follows midnight.
+                        if (page != 2 || model.state.value.date == java.time.LocalDate.now())
+                            model.refresh(java.time.LocalDate.now())
                     }
             }
             Scaffold(
@@ -258,8 +269,13 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                             Text(Pages[page].title, style = MaterialTheme.typography.titleLarge)
                         },
                         actions = {
-                            IconButton(onClick = { model.archiveNow() }, enabled = !state.loading) {
-                                Icon(Icons.Outlined.Refresh, "Refresh activity")
+                            IconButton(onClick = {
+                                model.edit(refreshActivity = false) {
+                                    it.preferences.theme = if (dark) "light" else "dark"
+                                }
+                            }) {
+                                Icon(if (dark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                                    if (dark) "Switch to light mode" else "Switch to dark mode")
                             }
                         },
                     )
@@ -271,7 +287,12 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                 NavigationBarItem(
                                     selected = page == index,
                                     onClick = { navigate(index) },
-                                    icon = { Icon(item.icon, item.title) },
+                                    icon = { Icon(if (page == index) item.selectedIcon else item.icon, item.title) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                        selectedIconColor = scheme.onSurface,
+                                        unselectedIconColor = scheme.onSurfaceVariant,
+                                    ),
                                     alwaysShowLabel = false,
                                 )
                             }
@@ -285,7 +306,10 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                 NavigationRailItem(
                                     selected = page == index,
                                     onClick = { navigate(index) },
-                                    icon = { Icon(item.icon, null) },
+                                    icon = { Icon(if (page == index) item.selectedIcon else item.icon, null) },
+                                    colors = NavigationRailItemDefaults.colors(
+                                        indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                    ),
                                     label = { Text(item.title) },
                                 )
                             }
@@ -296,6 +320,12 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                         // never
                         // inserts an item before this content or changes its composition identity.
                         pageStates.SaveableStateProvider(page) {
+                            if (page == 1) {
+                                AppsScreen(state, model,
+                                    modifier = Modifier.width(contentWidth).fillMaxHeight()
+                                        .testTag("page-1").align(androidx.compose.ui.Alignment.TopCenter),
+                                    onAccess = { openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
+                            } else
                             Column(
                                 Modifier.width(contentWidth)
                                     .fillMaxHeight()
@@ -324,7 +354,6 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                             onApps = { navigate(1) },
                                             onFocus = { navigate(3) },
                                         )
-                                    1 -> AppsScreen(state, model)
                                     2 -> HistoryScreen(state, model)
                                     3 -> BlockScreen(model)
                                     4 ->

@@ -1,6 +1,10 @@
 package `in`.venusapp.timelens.ui
 
 import androidx.compose.material3.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -62,6 +66,50 @@ private fun type(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) =
         fontSize = size.sp,
         lineHeight = line.sp,
     )
+
+/** Animate the palette without duplicating the screen, resetting scroll, or taking screenshots. */
+@Composable
+internal fun animatedMonoScheme(dark: Boolean): ColorScheme {
+    val amount by animateFloatAsState(if (dark) 1f else 0f, tween(360), label = "appearance")
+    val light = remember { monoScheme(false) }
+    val night = remember { monoScheme(true) }
+    return light.copy(
+        primary = lerp(light.primary, night.primary, amount),
+        onPrimary = lerp(light.onPrimary, night.onPrimary, amount),
+        primaryContainer = lerp(light.primaryContainer, night.primaryContainer, amount),
+        onPrimaryContainer = lerp(light.onPrimaryContainer, night.onPrimaryContainer, amount),
+        secondary = lerp(light.secondary, night.secondary, amount),
+        onSecondary = lerp(light.onSecondary, night.onSecondary, amount),
+        secondaryContainer = lerp(light.secondaryContainer, night.secondaryContainer, amount),
+        onSecondaryContainer = lerp(light.onSecondaryContainer, night.onSecondaryContainer, amount),
+        tertiary = lerp(light.tertiary, night.tertiary, amount),
+        onTertiary = lerp(light.onTertiary, night.onTertiary, amount),
+        tertiaryContainer = lerp(light.tertiaryContainer, night.tertiaryContainer, amount),
+        onTertiaryContainer = lerp(light.onTertiaryContainer, night.onTertiaryContainer, amount),
+        background = lerp(light.background, night.background, amount),
+        onBackground = lerp(light.onBackground, night.onBackground, amount),
+        surface = lerp(light.surface, night.surface, amount),
+        onSurface = lerp(light.onSurface, night.onSurface, amount),
+        surfaceVariant = lerp(light.surfaceVariant, night.surfaceVariant, amount),
+        onSurfaceVariant = lerp(light.onSurfaceVariant, night.onSurfaceVariant, amount),
+        surfaceTint = lerp(light.surfaceTint, night.surfaceTint, amount),
+        surfaceContainer = lerp(light.surfaceContainer, night.surfaceContainer, amount),
+        surfaceContainerLow = lerp(light.surfaceContainerLow, night.surfaceContainerLow, amount),
+        surfaceContainerHigh = lerp(light.surfaceContainerHigh, night.surfaceContainerHigh, amount),
+        surfaceContainerHighest = lerp(light.surfaceContainerHighest, night.surfaceContainerHighest, amount),
+        surfaceContainerLowest = lerp(light.surfaceContainerLowest, night.surfaceContainerLowest, amount),
+        outline = lerp(light.outline, night.outline, amount),
+        outlineVariant = lerp(light.outlineVariant, night.outlineVariant, amount),
+        error = lerp(light.error, night.error, amount),
+        onError = lerp(light.onError, night.onError, amount),
+        errorContainer = lerp(light.errorContainer, night.errorContainer, amount),
+        onErrorContainer = lerp(light.onErrorContainer, night.onErrorContainer, amount),
+        inverseSurface = lerp(light.inverseSurface, night.inverseSurface, amount),
+        inverseOnSurface = lerp(light.inverseOnSurface, night.inverseOnSurface, amount),
+        inversePrimary = lerp(light.inversePrimary, night.inversePrimary, amount),
+        scrim = lerp(light.scrim, night.scrim, amount),
+    )
+}
 
 internal fun monoScheme(dark: Boolean): ColorScheme =
     if (dark)

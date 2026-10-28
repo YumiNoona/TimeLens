@@ -1,8 +1,14 @@
-# TimeLens for Android — 8.6.0
+# TimeLens for Android — 8.7.0
 
 Independent local activity tracking for Android 10+, with a native dashboard, reports, app blocking and personal settings. Android now versions independently of the Windows/web app. No account, analytics SDK, cloud backend or Internet permission is required.
 
 ## Available features
+
+- Filled icons mark the selected destination; outlined icons mark others, without a persistent selection bubble. A sun/moon action replaces the top-bar refresh button. Manual import remains under Settings → Tracking & storage.
+- System, Light and Dark appearance modes persist correctly, including across screen changes. The palette animates without recreating screens or resetting scroll; native blocking banners use the same system-theme policy.
+- Browser adapters now include Brave (stable/beta/nightly), Vivaldi, DuckDuckGo and additional Chrome/Firefox/Edge variants. Only fixed address-bar IDs are inspected; adapters can fail on browser updates or hidden bars.
+- Every matching website rule is evaluated, so a generous child-domain Comfort rule cannot override an exhausted parent allowance. Screen-off suspends polling/rechecks; unlocking resumes enforcement. Temporary measurement errors cover an already matched protected app while retrying.
+- Android-only smoothness improvements are documented in [PERFORMANCE-REVIEW.md](PERFORMANCE-REVIEW.md).
 
 - Five independent destinations: Today, Apps, History, Block and Settings. Phone navigation uses accessible icons; larger screens use a rail. Each page keeps its own scroll and form state. Refresh indicators no longer change the content position.
 - Space Grotesk bundled offline, with a complete type scale. Black-and-white dark/light themes; real app icons with grayscale on/off. Refresh is the only top-right action.
@@ -17,7 +23,7 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 ## Install and permissions
 
-Install the signed `TimeLens-Android-8.6.0.apk`. An existing release-signed 8.5.0 installation can be updated directly without uninstalling.
+The 8.7.0 source builds locally. The original 8.6.0 signing key is not available on this machine. An unsigned build cannot be installed, and a build signed with a replacement key cannot update the old app in place—even for manual APK installs. Preserve the original installation and history until a signing/migration path is chosen. Never uninstall a personal installation without exporting the history you want to retain. The older signed APK remains available in its existing release.
 
 1. Enable Usage access to read local foreground app activity and measure app Comfort allowances.
 2. Open **Block → Set up blocking**, read the disclosure, then enable **TimeLens app blocking** in Android Accessibility settings. Downloaded APKs may require **App info → menu → Allow restricted settings** first.
@@ -58,7 +64,7 @@ keyAlias=timelens
 keyPassword=your-private-password
 ```
 
-The current machine's persistent key is outside the repository under the user's `AppData/Local/TimeLensBuild` folder. Credentials remain local. No Play Store submission was performed.
+Keep the persistent keystore and passwords outside the repository and back them up securely. The old key referenced by prior builds is not present on this machine. Credentials must remain local; no Play Store submission is performed.
 
 ## Verification and boundaries
 

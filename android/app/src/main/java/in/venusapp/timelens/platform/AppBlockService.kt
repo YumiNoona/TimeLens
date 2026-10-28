@@ -17,6 +17,7 @@ import `in`.venusapp.timelens.domain.BlockPolicy
 import `in`.venusapp.timelens.domain.BlockRule
 import `in`.venusapp.timelens.domain.PinSecurity
 import `in`.venusapp.timelens.domain.WebAddress
+import `in`.venusapp.timelens.domain.ThemeMode
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.*
@@ -37,7 +38,7 @@ class AppBlockService : AccessibilityService() {
         object : Runnable {
             override fun run() {
                 if (
-                    BrowserAddressReader.supported(foreground) &&
+                    interactive() && BrowserAddressReader.supported(foreground) &&
                         Preferences(applicationContext).websiteTracking
                 ) {
                     pollBrowser()
@@ -47,15 +48,36 @@ class AppBlockService : AccessibilityService() {
         }
     private var task: Job? = null
     private val recheck = Runnable { evaluate(foreground) }
+    private fun interactive() = getSystemService(android.os.PowerManager::class.java).isInteractive &&
+        !getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
+    private val screenChanges = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            handler.removeCallbacks(browserPoll)
+            handler.removeCallbacks(recheck)
+            browserTask?.cancel()
+            task?.cancel()
+            host = ""
+            websiteHost = ""
+            observedAt = 0
+            removeOverlay()
+            if (intent.action == Intent.ACTION_USER_PRESENT && interactive()) {
+                pollBrowser()
+                if (Preferences(applicationContext).websiteTracking && BrowserAddressReader.supported(foreground))
+                    handler.postDelayed(browserPoll, 1000)
+                evaluate(foreground)
+            }
+        }
+    }
     private val settingsChanged =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                task?.cancel()
                 configureBrowserAccess()
                 removeOverlay()
                 handler.removeCallbacks(browserPoll)
                 pollBrowser()
                 if (
-                    Preferences(applicationContext).websiteTracking &&
+                    interactive() && Preferences(applicationContext).websiteTracking &&
                         BrowserAddressReader.supported(foreground)
                 )
                     handler.postDelayed(browserPoll, 1000)
@@ -72,15 +94,18 @@ class AppBlockService : AccessibilityService() {
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         configureBrowserAccess()
+        ContextCompat.registerReceiver(this, screenChanges,
+            IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_USER_PRESENT) },
+            ContextCompat.RECEIVER_NOT_EXPORTED)
         BackgroundTasks.setup(this)
     }
 
     private fun configureBrowserAccess() {
         val enabled = Preferences(applicationContext).websiteTracking
         serviceInfo = serviceInfo.apply {
-            eventTypes =
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    if (enabled) AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED else 0
+            // Content-change events were discarded by onAccessibilityEvent anyway. Browser
+            // address polling already handles SPA navigation without subscribing to page churn.
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             flags =
                 if (enabled)
                     flags or
@@ -99,7 +124,7 @@ class AppBlockService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
+        if (event == null || !interactive()) return
         val app = event.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -195,11 +220,12 @@ class AppBlockService : AccessibilityService() {
     private fun evaluate(app: String) {
         handler.removeCallbacks(recheck)
         task?.cancel()
-        if (app.isEmpty() || app in safePackages()) {
+        if (!interactive() || app.isEmpty() || app in safePackages()) {
             removeOverlay()
             return
         }
         task = scope.launch {
+            var guarded: Pair<String, Preferences>? = null
             try {
                 val prefs = Preferences(applicationContext)
                 val now = System.currentTimeMillis()
@@ -209,19 +235,24 @@ class AppBlockService : AccessibilityService() {
                     return@launch
                 }
                 val appRule = prefs.blockRules.firstOrNull { it.app == app && it.enabled }
-                val siteRule =
+                val siteRules =
                     if (prefs.websiteTracking && host.isNotEmpty())
-                        WebAddress.rule(prefs.blockRules, host)
-                    else null
+                        WebAddress.matchingRules(prefs.blockRules, host)
+                    else emptyList()
+                val candidate = appRule?.takeIf { it.mode in listOf("strict", "comfort") }
+                    ?: siteRules.firstOrNull { it.mode in listOf("strict", "comfort") }
+                guarded = candidate?.let { it.app to prefs }
+                val websiteUsage = if (siteRules.any { it.mode == "comfort" })
+                    withContext(Dispatchers.IO) {
+                        SiteStore(applicationContext).use { it.read(now - 86_400_000L, now) }
+                    } else emptyList()
                 suspend fun decide(rule: BlockRule?): BlockDecision {
                     if (rule == null) return BlockDecision(false)
                     val used: Long? =
                         if (rule.mode == "comfort")
                             withContext(Dispatchers.IO) {
                                 if (rule.app.startsWith("web:"))
-                                    SiteStore(applicationContext).use { store ->
-                                        store
-                                            .read(now - 86_400_000L, now)
+                                    websiteUsage
                                             .filter {
                                                 WebAddress.matches(
                                                     it.app,
@@ -229,7 +260,6 @@ class AppBlockService : AccessibilityService() {
                                                 )
                                             }
                                             .sumOf { it.milliseconds }
-                                    }
                                 else
                                     UsageRepository(applicationContext, prefs).use {
                                         it.allowanceUsage(app, now)
@@ -261,10 +291,11 @@ class AppBlockService : AccessibilityService() {
                     )
                 }
                 val appDecision = decide(appRule)
-                val siteDecision = decide(siteRule)
+                val siteDecisions = siteRules.map { it to decide(it) }
                 if (foreground != app) return@launch
-                val rule = if (appDecision.blocked) appRule else siteRule
-                val decision = if (appDecision.blocked) appDecision else siteDecision
+                val blockedSite = siteDecisions.firstOrNull { it.second.blocked }
+                val rule = if (appDecision.blocked) appRule else blockedSite?.first
+                val decision = if (appDecision.blocked) appDecision else blockedSite?.second ?: BlockDecision(false)
                 if (decision.blocked && rule != null) {
                     val newOpening = overlay == null || overlayTarget != rule.app
                     showOverlay(app, decision.reason, prefs, rule.app)
@@ -276,7 +307,7 @@ class AppBlockService : AccessibilityService() {
                         }
                 } else removeOverlay()
                 var next =
-                    minOf(appDecision.reevaluateInMs, siteDecision.reevaluateInMs)
+                    minOf(appDecision.reevaluateInMs, siteDecisions.minOfOrNull { it.second.reevaluateInMs } ?: 60_000)
                         .coerceIn(250, 60_000)
                 if (appRule?.mode == "focus" && prefs.focusEnd > now)
                     next = minOf(next, prefs.focusEnd - now + 50)
@@ -288,7 +319,12 @@ class AppBlockService : AccessibilityService() {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                removeOverlay()
+                // A transient measurement/database error must not silently open a protected app.
+                val fallback = guarded
+                if (fallback != null && foreground == app && interactive()) {
+                    runCatching { showOverlay(app, "Unable to verify allowance · retrying", fallback.second, fallback.first) }
+                    handler.postDelayed(recheck, 2000)
+                } else removeOverlay()
             }
         }
     }
@@ -296,6 +332,9 @@ class AppBlockService : AccessibilityService() {
     private fun showOverlay(app: String, reason: String, prefs: Preferences, target: String = app) {
         if (overlay != null && overlayApp == app && overlayTarget == target) return
         removeOverlay()
+        val dark = ThemeMode.isDark(prefs.theme,
+            resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES)
         val label =
             if (target.startsWith("web:")) target.removePrefix("web:")
             else
@@ -312,7 +351,7 @@ class AppBlockService : AccessibilityService() {
                 gravity = Gravity.CENTER
                 setPadding(dp(28), dp(48), dp(28), dp(32))
                 setBackgroundColor(
-                    if (prefs.theme == "light") Color.WHITE else Color.rgb(11, 11, 11)
+                    if (!dark) Color.WHITE else Color.rgb(11, 11, 11)
                 )
             }
         fun text(value: String, size: Float, color: Int): TextView =
@@ -328,8 +367,8 @@ class AppBlockService : AccessibilityService() {
                 gravity = Gravity.CENTER
                 setPadding(0, dp(10), 0, dp(10))
             }
-        val ink = if (prefs.theme == "light") Color.BLACK else Color.WHITE
-        val muted = if (prefs.theme == "light") Color.DKGRAY else Color.LTGRAY
+        val ink = if (!dark) Color.BLACK else Color.WHITE
+        val muted = if (!dark) Color.DKGRAY else Color.LTGRAY
         panel.addView(text("TIMELENS / BLOCK", 13f, muted))
         if (target.startsWith("web:")) panel.addView(text("◎", 52f, ink))
         else
@@ -364,7 +403,7 @@ class AppBlockService : AccessibilityService() {
                             this@AppBlockService,
                             R.font.space_grotesk,
                         )
-                    setTextColor(if (prefs.theme == "light") Color.WHITE else Color.BLACK)
+                    setTextColor(if (!dark) Color.WHITE else Color.BLACK)
                     backgroundTintList = android.content.res.ColorStateList.valueOf(ink)
                     setOnClickListener { action() }
                 },
@@ -503,6 +542,7 @@ class AppBlockService : AccessibilityService() {
         browserTask?.cancel()
         scope.cancel()
         runCatching { unregisterReceiver(settingsChanged) }
+        runCatching { unregisterReceiver(screenChanges) }
         removeOverlay()
         super.onDestroy()
     }

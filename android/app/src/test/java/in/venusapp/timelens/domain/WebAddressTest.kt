@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WebAddressTest {
+    @Test fun comfortChildDoesNotHideAnExhaustedParentAllowance() {
+        val parent = BlockRule("web:example.com", "comfort", allowanceMinutes = 15)
+        val child = BlockRule("web:video.example.com", "comfort", allowanceMinutes = 60)
+        val matches = WebAddress.matchingRules(listOf(parent, child), "video.example.com")
+        assertEquals(listOf(child, parent), matches)
+        val now = ZonedDateTime.parse("2026-10-28T10:00:00+05:30[Asia/Kolkata]")
+        assertTrue(matches.any {
+            BlockPolicy.evaluate(it, now, false, 20 * 60_000L, 0, false).blocked
+        })
+        assertTrue(WebAddress.matchingRules(listOf(parent), "notexample.com").isEmpty())
+    }
     @Test
     fun savesHostOnlyAndNormalizesDomains() {
         assertEquals(

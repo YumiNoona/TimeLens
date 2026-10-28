@@ -33,6 +33,26 @@ internal data class DisplayOptions(
 
 internal val LocalDisplay = staticCompositionLocalOf { DisplayOptions() }
 
+/** Shared across destinations; bounded to 4 MiB instead of retaining every installed icon. */
+private object AppIcons {
+    private data class Entry(val bitmap: ImageBitmap, val loadedAt: Long)
+    private val cache = object : android.util.LruCache<String, Entry>(4 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Entry) = value.bitmap.width * value.bitmap.height * 4
+    }
+
+    fun get(context: android.content.Context, app: String): ImageBitmap? = synchronized(this) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        cache.get(app)?.takeIf { now - it.loadedAt < 10 * 60_000 }?.let { return it.bitmap }
+        runCatching {
+            val drawable = context.packageManager.getApplicationIcon(app)
+            val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, 128, 128)
+            drawable.draw(android.graphics.Canvas(bitmap))
+            bitmap.asImageBitmap().also { cache.put(app, Entry(it, now)) }
+        }.getOrNull()
+    }
+}
+
 internal fun categoryColor(name: String): Color {
     val shades = listOf(0xFFEEEEEE, 0xFFBDBDBD, 0xFF919191, 0xFF717171, 0xFF555555)
     return Color(shades[(name.hashCode() and Int.MAX_VALUE) % shades.size])
@@ -56,14 +76,7 @@ internal fun AppIcon(app: String, label: String, modifier: Modifier = Modifier.s
         produceState<ImageBitmap?>(null, app) {
             value =
                 withContext(Dispatchers.IO) {
-                    runCatching {
-                        val drawable = context.packageManager.getApplicationIcon(app)
-                        val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
-                        drawable.setBounds(0, 0, 128, 128)
-                        drawable.draw(android.graphics.Canvas(bitmap))
-                        bitmap.asImageBitmap()
-                    }
-                        .getOrNull()
+                    AppIcons.get(context.applicationContext, app)
                 }
         }
     Box(

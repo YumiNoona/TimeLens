@@ -1,3 +1,14 @@
+# 8.7.0 — Appearance, browser adapters and stronger enforcement
+
+- Replaced selected-navigation bubbles with filled/outlined icon pairs. The top-right action is now a sun/moon appearance toggle; manual archival remains in Settings.
+- Fixed the actual Compose state invalidation behind unreliable appearance changes. Added System/Light/Dark policy, persistent overrides, an animated palette that retains screen state, and matching system-aware blocking banners.
+- Added explicit Brave, Vivaldi, DuckDuckGo and additional Chrome/Firefox/Edge channel adapters. Unknown packages still cannot read arbitrary UI text; only known address bars are inspected.
+- All matching domain allowances apply, preventing a generous child rule from bypassing an exhausted parent. Strict still ignores the legacy global pause. Matched protected apps stay covered during temporary measurement failures.
+- Screen-off stops browser/recheck callbacks and clears overlays; unlock resumes enforcement. Safe system packages remain accessible. This is not device-owner lockdown.
+- Includes the Android-only smoothness pass: lazy app lists, a bounded icon cache, batched allowance queries, less repetitive history work and safer refresh cancellation.
+- Verified 30 JVM tests, 18 selected API 35 tests, plus a real Brave Strict/screen-off/unlock/launcher test. Debug/release builds and lint pass with zero errors. The optimized unsigned APK is approximately 2.61 MiB. New browser address adapters still need device/version testing; Brave app-blocking coverage does not prove every address-bar version works.
+- Signing identity is pending because the original keystore is unavailable. No replacement key is silently generated, and the older signed release is not overwritten.
+
 # 8.6.0 — Navigation, monochrome and blocking
 
 - Fixed shared scrolling and unstable composition caused by inserting a loading row during preference refreshes. Each destination now owns saved scroll and control state, and refresh uses an overlay indicator.

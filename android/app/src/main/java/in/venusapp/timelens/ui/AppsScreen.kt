@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -21,8 +23,7 @@ import androidx.compose.ui.unit.dp
 import `in`.venusapp.timelens.data.*
 
 @Composable
-internal fun AppsScreen(state: UiState, model: AppModel) {
-    var visible by rememberSaveable { mutableIntStateOf(60) }
+internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Modifier, onAccess: () -> Unit = {}) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var filters by rememberSaveable { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -30,8 +31,8 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
     var category by rememberSaveable { mutableStateOf("All") }
     var installed by rememberSaveable { mutableStateOf(false) }
     var sort by rememberSaveable { mutableStateOf("time") }
-    val usage = state.day?.apps.orEmpty().associateBy { it.app }
-    val source =
+    val usage = remember(state.day?.apps) { state.day?.apps.orEmpty().associateBy { it.app } }
+    val source = remember(installed, state.installed, usage, state.revision) {
         if (installed)
             state.installed.map { app ->
                 usage[app.app]
@@ -45,7 +46,8 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
                     )
             }
         else usage.values.toList()
-    val apps =
+    }
+    val apps = remember(source, category, search, sort) {
         source
             .filter {
                 (category == "All" || it.category == category) &&
@@ -58,86 +60,98 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
                     else -> rows.sortedByDescending { it.milliseconds }
                 }
             }
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Your apps", style = MaterialTheme.typography.headlineSmall)
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(if (LocalDisplay.current.compact) 14.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item(key = "controls") {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                state.error?.let { InfoCard("Could not refresh", it) }
+                if (state.day?.hasAccess == false) PermissionCard(onAccess)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Your apps", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            if (installed) "Installed on this phone" else "Used today",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            showSearch = !showSearch
+                            if (!showSearch) focusManager.clearFocus()
+                        }
+                    ) {
+                        Icon(
+                            if (showSearch) Icons.Outlined.SearchOff else Icons.Outlined.Search,
+                            "Search apps",
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            filters = true
+                        }
+                    ) {
+                        BadgedBox(
+                            badge = { if (category != "All" || sort != "time" || installed) Badge() }
+                        ) {
+                            Icon(Icons.Outlined.FilterList, "Filter apps")
+                        }
+                    }
+                }
+                if (showSearch)
+                    OutlinedTextField(
+                        search,
+                        {
+                            search = it
+                        },
+                        label = { Text("Search name or package") },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                        trailingIcon = {
+                            if (search.isNotEmpty())
+                                IconButton(onClick = { search = "" }) {
+                                    Icon(Icons.Outlined.Close, "Clear search")
+                                }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                else if (search.isNotEmpty())
+                    AssistChip(
+                        onClick = { showSearch = true },
+                        label = { Text("Search: $search") },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(18.dp)) },
+                    )
+                if (category != "All")
+                    InputChip(
+                        true,
+                        onClick = { filters = true },
+                        label = { Text(category) },
+                        trailingIcon = {
+                            IconButton(onClick = { category = "All" }) {
+                                Icon(Icons.Outlined.Close, "Clear category")
+                            }
+                        },
+                    )
                 Text(
-                    if (installed) "Installed on this phone" else "Used today",
-                    style = MaterialTheme.typography.bodySmall,
+                    "${apps.size} apps",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            IconButton(
-                onClick = {
-                    showSearch = !showSearch
-                    if (!showSearch) focusManager.clearFocus()
-                }
-            ) {
-                Icon(
-                    if (showSearch) Icons.Outlined.SearchOff else Icons.Outlined.Search,
-                    "Search apps",
-                )
-            }
-            IconButton(
-                onClick = {
-                    focusManager.clearFocus()
-                    filters = true
-                }
-            ) {
-                BadgedBox(
-                    badge = { if (category != "All" || sort != "time" || installed) Badge() }
-                ) {
-                    Icon(Icons.Outlined.FilterList, "Filter apps")
-                }
+                if (apps.isEmpty()) InfoCard("No apps match", "Try a different search, category or date.")
             }
         }
-        if (showSearch)
-            OutlinedTextField(
-                search,
-                {
-                    search = it
-                    visible = 60
-                },
-                label = { Text("Search name or package") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon = {
-                    if (search.isNotEmpty())
-                        IconButton(onClick = { search = "" }) {
-                            Icon(Icons.Outlined.Close, "Clear search")
-                        }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-        else if (search.isNotEmpty())
-            AssistChip(
-                onClick = { showSearch = true },
-                label = { Text("Search: $search") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(18.dp)) },
-            )
-        if (category != "All")
-            InputChip(
-                true,
-                onClick = { filters = true },
-                label = { Text(category) },
-                trailingIcon = {
-                    IconButton(onClick = { category = "All" }) {
-                        Icon(Icons.Outlined.Close, "Clear category")
-                    }
-                },
-            )
-        Text(
-            "${apps.size} apps",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (apps.isEmpty()) InfoCard("No apps match", "Try a different search, category or date.")
-        apps.take(visible).forEach { app -> key(app.app) { AppCard(app, model) } }
-        if (apps.size > visible)
-            OutlinedButton(onClick = { visible += 60 }, modifier = Modifier.fillMaxWidth()) {
-                Text("Show more apps")
-            }
+        items(apps, key = { "app:${it.app}" }, contentType = { "app" }) { app -> AppCard(app, model) }
+        item(key = "footer") {
+            Text("ON THIS PHONE · ANDROID " + `in`.venusapp.timelens.BuildConfig.VERSION_NAME,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp))
+        }
     }
     if (filters) {
         var selection by remember { mutableStateOf(category) }
@@ -185,7 +199,6 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
                         category = selection
                         sort = ordering
                         installed = all
-                        visible = 60
                         filters = false
                     }
                 ) {

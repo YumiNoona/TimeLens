@@ -49,7 +49,53 @@ class PlatformIntegrationTest {
     private val context = instrumentation.targetContext
 
     @Test
+    fun strictBraveBlockingIgnoresLegacyPauseAndRecoversAfterScreenOff() {
+        val automation = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        fun shell(command: String) = ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command))
+            .bufferedReader().use { it.readText() }
+        val prefs = Preferences(context)
+        val oldServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        val oldEnabled = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        val oldRules = prefs.blockRules
+        val oldBlocks = prefs.blocksEnabled
+        val oldPause = prefs.blockPauseUntil
+        val browser = "com.brave.browser"
+        val service = "${context.packageName}/${AppBlockService::class.java.name}"
+        try {
+            assertNotNull("Install Brave on the isolated emulator first", context.packageManager.getLaunchIntentForPackage(browser))
+            prefs.blockRules = listOf(BlockRule(browser, "strict"))
+            prefs.blocksEnabled = true
+            prefs.blockPauseUntil = System.currentTimeMillis() + 300_000
+            shell("settings put secure enabled_accessibility_services $service")
+            shell("settings put secure accessibility_enabled 1")
+            await("Accessibility must connect") { AppBlockService.connected }
+            shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $browser")
+            await("Strict must ignore the old global pause") { AppBlockService.blockedApp == browser }
+            shell("input keyevent KEYCODE_SLEEP")
+            await("Screen off must release overlays") { AppBlockService.blockedApp.isEmpty() }
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("wm dismiss-keyguard")
+            shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $browser")
+            await("Strict must enforce again after unlock") { AppBlockService.blockedApp == browser }
+            shell("input keyevent KEYCODE_HOME")
+            await("The launcher must remain available") { AppBlockService.blockedApp.isEmpty() }
+        } finally {
+            prefs.blockRules = oldRules
+            prefs.blocksEnabled = oldBlocks
+            prefs.blockPauseUntil = oldPause
+            AppBlockService.changed(context)
+            if (oldServices == null) shell("settings delete secure enabled_accessibility_services")
+            else shell("settings put secure enabled_accessibility_services $oldServices")
+            shell("settings put secure accessibility_enabled $oldEnabled")
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("wm dismiss-keyguard")
+            shell("input keyevent KEYCODE_HOME")
+        }
+    }
+
+    @Test
     fun realChromeDomainTrackingAndBothWebsiteModes() {
+        val browserPackage = InstrumentationRegistry.getArguments().getString("browserPackage") ?: "com.android.chrome"
         val automation =
             instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
         fun shell(command: String) =
@@ -81,7 +127,7 @@ class PlatformIntegrationTest {
             await("Accessibility must connect") { AppBlockService.connected }
             AppBlockService.changed(context)
             shell(
-                "am start -W -a android.intent.action.VIEW -d https://example.com -p com.android.chrome"
+                "am start -W -a android.intent.action.VIEW -d https://example.com -p $browserPackage"
             )
             await("The actual Chrome address bar must be recognized") {
                 AppBlockService.websiteHost == "example.com"

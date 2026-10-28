@@ -33,6 +33,9 @@ object WebAddress {
     fun matches(host: String, rule: String) = host == rule || host.endsWith(".$rule")
 
     fun rule(rules: List<BlockRule>, host: String): BlockRule? =
+        matchingRules(rules, host).firstOrNull()
+
+    fun matchingRules(rules: List<BlockRule>, host: String): List<BlockRule> =
         rules
             .filter {
                 it.enabled &&
@@ -43,5 +46,4 @@ object WebAddress {
                 compareByDescending<BlockRule> { it.mode == "strict" }
                     .thenByDescending { it.app.length }
             )
-            .firstOrNull()
 }

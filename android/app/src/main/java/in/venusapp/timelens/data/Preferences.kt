@@ -2,6 +2,8 @@ package `in`.venusapp.timelens.data
 
 import android.content.Context
 import `in`.venusapp.timelens.domain.BlockRule
+import `in`.venusapp.timelens.domain.ThemeMode
+import `in`.venusapp.timelens.domain.BrowserCatalog
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONArray
@@ -39,7 +41,7 @@ class Preferences(context: Context) {
             }
             focusEnd = 0
             focusPausedMs = 0
-            if (theme !in listOf("dark", "light")) theme = "dark"
+            theme = ThemeMode.normalize(theme)
             prefs.edit().putBoolean("blockModelV2", true).commit()
         }
     }
@@ -63,9 +65,9 @@ class Preferences(context: Context) {
         }
 
     var theme: String
-        get() = prefs.getString("theme", "dark") ?: "dark"
+        get() = ThemeMode.normalize(prefs.getString("theme", "system"))
         set(value) {
-            prefs.edit().putString("theme", value).apply()
+            prefs.edit().putString("theme", ThemeMode.normalize(value)).apply()
         }
 
     var focusEnd: Long
@@ -86,7 +88,7 @@ class Preferences(context: Context) {
                 app.contains("launcher", true) ||
                     app == "com.android.settings" ||
                     app == appContext.packageName -> "Utilities"
-                app.contains("chrome", true) ||
+                BrowserCatalog.supported(app) || app.contains("chrome", true) ||
                     app.contains("firefox", true) ||
                     app.contains("browser", true) ||
                     app.contains("opera", true) -> "Browsing"

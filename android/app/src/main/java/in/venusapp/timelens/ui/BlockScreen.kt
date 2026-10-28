@@ -97,7 +97,7 @@ internal fun BlockScreen(model: AppModel) {
                 }
                 InfoCard(
                     "Supported browser integration",
-                    "Chrome, Firefox, Edge and Samsung Internet address bars are recognized when exposed by the browser. Hidden bars, private browsing and unsupported versions can leave gaps. Rules include subdomains. Website time is a subset of browser app time.",
+                    `in`.venusapp.timelens.domain.BrowserCatalog.description + " adapters read known address bars only. Browser versions, hidden bars and private browsing can leave gaps. Rules include subdomains and all matching allowances apply. Website time is a subset of browser app time.",
                 )
                 if (prefs.websiteTracking && !AppBlockService.connected)
                     TextButton(onClick = ::openAccess) { Text("Enable the Accessibility service") }

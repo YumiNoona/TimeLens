@@ -19,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -44,10 +45,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private val repository = UsageRepository(application, preferences)
     private val gate = Mutex()
     private var refreshJob: Job? = null
+    private var installedCache: List<InstalledApp>? = null
+    private var installedAt = 0L
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
 
-    fun refresh(date: LocalDate = mutable.value.date) {
+    fun refresh(date: LocalDate = mutable.value.date, force: Boolean = false) {
+        // Timer ticks must not repeatedly cancel a slow refresh before it can finish.
+        if (!force && refreshJob?.isActive == true && date == mutable.value.date) return
         refreshJob?.cancel()
         mutable.value =
             mutable.value.copy(
@@ -63,39 +68,49 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                         gate.withLock {
                             BackgroundTasks.finishFocus(getApplication())
                             val day = repository.load(date)
+                            ensureActive()
+                            val now = System.currentTimeMillis()
+                            val installed = installedCache?.takeIf {
+                                !force && android.os.SystemClock.elapsedRealtime() - installedAt < 60_000
+                            } ?: repository.installedApps().also {
+                                installedCache = it
+                                installedAt = android.os.SystemClock.elapsedRealtime()
+                            }
+                            val comfortRules = preferences.blockRules.filter { it.mode == "comfort" }
+                            val appAllowances = repository.allowanceUsages(
+                                comfortRules.filterNot { it.app.startsWith("web:") }.map { it.app }.toSet(), now
+                            )
+                            val webAllowances = if (comfortRules.any { it.app.startsWith("web:") })
+                                SiteStore(getApplication()).use { it.read(now - 86_400_000L, now) }
+                            else emptyList()
+                            ensureActive()
                             UiState(
                                 date = date,
                                 day = day,
                                 history = repository.history(date, 91),
-                                installed = repository.installedApps(),
+                                installed = installed,
                                 blocks = repository.blockHistory(),
                                 focusCompleted = repository.completedFocusToday(),
                                 blocksToday = repository.blockedCount(1),
                                 blocksWeek = repository.blockedCount(7),
                                 webHistory = repository.websites(date, 91),
                                 allowances =
-                                    preferences.blockRules
-                                        .filter { it.mode == "comfort" }
+                                    comfortRules
                                         .associate { rule ->
                                             rule.app to
                                                 if (rule.app.startsWith("web:"))
-                                                    SiteStore(getApplication()).use { store ->
-                                                        val now = System.currentTimeMillis()
-                                                        store
-                                                            .read(now - 86_400_000L, now)
-                                                            .filter {
-                                                                WebAddress.matches(
-                                                                    it.app,
-                                                                    rule.app.removePrefix("web:"),
-                                                                )
-                                                            }
-                                                            .sumOf { it.milliseconds }
-                                                    }
-                                                else repository.allowanceUsage(rule.app)
+                                                    webAllowances.filter {
+                                                        WebAddress.matches(
+                                                            it.app,
+                                                            rule.app.removePrefix("web:"),
+                                                        )
+                                                    }.sumOf { it.milliseconds }
+                                                else appAllowances[rule.app]
                                         },
                             )
                         }
                     }
+                ensureActive()
                 mutable.value = result.copy(revision = mutable.value.revision)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
@@ -110,14 +125,16 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun edit(action: (UsageRepository) -> Unit) {
+    fun edit(refreshActivity: Boolean = true, action: (UsageRepository) -> Unit) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { gate.withLock { action(repository) } }
-                BackgroundTasks.setup(getApplication())
-                AppBlockService.changed(getApplication())
+                if (refreshActivity) {
+                    BackgroundTasks.setup(getApplication())
+                    AppBlockService.changed(getApplication())
+                }
                 mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
-                refresh()
+                if (refreshActivity) refresh(force = true)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -129,5 +146,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun archiveNow() {
         edit { it.forceArchive() }
+    }
+
+    override fun onCleared() {
+        // Cancellation cannot interrupt blocking SQLite calls. Wait for the same gate before close.
+        refreshJob?.cancel()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            gate.withLock { repository.close() }
+        }
+        super.onCleared()
     }
 }

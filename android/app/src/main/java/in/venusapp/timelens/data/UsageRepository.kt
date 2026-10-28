@@ -75,8 +75,9 @@ class UsageRepository(private val context: Context, val preferences: Preferences
             store.prune(retentionCutoff)
             val from = maxOf(selectedFrom, retentionCutoff)
             val until = minOf(date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), now)
+            val excluded = preferences.excluded
             val sessions =
-                if (from < until) store.read(from, until).filter { it.app !in preferences.excluded }
+                if (from < until) store.read(from, until).filter { it.app !in excluded }
                 else emptyList()
             val apps =
                 sessions
@@ -121,8 +122,9 @@ class UsageRepository(private val context: Context, val preferences: Preferences
                     end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
                     System.currentTimeMillis(),
                 )
+            val excluded = preferences.excluded
             if (from >= until) emptyList()
-            else store.read(from, until).filter { it.app !in preferences.excluded }
+            else store.read(from, until).filter { it.app !in excluded }
         }
 
     fun blockHistory(): List<BlockEvent> =
@@ -138,7 +140,8 @@ class UsageRepository(private val context: Context, val preferences: Preferences
 
     fun restoreActivity(rows: List<Session>) =
         synchronized(ActivityStore.lock) {
-            store.restore(rows.filter { it.app !in preferences.excluded })
+            val excluded = preferences.excluded
+            store.restore(rows.filter { it.app !in excluded })
         }
 
     fun blockedCount(days: Int): Int =
@@ -218,9 +221,10 @@ class UsageRepository(private val context: Context, val preferences: Preferences
         if (from >= until) return false
         val observations = observations(from, until) ?: return false
         if (observations.isEmpty() || !hasAccess()) return false
+        val excluded = preferences.excluded
         val sessions =
             UsageLedger.build(observations, from, until)
-                .filter { it.app !in preferences.excluded }
+                .filter { it.app !in excluded }
                 .map { it.copy(start = maxOf(it.start, preferences.appSince(it.app))) }
                 .filter { it.end > it.start }
         val visible = UsageLedger.subtract(sessions, preferences.pausedSpans)
@@ -264,12 +268,22 @@ class UsageRepository(private val context: Context, val preferences: Preferences
      * Safety budgets read Android directly, independent of archive exclusions, pauses and deletion.
      */
     fun allowanceUsage(app: String, now: Long = System.currentTimeMillis()): Long? {
-        if (!hasAccess()) return null
+        return allowanceUsages(setOf(app), now)[app]
+    }
+
+    /** One OS event query for all requested budgets; never reuse stale safety measurements. */
+    fun allowanceUsages(apps: Set<String>, now: Long = System.currentTimeMillis()): Map<String, Long?> {
+        if (apps.isEmpty()) return emptyMap()
+        if (!hasAccess()) return apps.associateWith { null }
         val from = now - 86_400_000L
-        val observations = observations(from, now) ?: return null
-        val rows = UsageLedger.build(observations, from, now).filter { it.app == app }
-        val masks = SiteStore(context).use { it.covered(app, from, now) }
-        return UsageLedger.subtract(rows, masks).sumOf { it.milliseconds }
+        val observations = observations(from, now) ?: return apps.associateWith { null }
+        val rows = UsageLedger.build(observations, from, now).filter { it.app in apps }.groupBy { it.app }
+        return SiteStore(context).use { sites ->
+            apps.associateWith { app ->
+                UsageLedger.subtract(rows[app].orEmpty(), sites.covered(app, from, now))
+                    .sumOf { it.milliseconds }
+            }
+        }
     }
 
     fun websites(end: LocalDate, days: Int): List<Session> {

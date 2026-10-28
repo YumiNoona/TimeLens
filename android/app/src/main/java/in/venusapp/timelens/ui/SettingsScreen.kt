@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.venusapp.timelens.BuildConfig
 import `in`.venusapp.timelens.data.*
 import `in`.venusapp.timelens.domain.PinSecurity
+import `in`.venusapp.timelens.domain.ThemeMode
 import `in`.venusapp.timelens.platform.*
 import kotlinx.coroutines.*
 
@@ -35,6 +36,7 @@ internal fun SettingsScreen(
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val prefs = model.preferences
+    val theme = remember(state.revision) { prefs.theme }
     val context = LocalContext.current
     var budget by rememberSaveable { mutableStateOf(prefs.budget.toString()) }
     var delete by remember { mutableStateOf(false) }
@@ -73,37 +75,40 @@ internal fun SettingsScreen(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("dark", "light").forEach { value ->
+                ThemeMode.options.forEach { value ->
                     FilterChip(
-                        prefs.theme == value,
-                        onClick = { model.edit { it.preferences.theme = value } },
-                        label = { Text(value.replaceFirstChar(Char::uppercase)) },
+                        theme == value,
+                        onClick = { model.edit(refreshActivity = false) { it.preferences.theme = value } },
+                        label = { Text(if (value == "system") "Follow system" else value.replaceFirstChar(Char::uppercase)) },
                     )
                 }
             }
+            Text("Follow system matches Android’s appearance. The top-right sun/moon switches to a saved light or dark override.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             SettingSwitch(
                 "Grayscale icons",
                 "On: gray app icons. Off: original app colors.",
                 prefs.grayIcons,
-                { value -> model.edit { it.preferences.grayIcons = value } },
+                { value -> model.edit(refreshActivity = false) { it.preferences.grayIcons = value } },
             )
             SettingSwitch(
                 "Compact cards",
                 "Fit more on the screen",
                 prefs.compact,
-                { value -> model.edit { it.preferences.compact = value } },
+                { value -> model.edit(refreshActivity = false) { it.preferences.compact = value } },
             )
             SettingSwitch(
                 "24-hour clock",
                 "Use 00:00–23:59 in timelines",
                 prefs.use24Hour,
-                { value -> model.edit { it.preferences.use24Hour = value } },
+                { value -> model.edit(refreshActivity = false) { it.preferences.use24Hour = value } },
             )
             SettingSwitch(
                 "Show seconds",
                 "Detailed durations in cards and app views",
                 prefs.showSeconds,
-                { value -> model.edit { it.preferences.showSeconds = value } },
+                { value -> model.edit(refreshActivity = false) { it.preferences.showSeconds = value } },
             )
         }
         SettingsGroup("Tracking & storage") {

@@ -44,7 +44,7 @@ class PreferencesMigrationTest {
             assertEquals(1234L, prefs.since)
             assertEquals("existing-protected-hash", prefs.pinHash)
             assertEquals(0L, prefs.focusEnd)
-            assertEquals("dark", prefs.theme)
+            assertEquals("system", prefs.theme)
             prefs.focusEnd = 88888
             assertEquals("Migration must run only once", 88888L, Preferences(context).focusEnd)
         } finally {

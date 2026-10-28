@@ -1,9 +1,9 @@
-name: Android preview checks
+name: Android build checks
 
 on:
   workflow_call:
   push:
-    branches: [master, "codex/android-*"]
+    branches: [master]
     paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android.yml"]

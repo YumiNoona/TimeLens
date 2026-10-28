@@ -33,9 +33,33 @@ class NavigationRegressionTest {
             "A setting must not jump to the bottom",
             kotlin.math.abs(before - scroll(4)) < 20f,
         )
-        compose.onNodeWithContentDescription("Refresh activity").performClick()
+        compose.onNodeWithContentDescription("Refresh activity").assertDoesNotExist()
+        compose.onNode(hasContentDescription("Switch to light mode") or hasContentDescription("Switch to dark mode")).performClick()
         compose.waitForIdle()
         assertTrue(kotlin.math.abs(before - scroll(4)) < 20f)
+    }
+
+    @Test
+    fun explicitThemesAndTopBarTogglePersistWithoutChangingDestination() {
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNodeWithText("Light").performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription("Switch to dark mode").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("Switch to dark mode").assertExists().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription("Switch to light mode").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("Switch to light mode").assertExists()
+        compose.onNodeWithTag("page-4").assertExists()
+        compose.onNodeWithText("Dark").assertIsSelected()
+        compose.onNodeWithText("Follow system").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Follow system").assertIsSelected()
+        compose.onNodeWithContentDescription("Apps", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("page-1").assertExists()
+        compose.onNodeWithContentDescription("Apps").assertIsSelected()
     }
 
     @Test

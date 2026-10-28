@@ -37,6 +37,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.io.File
+import java.util.UUID
 
 private val Accent = Color(0xFFC8E86A)
 private val Dark = darkColorScheme(primary = Accent, onPrimary = Color(0xFF151E00), primaryContainer = Color(0xFF253412), onPrimaryContainer = Color(0xFFD8EFAC), secondaryContainer = Color(0xFF293322), onSecondaryContainer = Color(0xFFD8E4CD), background = Color(0xFF0D0F0A), surface = Color(0xFF141810), surfaceContainer = Color(0xFF1C2118))
@@ -63,18 +65,18 @@ fun TimeLensApp(model: AppModel = viewModel()) {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
-        var exportDay by remember { mutableStateOf<DayUsage?>(null) }
-        var exportJson by remember { mutableStateOf(true) }
+        var pendingExport by rememberSaveable { mutableStateOf("") }
         val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-            val day = exportDay
-            if (uri != null && day != null) scope.launch {
+            val snapshot = pendingExport.takeIf { it.isNotEmpty() }?.let { File(context.cacheDir, it) }
+            pendingExport = ""
+            if (uri != null && snapshot != null) scope.launch {
                 val success = withContext(Dispatchers.IO) {
                     runCatching {
-                        context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(if (exportJson) Export.json(day) else Export.csv(day)) } ?: error("No output stream")
-                    }.isSuccess
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { output -> snapshot.inputStream().use { it.copyTo(output) } } ?: error("No output stream")
+                    }.also { snapshot.delete() }.isSuccess
                 }
                 snackbar.showSnackbar(if (success) "Activity exported" else "Export failed. Please choose another file and try again.")
-            }
+            } else snapshot?.delete()
         }
         fun openAccess() {
             try { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
@@ -132,8 +134,17 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                         }
                         3 -> item { FocusScreen(prefs, state.revision) }
                         4 -> item { SettingsScreen(model, theme, onTheme = { theme = it; prefs.theme = it }, onAccess = ::openAccess, onExport = { json ->
-                            state.day?.let { exportDay = it; exportJson = json; export.launch("TimeLens-${it.date}.${if (json) "json" else "csv"}") }
-                        }, exportEnabled = state.day != null && !state.loading) }
+                            state.day?.let { day -> scope.launch {
+                                val filename = "export-${UUID.randomUUID()}"
+                                val snapshot = File(context.cacheDir, filename)
+                                try {
+                                    withContext(Dispatchers.IO) { snapshot.writeText(if (json) Export.json(day) else Export.csv(day)) }
+                                    pendingExport = filename
+                                    export.launch("TimeLens-${day.date}.${if (json) "json" else "csv"}")
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) { snapshot.delete(); throw cancelled }
+                                catch (_: Exception) { snapshot.delete(); pendingExport = ""; snackbar.showSnackbar("Could not prepare the export. Please try again.") }
+                            } }
+                        }, exportEnabled = state.day != null && !state.loading && pendingExport.isEmpty()) }
                     }
                     item { Text("Private by design · Android preview ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }

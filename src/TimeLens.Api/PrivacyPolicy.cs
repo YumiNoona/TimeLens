@@ -6,6 +6,10 @@ namespace TimeLens.Api;
 /// <summary>Filters collection before it reaches any durable activity store.</summary>
 public static class PrivacyPolicy
 {
+    // Support the reset line without admitting older pre-privacy companions.
+    public static bool SupportsCompanionPrivacy(string? version) =>
+        Version.TryParse(version, out var parsed) &&
+        (parsed.Major == 2 || parsed >= new Version(8, 3, 0));
     public static bool HideBrowserTitles => Lines(LiveStatusStore.Settings.HiddenTitleApps).Any(app =>
         app.ToLowerInvariant() is "firefox.exe" or "chrome.exe" or "msedge.exe" or "brave.exe" or "zen.exe" or "floorp.exe" or "waterfox.exe" or "librewolf.exe" or "opera.exe" or "vivaldi.exe");
 

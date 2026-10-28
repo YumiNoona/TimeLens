@@ -31,6 +31,15 @@ public sealed class PrivacyAndOfflineTests : IDisposable
         using var cmd = conn.CreateCommand(); cmd.CommandText = sql; cmd.ExecuteNonQuery();
     }
     [Fact]
+    public void ResetCompanionLineDoesNotAdmitPrePrivacyLegacyBuilds()
+    {
+        Assert.True(PrivacyPolicy.SupportsCompanionPrivacy("2.0.0"));
+        Assert.True(PrivacyPolicy.SupportsCompanionPrivacy("8.3.1"));
+        Assert.False(PrivacyPolicy.SupportsCompanionPrivacy("8.2.0"));
+        Assert.False(PrivacyPolicy.SupportsCompanionPrivacy("1.0.0"));
+        Assert.False(PrivacyPolicy.SupportsCompanionPrivacy(null));
+    }
+    [Fact]
     public void OfflineWorkIsOptInAndSurvivesSettingsReload()
     {
         var settings = new SettingsService(Db);

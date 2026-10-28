@@ -1,4 +1,4 @@
-# TimeLens for Android — 8.7.0
+# TimeLens for Android
 
 Independent local activity tracking for Android 10+, with a native dashboard, reports, app blocking and personal settings. Android now versions independently of the Windows/web app. No account, analytics SDK, cloud backend or Internet permission is required.
 
@@ -23,7 +23,7 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 ## Install and permissions
 
-The 8.7.0 source builds locally. The original 8.6.0 signing key is not available on this machine. An unsigned build cannot be installed, and a build signed with a replacement key cannot update the old app in place—even for manual APK installs. Preserve the original installation and history until a signing/migration path is chosen. Never uninstall a personal installation without exporting the history you want to retain. The older signed APK remains available in its existing release.
+The current source builds locally. The original signing key is not available on this machine. An unsigned build cannot be installed, and a build signed with a replacement key cannot update the old app in place—even for manual APK installs. Preserve the original installation and history until a signing/migration path is chosen. Never uninstall a personal installation without exporting the history you want to retain. Preview APKs are for testing and are not a substitute for a release-signed update.
 
 1. Enable Usage access to read local foreground app activity and measure app Comfort allowances.
 2. Open **Block → Set up blocking**, read the disclosure, then enable **TimeLens app blocking** in Android Accessibility settings. Downloaded APKs may require **App info → menu → Allow restricted settings** first.

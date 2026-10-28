@@ -111,7 +111,7 @@ try {
     $null = Invoke-RestMethod 'http://127.0.0.1:48721/api/settings' -Method Post -ContentType 'application/json' -Body '{"pauseUntil":""}'
     $legacySettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings'
     if ($legacySettings.trackBrowser -or $legacySettings.trackInput -or $legacySettings.trackAudio) { throw 'An outdated companion can collect despite configured privacy rules.' }
-    $currentSettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings' -Headers @{ 'X-TimeLens-Extension-Version' = '8.3.0' }
+    $currentSettings = Invoke-RestMethod 'http://127.0.0.1:48721/api/extension/settings' -Headers @{ 'X-TimeLens-Extension-Version' = '2.0.0' }
     if (-not $currentSettings.trackBrowser) { throw 'The current companion did not resume browser collection.' }
 
     # Exercise the production custom-reminder API, image pipeline, and the native

@@ -437,7 +437,7 @@ public static class ApiHost
         {
             var settings = LiveStatusStore.Settings;
             var privacyRules = settings.IgnoredApps.Length > 0 || settings.HiddenTitleApps.Length > 0 || settings.IgnoredDomains.Length > 0 || settings.TitleRedactionPatterns.Length > 0;
-            var currentCompanion = Version.TryParse(ctx.Request.Headers["X-TimeLens-Extension-Version"].FirstOrDefault(), out var companionVersion) && companionVersion >= new Version(8, 3, 0);
+            var currentCompanion = PrivacyPolicy.SupportsCompanionPrivacy(ctx.Request.Headers["X-TimeLens-Extension-Version"].FirstOrDefault());
             // Legacy companions cannot apply exclusion rules before their own queue
             // persistence. Fail closed until they are upgraded when filters are used.
             var canCollect = !PrivacyPolicy.IsPaused && (!privacyRules || currentCompanion);
@@ -1619,8 +1619,7 @@ public static class ApiHost
             var ageSeconds = LiveStatusStore.LastExtensionHeartbeat == DateTime.MinValue
                 ? -1
                 : Math.Max(0, (int)(DateTime.UtcNow - LiveStatusStore.LastExtensionHeartbeat).TotalSeconds);
-            var compatible = Version.TryParse(LiveStatusStore.LastExtensionVersion, out var extensionVersion) &&
-                             extensionVersion >= new Version(8, 3, 0);
+            var compatible = PrivacyPolicy.SupportsCompanionPrivacy(LiveStatusStore.LastExtensionVersion);
             double focusedBrowserSeconds = 0;
             double attributedSeconds = 0;
             double diagnosticWindowSeconds = 0;
@@ -1669,7 +1668,7 @@ public static class ApiHost
             json.WriteString("browser", LiveStatusStore.LastExtensionBrowser);
             json.WriteString("version", LiveStatusStore.LastExtensionVersion);
             json.WriteBoolean("compatible", compatible);
-            json.WriteString("minimumVersion", "8.3.0");
+            json.WriteString("minimumVersion", "2.0.0");
             json.WriteNumber("focusedBrowserSeconds", (int)Math.Round(focusedBrowserSeconds));
             json.WriteNumber("attributedSeconds", (int)Math.Round(attributedSeconds));
             json.WriteNumber("missingSeconds", (int)Math.Round(Math.Max(0, focusedBrowserSeconds - attributedSeconds)));

@@ -3,7 +3,7 @@ name: Android preview checks
 on:
   workflow_call:
   push:
-    branches: [master]
+    branches: [master, "codex/android-*"]
     paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android.yml"]
@@ -29,11 +29,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and check Android preview
         working-directory: android
-        run: bash gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest --console=plain
+        run: bash gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease --console=plain
       - name: Name preview package
         run: cp android/app/build/outputs/apk/debug/app-debug.apk TimeLens-Android-preview.apk
       - uses: actions/upload-artifact@v4
         with:
           name: TimeLens-Android-preview
           path: TimeLens-Android-preview.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TimeLens-Android-optimized-unsigned
+          path: android/app/build/outputs/apk/release/*unsigned.apk
           if-no-files-found: error

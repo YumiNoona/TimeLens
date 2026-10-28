@@ -1,8 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+val releaseSigning = Properties()
+val signingFile = rootProject.file("signing.properties")
+if (signingFile.exists()) signingFile.inputStream().use { releaseSigning.load(it) }
 android {
     namespace = "in.venusapp.timelens"
     compileSdk = 36
@@ -10,8 +15,8 @@ android {
         applicationId = "in.venusapp.timelens"
         minSdk = 29
         targetSdk = 36
-        versionCode = 80400
-        versionName = "8.4.0"
+        versionCode = 80500
+        versionName = "8.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -19,7 +24,22 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        if(signingFile.exists()) create("localRelease") {
+            storeFile = file(releaseSigning.getProperty("storeFile"))
+            storePassword = releaseSigning.getProperty("storePassword")
+            keyAlias = releaseSigning.getProperty("keyAlias")
+            keyPassword = releaseSigning.getProperty("keyPassword")
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if(signingFile.exists()) signingConfig = signingConfigs.getByName("localRelease")
+        }
+    }
     lint { abortOnError = true; checkReleaseBuilds = true }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

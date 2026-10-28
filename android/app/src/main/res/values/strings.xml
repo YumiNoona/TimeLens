@@ -1,0 +1,4 @@
+<resources>
+    <string name="block_accessibility_label">TimeLens app blocking</string>
+    <string name="block_accessibility_description">Optional app blocking observes app package switches and covers apps selected in your blocking rules. It does not request screen content, typed text, browser URLs, or window trees. No activity is sent off the phone. You can pause blocking in TimeLens or disable this service here at any time.</string>
+</resources>

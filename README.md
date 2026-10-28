@@ -148,6 +148,6 @@ TimeLens 8.4.0 improves mobile navigation, dashboard validation and session reli
 
 ## Android
 
-The [Android app](android/README.md) tracks the phone independently, with native navigation, reports, app icons, settings, focus timers and optional app blocking. Android versions independently of Windows; the Android 8.5 beta includes a small, optimized, release-signed APK. It stores activity locally and requires no Windows app, account or Internet access. Read the Android installation notes before moving from the old debug preview.
+The [Android app](android/README.md) tracks the phone independently, with native Today, Apps, History, Block and Settings destinations. Android versions independently of Windows; the Android 8.6 beta adds monochrome Space Grotesk styling, stable navigation, Comfort/Strict app rules and optional browser address-bar integration in an optimized, release-signed APK. It stores activity locally and requires no Windows app, account or Internet access. Read the Android installation notes before moving from the old debug preview.
 
 The [Android roadmap](docs/android-roadmap.md) maps desktop features to Android and proposes optional encrypted local PC pairing, weekly reports, widgets, scheduled archival and focus routines. Pairing is planned; neither app exposes its activity over the network by default.

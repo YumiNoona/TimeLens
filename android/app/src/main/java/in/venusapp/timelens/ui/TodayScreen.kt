@@ -88,19 +88,11 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
                 "Tracking paused",
                 "Activity during this pause is excluded from later imports too.",
             )
-        if (prefs.focusEnd > System.currentTimeMillis())
-            OutlinedButton(onClick = onFocus, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.Timer, null)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Focus session running · ${duration(prefs.focusEnd-System.currentTimeMillis(),true)}"
-                )
-            }
         prefs.cards.forEach { card ->
             when (card) {
                 "hourly" -> HourlyChart(day)
-                "categories" -> CategoryChart(day.apps)
-                "week" -> WeekChart(state, model::refresh)
+                "categories" -> Unit
+                "week" -> Unit
                 "apps" -> {
                     SectionTitle("Most used", "Your top apps, with categories and daily limits")
                     day.apps.take(5).forEach { AppCard(it, model) }
@@ -112,7 +104,7 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
         }
         if (day.sessions.isEmpty()) EmptyActivity()
         Text(
-            "${state.focusCompleted} focus sessions completed today · ${state.blocksToday} blocked openings",
+            "${state.blocksToday} blocked openings today",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -123,7 +115,7 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
             title = { Text("Your dashboard") },
             text = {
                 Column {
-                    listOf("hourly", "categories", "week", "apps").forEach { key ->
+                    listOf("hourly", "apps").forEach { key ->
                         val enabled = key in prefs.cards
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(

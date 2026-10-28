@@ -3,7 +3,6 @@ package `in`.venusapp.timelens.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,6 +23,9 @@ import `in`.venusapp.timelens.data.*
 @Composable
 internal fun AppsScreen(state: UiState, model: AppModel) {
     var visible by rememberSaveable { mutableIntStateOf(60) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var filters by rememberSaveable { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("All") }
     var installed by rememberSaveable { mutableStateOf(false) }
@@ -57,43 +59,74 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
                 }
             }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        SectionTitle(
-            "Your apps, clearly.",
-            "Real app icons, time, visits, categories and daily budgets.",
-        )
-        OutlinedTextField(
-            search,
-            { search = it },
-            label = { Text("Search apps") },
-            leadingIcon = { Icon(Icons.Outlined.Search, null) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(!installed, onClick = { installed = false }, label = { Text("Used today") })
-            FilterChip(
-                installed,
-                onClick = { installed = true },
-                label = { Text("Installed apps") },
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Your apps", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (installed) "Installed on this phone" else "Used today",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(
+                onClick = {
+                    showSearch = !showSearch
+                    if (!showSearch) focusManager.clearFocus()
+                }
+            ) {
+                Icon(
+                    if (showSearch) Icons.Outlined.SearchOff else Icons.Outlined.Search,
+                    "Search apps",
+                )
+            }
+            IconButton(
+                onClick = {
+                    focusManager.clearFocus()
+                    filters = true
+                }
+            ) {
+                BadgedBox(
+                    badge = { if (category != "All" || sort != "time" || installed) Badge() }
+                ) {
+                    Icon(Icons.Outlined.FilterList, "Filter apps")
+                }
+            }
+        }
+        if (showSearch)
+            OutlinedTextField(
+                search,
+                {
+                    search = it
+                    visible = 60
+                },
+                label = { Text("Search name or package") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                trailingIcon = {
+                    if (search.isNotEmpty())
+                        IconButton(onClick = { search = "" }) {
+                            Icon(Icons.Outlined.Close, "Clear search")
+                        }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
             )
-        }
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            (listOf("All") + Preferences.categories).forEach { name ->
-                FilterChip(category == name, onClick = { category = name }, label = { Text(name) })
-            }
-        }
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            listOf("time" to "Most time", "visits" to "Most visits", "name" to "A–Z").forEach {
-                (key, label) ->
-                FilterChip(sort == key, onClick = { sort = key }, label = { Text(label) })
-            }
-        }
+        else if (search.isNotEmpty())
+            AssistChip(
+                onClick = { showSearch = true },
+                label = { Text("Search: $search") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(18.dp)) },
+            )
+        if (category != "All")
+            InputChip(
+                true,
+                onClick = { filters = true },
+                label = { Text(category) },
+                trailingIcon = {
+                    IconButton(onClick = { category = "All" }) {
+                        Icon(Icons.Outlined.Close, "Clear category")
+                    }
+                },
+            )
         Text(
             "${apps.size} apps",
             style = MaterialTheme.typography.labelMedium,
@@ -105,6 +138,72 @@ internal fun AppsScreen(state: UiState, model: AppModel) {
             OutlinedButton(onClick = { visible += 60 }, modifier = Modifier.fillMaxWidth()) {
                 Text("Show more apps")
             }
+    }
+    if (filters) {
+        var selection by remember { mutableStateOf(category) }
+        var ordering by remember { mutableStateOf(sort) }
+        var all by remember { mutableStateOf(installed) }
+        AlertDialog(
+            onDismissRequest = { filters = false },
+            title = { Text("Filter apps") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Show", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(!all, onClick = { all = false }, label = { Text("Used today") })
+                        FilterChip(all, onClick = { all = true }, label = { Text("Installed") })
+                    }
+                    Text("Sort by", style = MaterialTheme.typography.titleSmall)
+                    listOf("time" to "Most time", "visits" to "Most visits", "name" to "Name")
+                        .forEach { (key, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(ordering == key, onClick = { ordering = key })
+                                Text(label)
+                            }
+                        }
+                    Text("Category", style = MaterialTheme.typography.titleSmall)
+                    (listOf("All") + Preferences.categories).chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { name ->
+                                FilterChip(
+                                    selection == name,
+                                    onClick = { selection = name },
+                                    label = { Text(name) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        category = selection
+                        sort = ordering
+                        installed = all
+                        visible = 60
+                        filters = false
+                    }
+                ) {
+                    Text("Apply")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        selection = "All"
+                        ordering = "time"
+                        all = false
+                    }
+                ) {
+                    Text("Reset")
+                }
+            },
+        )
     }
 }
 
@@ -150,7 +249,7 @@ internal fun AppCard(app: AppUsage, model: AppModel) {
                         else MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    "${duration(app.milliseconds)} / ${app.limit}m daily budget",
+                    "${duration(app.milliseconds)} / ${app.limit}m daily goal",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -208,13 +307,13 @@ internal fun AppCard(app: AppUsage, model: AppModel) {
                     OutlinedTextField(
                         limit,
                         { limit = it.filter(Char::isDigit).take(4) },
-                        label = { Text("Daily budget · minutes, 0 = off") },
+                        label = { Text("Daily goal · minutes, 0 = off") },
                         isError = parsed == null || parsed !in 0..1440,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                     )
                     Text(
-                        "To enforce this budget, add an After a daily limit rule in Focus → Blocking.",
+                        "This is a daily goal for comparison. Set a rolling 24-hour allowance or Strict rule separately in Block.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {

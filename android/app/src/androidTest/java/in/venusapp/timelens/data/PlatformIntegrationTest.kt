@@ -48,6 +48,93 @@ class PlatformIntegrationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
 
+    @Test
+    fun realChromeDomainTrackingAndBothWebsiteModes() {
+        val automation =
+            instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        fun shell(command: String) =
+            ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command))
+                .bufferedReader()
+                .use { it.readText() }
+        val oldServices =
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            )
+        val oldEnabled =
+            Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.ACCESSIBILITY_ENABLED,
+                0,
+            )
+        val prefs = Preferences(context)
+        val oldRules = prefs.blockRules
+        val oldWeb = prefs.websiteTracking
+        val oldBlocks = prefs.blocksEnabled
+        val service = "${context.packageName}/${AppBlockService::class.java.name}"
+        try {
+            prefs.websiteTracking = true
+            prefs.blocksEnabled = true
+            prefs.blockRules = listOf(BlockRule("web:example.com", "strict"))
+            shell("settings put secure enabled_accessibility_services $service")
+            shell("settings put secure accessibility_enabled 1")
+            await("Accessibility must connect") { AppBlockService.connected }
+            AppBlockService.changed(context)
+            shell(
+                "am start -W -a android.intent.action.VIEW -d https://example.com -p com.android.chrome"
+            )
+            await("The actual Chrome address bar must be recognized") {
+                AppBlockService.websiteHost == "example.com"
+            }
+            await("A website Strict rule must cover Chrome") {
+                AppBlockService.blockedTarget == "web:example.com"
+            }
+            prefs.blockRules = listOf(BlockRule("web:example.com", "comfort", allowanceMinutes = 1))
+            SiteStore(context).use { it.clear() }
+            AppBlockService.changed(context)
+            await("Comfort must allow a site below its allowance") {
+                AppBlockService.blockedApp.isEmpty()
+            }
+            await("The site must be observed again") {
+                AppBlockService.websiteHost == "example.com"
+            }
+            SystemClock.sleep(2200)
+            val now = System.currentTimeMillis()
+            assertTrue(
+                "Browser foreground time must be saved locally",
+                SiteStore(context).use {
+                    it.read(now - 60_000, now).any { row -> row.app == "example.com" }
+                },
+            )
+            SiteStore(context).use { store ->
+                for (i in 0..12) store.observe(
+                    "example.com",
+                    now - 120_000 + i * 5000,
+                    now - 115_000 + i * 5000,
+                )
+            }
+            AppBlockService.changed(context)
+            await("Comfort must cover a site after its rolling allowance is used") {
+                AppBlockService.blockedTarget == "web:example.com"
+            }
+            prefs.websiteTracking = false
+            AppBlockService.changed(context)
+            await("Turning website access off must clear the host and release website overlays") {
+                AppBlockService.websiteHost.isEmpty() && AppBlockService.blockedApp.isEmpty()
+            }
+        } finally {
+            prefs.blockRules = oldRules
+            prefs.websiteTracking = oldWeb
+            prefs.blocksEnabled = oldBlocks
+            AppBlockService.changed(context)
+            if (oldServices == null) shell("settings delete secure enabled_accessibility_services")
+            else shell("settings put secure enabled_accessibility_services $oldServices")
+            shell("settings put secure accessibility_enabled $oldEnabled")
+            shell("input keyevent KEYCODE_HOME")
+            SiteStore(context).use { it.clear() }
+        }
+    }
+
     private fun await(message: String, predicate: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 15_000
         while (SystemClock.elapsedRealtime() < deadline) {

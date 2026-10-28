@@ -1,28 +1,19 @@
 package `in`.venusapp.timelens.ui
 
-import android.Manifest
-import android.app.AlarmManager
-import android.app.NotificationManager
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
@@ -45,42 +36,24 @@ internal fun SettingsScreen(
     val state by model.state.collectAsStateWithLifecycle()
     val prefs = model.preferences
     val context = LocalContext.current
-    var budget by remember { mutableStateOf(prefs.budget.toString()) }
+    var budget by rememberSaveable { mutableStateOf(prefs.budget.toString()) }
     var delete by remember { mutableStateOf(false) }
-    var range by remember { mutableIntStateOf(1) }
-    var title by remember { mutableStateOf(prefs.blockTitle) }
-    var message by remember { mutableStateOf(prefs.blockMessage) }
+    var range by rememberSaveable { mutableIntStateOf(1) }
     var pinSetup by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val notifications =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-            model.refresh()
-        }
     fun guard(action: () -> Unit) {
         if (prefs.pinHash.isEmpty()) action() else pending = action
     }
     fun open(action: String, data: Uri? = null) {
         runCatching { context.startActivity(Intent(action, data)) }
     }
-    @Composable
-    fun Group(titleText: String, content: @Composable ColumnScope.() -> Unit) {
-        OutlinedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(
-                    titleText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                content()
-            }
-        }
-    }
+
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         SectionTitle(
             "Make it feel like yours.",
             "Appearance, tracking, privacy and protection in one place.",
         )
-        Group("Permissions & device health") {
+        SettingsGroup("Permissions & device health") {
             PermissionRow(
                 "Usage access",
                 state.day?.hasAccess == true,
@@ -94,41 +67,13 @@ internal fun SettingsScreen(
             ) {
                 open(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             }
-            val granted =
-                context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
-            PermissionRow("Notifications", granted, "Background focus completion alerts") {
-                if (
-                    Build.VERSION.SDK_INT >= 33 &&
-                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-                            PackageManager.PERMISSION_GRANTED
-                )
-                    notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                else
-                    runCatching {
-                        context.startActivity(
-                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                        )
-                    }
-            }
-            if (Build.VERSION.SDK_INT >= 31)
-                PermissionRow(
-                    "Precise timer alerts",
-                    context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms(),
-                    "Optional; Android may delay alerts otherwise",
-                ) {
-                    open(
-                        Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                        Uri.parse("package:${context.packageName}"),
-                    )
-                }
         }
-        Group("Appearance") {
+        SettingsGroup("Appearance") {
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("dark", "light", "system").forEach { value ->
+                listOf("dark", "light").forEach { value ->
                     FilterChip(
                         prefs.theme == value,
                         onClick = { model.edit { it.preferences.theme = value } },
@@ -136,36 +81,12 @@ internal fun SettingsScreen(
                     )
                 }
             }
-            Text("Accent colour", style = MaterialTheme.typography.labelMedium)
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                AccentColors.forEach { (key, color) ->
-                    Column(
-                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Box(
-                            Modifier.size(40.dp).clip(CircleShape).background(color).clickable {
-                                model.edit { it.preferences.accent = key }
-                            },
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            if (prefs.accent == key)
-                                Icon(
-                                    Icons.Outlined.Check,
-                                    null,
-                                    tint = androidx.compose.ui.graphics.Color.Black,
-                                )
-                        }
-                        Text(
-                            key.replaceFirstChar(Char::uppercase),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-            }
+            SettingSwitch(
+                "Grayscale icons",
+                "On: gray app icons. Off: original app colors.",
+                prefs.grayIcons,
+                { value -> model.edit { it.preferences.grayIcons = value } },
+            )
             SettingSwitch(
                 "Compact cards",
                 "Fit more on the screen",
@@ -185,7 +106,7 @@ internal fun SettingsScreen(
                 { value -> model.edit { it.preferences.showSeconds = value } },
             )
         }
-        Group("Tracking & storage") {
+        SettingsGroup("Tracking & storage") {
             SettingSwitch(
                 "Background archival",
                 "Android schedules a local import about every 15 minutes; battery controls can defer it",
@@ -221,7 +142,7 @@ internal fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Group("Daily goals & categories") {
+        SettingsGroup("Daily goals & categories") {
             OutlinedTextField(
                 budget,
                 { budget = it.filter(Char::isDigit).take(4) },
@@ -261,7 +182,28 @@ internal fun SettingsScreen(
                 }
             }
         }
-        Group("Privacy & exclusions") {
+        SettingsGroup("Privacy & exclusions") {
+            Text(
+                if (prefs.websiteTracking) "Website tracking is on" else "Website tracking is off",
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                "Manage website consent and browser support in Block → Websites.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (prefs.websiteTracking)
+                TextButton(
+                    onClick = { guard { model.edit { it.preferences.websiteTracking = false } } }
+                ) {
+                    Text("Turn website tracking off")
+                }
+            TextButton(
+                onClick = {
+                    guard { model.edit { SiteStore(context).use { sites -> sites.clear() } } }
+                }
+            ) {
+                Text("Delete saved website history")
+            }
             val paused = prefs.pauseTrackingUntil > System.currentTimeMillis()
             Text(
                 if (paused) "Tracking is paused" else "Tracking is active",
@@ -289,30 +231,7 @@ internal fun SettingsScreen(
                 }
             }
         }
-        Group("Blocking appearance & PIN") {
-            OutlinedTextField(
-                title,
-                { title = it.take(100) },
-                label = { Text("Blocking screen title") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                message,
-                { message = it.take(500) },
-                label = { Text("Message · use {app} for the app name") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-            )
-            Button(
-                onClick = {
-                    model.edit {
-                        it.preferences.blockTitle = title
-                        it.preferences.blockMessage = message
-                    }
-                }
-            ) {
-                Text("Save blocking screen")
-            }
+        SettingsGroup("Blocking PIN") {
             OutlinedButton(
                 onClick = { guard { pinSetup = true } },
                 modifier = Modifier.fillMaxWidth(),
@@ -330,9 +249,9 @@ internal fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Group("Export your activity") {
+        SettingsGroup("Export app activity") {
             Text(
-                "Ends on ${state.date}. Files contain private activity; choose where to save them.",
+                "Ends on ${state.date}. JSON and CSV contain app activity; website observations are stored separately. Files contain private activity; choose where to save them.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(
@@ -371,7 +290,7 @@ internal fun SettingsScreen(
         }
         InfoCard(
             "Independent. Private. Local.",
-            "Android ${BuildConfig.VERSION_NAME} · No account, analytics or Internet permission. This app tracks this phone independently. Local PC pairing and browser/media detail still require separate integrations.",
+            "Android ${BuildConfig.VERSION_NAME} · No account, analytics or Internet permission. This app tracks this phone independently. Optional website tracking reads supported browser address bars only. PC pairing is not connected.",
         )
         OutlinedButton(onClick = { guard { delete = true } }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all saved phone activity", color = MaterialTheme.colorScheme.error)
@@ -447,7 +366,7 @@ internal fun SettingsScreen(
             title = { Text("Delete saved phone activity?") },
             text = {
                 Text(
-                    "This deletes saved activity, focus history and block logs, and moves the import boundary to now. Deleted history will not return on refresh. Rules, app preferences, Android system history and previously exported files remain."
+                    "This deletes saved app and website activity and block logs, and moves the import boundary to now. Deleted history will not return on refresh. Rules, app preferences, Android system history and previously exported files remain."
                 )
             },
             confirmButton = {
@@ -491,5 +410,41 @@ private fun PermissionRow(
             )
         }
         TextButton(onClick = onOpen) { Text(if (enabled) "Manage" else "Enable") }
+    }
+}
+
+@Composable
+internal fun SettingsGroup(titleText: String, content: @Composable ColumnScope.() -> Unit) {
+    var expanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(20.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Icon(
+                when (titleText) {
+                    "Appearance" -> Icons.Outlined.Palette
+                    "Permissions & device health" -> Icons.Outlined.VerifiedUser
+                    "Tracking & storage" -> Icons.Outlined.Storage
+                    "Daily goals & categories" -> Icons.Outlined.Category
+                    "Privacy & exclusions" -> Icons.Outlined.PrivacyTip
+                    "Blocking PIN" -> Icons.Outlined.Lock
+                    else -> Icons.Outlined.FileDownload
+                },
+                null,
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(titleText, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            Icon(
+                if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                if (expanded) "Collapse $titleText" else "Expand $titleText",
+            )
+        }
+        if (expanded)
+            Column(
+                Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                content = content,
+            )
     }
 }

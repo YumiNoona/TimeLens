@@ -9,6 +9,7 @@ data class BlockRule(
     val startMinute: Int = 9 * 60,
     val endMinute: Int = 17 * 60,
     val days: Set<Int> = (1..5).toSet(),
+    val allowanceMinutes: Int = 30,
 )
 
 data class BlockDecision(
@@ -26,8 +27,19 @@ object BlockPolicy {
         limitMinutes: Int,
         paused: Boolean,
     ): BlockDecision {
-        if (rule == null || !rule.enabled || paused) return BlockDecision(false)
+        if (rule == null || !rule.enabled) return BlockDecision(false)
+        // Strict has no in-overlay pause escape. Controls can still be changed in TimeLens.
+        if (rule.mode == "strict") return BlockDecision(true, "Strict mode · access blocked")
+        if (paused && rule.mode != "comfort") return BlockDecision(false)
         return when (rule.mode) {
+            "comfort" -> {
+                val left = rule.allowanceMinutes.coerceIn(1, 1440) * 60_000L - usedMs
+                BlockDecision(
+                    left <= 0,
+                    "Comfort allowance used · last 24 hours",
+                    if (left <= 0) 60_000 else left.coerceIn(250, 60_000),
+                )
+            }
             "always" -> BlockDecision(true, "This app is on your block list")
             "focus" -> BlockDecision(focusActive, "Your focus session is in progress")
             "budget" ->

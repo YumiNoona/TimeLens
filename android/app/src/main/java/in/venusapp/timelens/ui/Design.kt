@@ -5,6 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -12,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,30 +28,15 @@ internal data class DisplayOptions(
     val seconds: Boolean = false,
     val use24Hour: Boolean = true,
     val compact: Boolean = false,
+    val grayIcons: Boolean = true,
 )
 
 internal val LocalDisplay = staticCompositionLocalOf { DisplayOptions() }
-internal val AccentColors =
-    linkedMapOf(
-        "acid" to Color(0xFFC8E86A),
-        "arctic" to Color(0xFF81D4D1),
-        "lavender" to Color(0xFFC5AFFB),
-        "copper" to Color(0xFFFFBB86),
-        "ocean" to Color(0xFF8AC7FF),
-        "rose" to Color(0xFFF7A7C5),
-    )
 
-internal fun categoryColor(name: String): Color =
-    when (name) {
-        "Work" -> Color(0xFFBADD79)
-        "Education" -> Color(0xFF7DCFCB)
-        "Communication" -> Color(0xFF91BBF4)
-        "Social" -> Color(0xFFF0A0BA)
-        "Entertainment" -> Color(0xFFC5A4ED)
-        "Gaming" -> Color(0xFFE5B27E)
-        "Utilities" -> Color(0xFF9CB5A0)
-        else -> Color(0xFF939A8A)
-    }
+internal fun categoryColor(name: String): Color {
+    val shades = listOf(0xFFEEEEEE, 0xFFBDBDBD, 0xFF919191, 0xFF717171, 0xFF555555)
+    return Color(shades[(name.hashCode() and Int.MAX_VALUE) % shades.size])
+}
 
 @Composable internal fun usage(ms: Long): String = duration(ms, LocalDisplay.current.seconds)
 
@@ -63,6 +51,7 @@ internal fun timeLabel(ms: Long): String =
 @Composable
 internal fun AppIcon(app: String, label: String, modifier: Modifier = Modifier.size(46.dp)) {
     val context = LocalContext.current
+    val gray = LocalDisplay.current.grayIcons
     val image by
         produceState<ImageBitmap?>(null, app) {
             value =
@@ -84,12 +73,20 @@ internal fun AppIcon(app: String, label: String, modifier: Modifier = Modifier.s
         contentAlignment = Alignment.Center,
     ) {
         image?.let {
-            Image(it, contentDescription = null, modifier = Modifier.fillMaxSize().padding(3.dp))
+            Image(
+                it,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(3.dp),
+                colorFilter =
+                    if (gray) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                    else null,
+            )
         }
-            ?: Text(
-                label.take(1).uppercase(),
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+            ?: Icon(
+                Icons.Outlined.Apps,
+                null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(10.dp).fillMaxSize(),
             )
     }
 }
@@ -132,6 +129,7 @@ internal fun SettingSwitch(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     Row(
         Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -145,6 +143,13 @@ internal fun SettingSwitch(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked, onCheckedChange = onChange)
+        Switch(
+            checked,
+            onCheckedChange = {
+                focusManager.clearFocus()
+                onChange(it)
+            },
+            modifier = Modifier.testTag("switch-$title"),
+        )
     }
 }

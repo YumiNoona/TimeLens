@@ -1,4 +1,4 @@
 <resources>
     <string name="block_accessibility_label">TimeLens app blocking</string>
-    <string name="block_accessibility_description">Optional app blocking observes app package switches and covers apps selected in your blocking rules. It does not request screen content, typed text, browser URLs, or window trees. No activity is sent off the phone. You can pause blocking in TimeLens or disable this service here at any time.</string>
+    <string name="block_accessibility_description">TimeLens detects app switches and covers selected apps. If you separately enable website tracking in TimeLens, it reads known browser address-bar controls to save domain names and observed time locally and enforce website rules. It does not read webpage text, passwords, URL paths, or search queries. Browser support varies and private tabs may be included when exposed by the browser. No data is sent off this phone. You can turn website tracking off in TimeLens or disable this service here.</string>
 </resources>

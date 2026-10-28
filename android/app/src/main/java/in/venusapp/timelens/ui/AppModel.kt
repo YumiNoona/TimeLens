@@ -7,8 +7,10 @@ import `in`.venusapp.timelens.data.BlockEvent
 import `in`.venusapp.timelens.data.DayUsage
 import `in`.venusapp.timelens.data.InstalledApp
 import `in`.venusapp.timelens.data.Preferences
+import `in`.venusapp.timelens.data.SiteStore
 import `in`.venusapp.timelens.data.UsageRepository
 import `in`.venusapp.timelens.domain.Session
+import `in`.venusapp.timelens.domain.WebAddress
 import `in`.venusapp.timelens.platform.AppBlockService
 import `in`.venusapp.timelens.platform.BackgroundTasks
 import java.time.LocalDate
@@ -33,6 +35,8 @@ data class UiState(
     val focusCompleted: Int = 0,
     val blocksToday: Int = 0,
     val blocksWeek: Int = 0,
+    val webHistory: List<Session> = emptyList(),
+    val allowances: Map<String, Long?> = emptyMap(),
 )
 
 class AppModel(application: Application) : AndroidViewModel(application) {
@@ -68,6 +72,27 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                                 focusCompleted = repository.completedFocusToday(),
                                 blocksToday = repository.blockedCount(1),
                                 blocksWeek = repository.blockedCount(7),
+                                webHistory = repository.websites(date, 91),
+                                allowances =
+                                    preferences.blockRules
+                                        .filter { it.mode == "comfort" }
+                                        .associate { rule ->
+                                            rule.app to
+                                                if (rule.app.startsWith("web:"))
+                                                    SiteStore(getApplication()).use { store ->
+                                                        val now = System.currentTimeMillis()
+                                                        store
+                                                            .read(now - 86_400_000L, now)
+                                                            .filter {
+                                                                WebAddress.matches(
+                                                                    it.app,
+                                                                    rule.app.removePrefix("web:"),
+                                                                )
+                                                            }
+                                                            .sumOf { it.milliseconds }
+                                                    }
+                                                else repository.allowanceUsage(rule.app)
+                                        },
                             )
                         }
                     }

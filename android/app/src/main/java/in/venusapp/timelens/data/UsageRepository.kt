@@ -172,6 +172,15 @@ class UsageRepository(private val context: Context, val preferences: Preferences
         synchronized(ActivityStore.lock) {
             val now = System.currentTimeMillis()
             val zone = ZoneId.systemDefault()
+            SiteStore(context).use { sites ->
+                sites.prune(
+                    LocalDate.now()
+                        .minusDays(preferences.retention.toLong() - 1)
+                        .atStartOfDay(zone)
+                        .toInstant()
+                        .toEpochMilli()
+                )
+            }
             store.prune(
                 LocalDate.now()
                     .minusDays(preferences.retention.toLong() - 1)
@@ -207,9 +216,22 @@ class UsageRepository(private val context: Context, val preferences: Preferences
 
     private fun importRange(from: Long, until: Long): Boolean {
         if (from >= until) return false
+        val observations = observations(from, until) ?: return false
+        if (observations.isEmpty() || !hasAccess()) return false
+        val sessions =
+            UsageLedger.build(observations, from, until)
+                .filter { it.app !in preferences.excluded }
+                .map { it.copy(start = maxOf(it.start, preferences.appSince(it.app))) }
+                .filter { it.end > it.start }
+        val visible = UsageLedger.subtract(sessions, preferences.pausedSpans)
+        store.replaceRange(from, until, visible)
+        return true
+    }
+
+    private fun observations(from: Long, until: Long): List<Observation>? {
         val manager = context.getSystemService(UsageStatsManager::class.java)
         val events =
-            manager.queryEvents((from - 86_400_000L).coerceAtLeast(0), until) ?: return false
+            manager.queryEvents((from - 86_400_000L).coerceAtLeast(0), until) ?: return null
         val observations = mutableListOf<Observation>()
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
@@ -234,15 +256,40 @@ class UsageRepository(private val context: Context, val preferences: Preferences
                         event.className ?: "",
                     )
         }
-        if (observations.isEmpty() || !hasAccess()) return false
-        val sessions =
-            UsageLedger.build(observations, from, until)
-                .filter { it.app !in preferences.excluded }
-                .map { it.copy(start = maxOf(it.start, preferences.appSince(it.app))) }
-                .filter { it.end > it.start }
-        val visible = UsageLedger.subtract(sessions, preferences.pausedSpans)
-        store.replaceRange(from, until, visible)
-        return true
+
+        return observations
+    }
+
+    /**
+     * Safety budgets read Android directly, independent of archive exclusions, pauses and deletion.
+     */
+    fun allowanceUsage(app: String, now: Long = System.currentTimeMillis()): Long? {
+        if (!hasAccess()) return null
+        val from = now - 86_400_000L
+        val observations = observations(from, now) ?: return null
+        val rows = UsageLedger.build(observations, from, now).filter { it.app == app }
+        val masks = SiteStore(context).use { it.covered(app, from, now) }
+        return UsageLedger.subtract(rows, masks).sumOf { it.milliseconds }
+    }
+
+    fun websites(end: LocalDate, days: Int): List<Session> {
+        val zone = ZoneId.systemDefault()
+        val from = end.minusDays(days.toLong() - 1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val until =
+            minOf(
+                end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+                System.currentTimeMillis(),
+            )
+        return SiteStore(context).use {
+            it.prune(
+                LocalDate.now()
+                    .minusDays(preferences.retention.toLong() - 1)
+                    .atStartOfDay(zone)
+                    .toInstant()
+                    .toEpochMilli()
+            )
+            if (from < until) it.read(from, until) else emptyList()
+        }
     }
 
     fun exclude(app: String) =
@@ -259,6 +306,7 @@ class UsageRepository(private val context: Context, val preferences: Preferences
             preferences.focusPausedMs = 0
             preferences.lastArchive = 0
             store.clear()
+            SiteStore(context).use { it.clear() }
         }
 
     override fun close() {

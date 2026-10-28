@@ -1,3 +1,15 @@
+# 8.6.0 — Navigation, monochrome and blocking
+
+- Fixed shared scrolling and unstable composition caused by inserting a loading row during preference refreshes. Each destination now owns saved scroll and control state, and refresh uses an overlay indicator.
+- Added icon navigation, a Settings destination, expandable settings, compact search/filter controls, bundled Space Grotesk and monochrome dark/light themes with optional grayscale app icons.
+- Reports is now History with calendar, historical trends, app visits and observed websites. Focus is now Block; timers have been removed from the UI.
+- Added Comfort rolling 24-hour allowances and Strict rules for apps and domains, a custom banner preview and block activity. New modes ignore the old global pause. Safe system apps remain accessible.
+- Added opt-in fixed-ID browser address-bar integration. Only hostnames and observed intervals are saved locally; URL paths, queries, credentials and webpage content are not stored. Website support is limited by exposed browser controls, including private-tab visibility.
+- App Comfort uses Android events independently of archive deletion/exclusions. Blocking-overlay intervals are excluded from those allowances. Website observations have retention and separate deletion controls.
+- Migrates Always and daily-budget rules; disables legacy timer/schedule rules for review. Existing 8.5 release installs update with the same signing identity.
+- App JSON/CSV export still covers app history; website export/restore and PC pairing remain future work. Website integration has Chrome emulator coverage; other browser adapters and real OEM devices remain beta validation work.
+- Verified 25 JVM tests and 17 API 35 device tests, including saved navigation/search/scroll, toggles and refresh, actual Chrome host observation and both website modes. Release build and lint passed (0 errors); 10 repository tests passed. The optimized APK uses the existing release signing identity.
+
 # Android 8.5.0
 
 This update focuses on the APK. Windows and public website application files are unchanged.

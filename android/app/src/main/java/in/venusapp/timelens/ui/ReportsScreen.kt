@@ -173,7 +173,7 @@ internal fun WeekChart(state: UiState, onDate: (java.time.LocalDate) -> Unit) {
 }
 
 @Composable
-internal fun ReportsScreen(state: UiState, model: AppModel) {
+internal fun HistoryScreen(state: UiState, model: AppModel) {
     var range by rememberSaveable { mutableIntStateOf(7) }
     val from = state.date.minusDays(range.toLong() - 1)
     val zone = ZoneId.systemDefault()
@@ -200,7 +200,7 @@ internal fun ReportsScreen(state: UiState, model: AppModel) {
             }
             .sortedByDescending { it.milliseconds }
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        SectionTitle("Patterns, not pressure.", "Understand the habits behind your screen time.")
+        SectionTitle("Your history.", "Trends across days, plus every visit in order.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(7, 30, 90).forEach { value ->
                 FilterChip(
@@ -252,7 +252,7 @@ internal fun ReportsScreen(state: UiState, model: AppModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SectionTitle("Most used apps", "Across the selected $range-day period")
-        apps.take(12).forEach { AppCard(it, model) }
+        TimelineScreen(state, model)
+        WebsiteHistory(state.webHistory, state.date)
     }
 }

@@ -22,6 +22,25 @@ class Preferences(context: Context) {
                     .toEpochMilli()
             prefs.edit().putLong("since", initialBoundary).commit()
         }
+        migrateBlockControls()
+    }
+
+    private fun migrateBlockControls() {
+        if (!prefs.contains("blockModelV2")) {
+            blockRules = blockRules.map { rule ->
+                when (rule.mode) {
+                    "always" -> rule.copy(mode = "strict")
+                    "budget" -> rule.copy(mode = "comfort")
+                    "focus",
+                    "schedule" -> rule.copy(mode = "comfort", enabled = false)
+                    else -> rule
+                }
+            }
+            focusEnd = 0
+            focusPausedMs = 0
+            if (theme !in listOf("dark", "light")) theme = "dark"
+            prefs.edit().putBoolean("blockModelV2", true).commit()
+        }
     }
 
     var since: Long
@@ -119,6 +138,18 @@ class Preferences(context: Context) {
         get() = prefs.getString("accent", "acid") ?: "acid"
         set(value) {
             prefs.edit().putString("accent", value).apply()
+        }
+
+    var grayIcons: Boolean
+        get() = prefs.getBoolean("grayIcons", true)
+        set(value) {
+            prefs.edit().putBoolean("grayIcons", value).apply()
+        }
+
+    var websiteTracking: Boolean
+        get() = prefs.getBoolean("websiteTracking", false)
+        set(value) {
+            prefs.edit().putBoolean("websiteTracking", value).commit()
         }
 
     var compact: Boolean
@@ -272,6 +303,7 @@ class Preferences(context: Context) {
                     item.optInt("start", 540),
                     item.optInt("end", 1020),
                     (0 until days.length()).map { days.getInt(it) }.toSet(),
+                    item.optInt("allowance", limit(item.getString("app")).takeIf { it > 0 } ?: 30),
                 )
             }
         }
@@ -292,6 +324,7 @@ class Preferences(context: Context) {
                                         .put("start", rule.startMinute)
                                         .put("end", rule.endMinute)
                                         .put("days", JSONArray(rule.days.sorted()))
+                                        .put("allowance", rule.allowanceMinutes)
                                 )
                             }
                         }

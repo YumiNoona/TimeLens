@@ -306,7 +306,7 @@ class UsageRepository(private val context: Context, val preferences: Preferences
             preferences.focusPausedMs = 0
             preferences.lastArchive = 0
             store.clear()
-            SiteStore(context).use { it.clear() }
+            SiteStore(context).use { it.clearAll() }
         }
 
     override fun close() {

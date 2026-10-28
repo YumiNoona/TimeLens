@@ -47,6 +47,8 @@ class SiteStoreTest {
             it.clear()
             assertTrue(it.read(0, 5000).isEmpty())
             assertEquals(listOf(3000L to 4000L), it.covered("coverage.test", 0, 5000))
+            it.clearAll()
+            assertTrue(it.covered("coverage.test", 0, 5000).isEmpty())
             it.prune(5000)
         }
     }

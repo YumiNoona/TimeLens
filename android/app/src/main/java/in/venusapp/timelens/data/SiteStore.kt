@@ -104,6 +104,18 @@ class SiteStore(context: Context) : SQLiteOpenHelper(context, "web_history.db", 
 
     fun clear() = synchronized(lock) { writableDatabase.delete("sites", null, null) }
 
+    fun clearAll() =
+        synchronized(lock) {
+            writableDatabase.beginTransaction()
+            try {
+                writableDatabase.delete("sites", null, null)
+                writableDatabase.delete("covered", null, null)
+                writableDatabase.setTransactionSuccessful()
+            } finally {
+                writableDatabase.endTransaction()
+            }
+        }
+
     companion object {
         private val lock = Any()
     }

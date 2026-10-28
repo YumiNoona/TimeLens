@@ -150,6 +150,8 @@ class PlatformIntegrationTest {
         val oldRules = prefs.blockRules
         val oldBlocks = prefs.blocksEnabled
         val oldPause = prefs.blockPauseUntil
+        val oldFocusEnd = prefs.focusEnd
+        val oldFocusStart = prefs.focusStarted
         val service = "${context.packageName}/${AppBlockService::class.java.name}"
         try {
             assertNotNull(
@@ -189,12 +191,26 @@ class PlatformIntegrationTest {
             await("Turning blocking off must release the app") {
                 AppBlockService.blockedApp.isEmpty()
             }
+            prefs.blockRules = listOf(BlockRule("com.android.chrome", "focus"))
+            prefs.blocksEnabled = true
+            prefs.focusStarted = System.currentTimeMillis()
+            prefs.focusEnd = System.currentTimeMillis() + 2500
+            AppBlockService.changed(context)
+            await("Focus rule must cover the active app") {
+                AppBlockService.blockedApp == "com.android.chrome"
+            }
+            await("Focus rule must release at the session deadline without another app switch") {
+                AppBlockService.blockedApp.isEmpty()
+            }
             assertTrue(AppSafety.protectedPackages(context).contains(context.packageName))
             assertTrue(AppSafety.protectedPackages(context).contains("com.android.settings"))
         } finally {
             prefs.blockRules = oldRules
             prefs.blocksEnabled = oldBlocks
             prefs.blockPauseUntil = oldPause
+            prefs.focusEnd = oldFocusEnd
+            prefs.focusStarted = oldFocusStart
+            BackgroundTasks.scheduleFocus(context)
             AppBlockService.changed(context)
             if (oldServices == null) shell("settings delete secure enabled_accessibility_services")
             else shell("settings put secure enabled_accessibility_services $oldServices")

@@ -109,6 +109,7 @@ object BackgroundTasks {
             prefs.focusEnd = 0
             prefs.focusPausedMs = 0
             prefs.focusStarted = 0
+            AppBlockService.changed(context)
             notify(
                 context,
                 "Focus session complete",

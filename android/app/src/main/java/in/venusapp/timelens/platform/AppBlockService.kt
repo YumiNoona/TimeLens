@@ -114,7 +114,11 @@ class AppBlockService : AccessibilityService() {
                         }
                     }
                 } else removeOverlay()
-                handler.postDelayed(recheck, decision.reevaluateInMs.coerceIn(1000, 60_000))
+                var next = decision.reevaluateInMs.coerceIn(1000, 60_000)
+                if (rule.mode == "focus" && prefs.focusEnd > now)
+                    next = minOf(next, prefs.focusEnd - now + 50)
+                if (rule.mode == "schedule") next = minOf(next, 60_000 - now % 60_000 + 50)
+                handler.postDelayed(recheck, next)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

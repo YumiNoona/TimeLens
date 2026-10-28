@@ -38,6 +38,10 @@ class BlockPolicyTest {
             evaluate(BlockRule("app", "budget"), used = 30 * 60_000L - 1000).reevaluateInMs,
         )
         assertTrue(evaluate(BlockRule("app", "budget"), used = 30 * 60_000L).blocked)
+        assertEquals(
+            60_000L,
+            evaluate(BlockRule("app", "budget"), used = 30 * 60_000L).reevaluateInMs,
+        )
         assertFalse(evaluate(BlockRule("app", "budget"), used = 99_000_000, limit = 0).blocked)
     }
 

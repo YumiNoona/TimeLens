@@ -37,7 +37,7 @@ object BlockPolicy {
                     BlockDecision(
                         left <= 0,
                         "Daily app budget reached",
-                        left.coerceIn(1000, 60_000),
+                        if (left <= 0) 60_000 else left.coerceIn(1000, 60_000),
                     )
                 }
             "schedule" -> {

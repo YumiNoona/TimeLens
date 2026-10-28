@@ -5,7 +5,11 @@ on:
     tags: ["v*"]
 
 jobs:
+  android:
+    uses: ./.github/workflows/android.yml
+
   build:
+    needs: android
     runs-on: windows-latest
     permissions:
       contents: write
@@ -44,6 +48,19 @@ jobs:
           npm audit --audit-level=high
           npm run build
 
+      - name: Build and audit public website
+        run: |
+          npm ci --prefix web
+          if ($LASTEXITCODE -ne 0) { throw "Website dependency installation failed" }
+          npm audit --prefix web --audit-level=high
+          if ($LASTEXITCODE -ne 0) { throw "Website dependency audit failed" }
+          npm run web:build
+          if ($LASTEXITCODE -ne 0) { throw "Website build failed" }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: TimeLens-Android-preview
+
       - name: Check .NET dependency advisories
         run: dotnet list src/TimeLens.sln package --vulnerable --include-transitive
 
@@ -65,7 +82,7 @@ jobs:
 
       - name: Check browser extension behavior
         run: |
-          node --test tests/browser-extension.test.mjs tests/release-service.test.mjs tests/timeline.test.mjs
+          npm test
 
       - name: Check fresh-install and database migration regressions
         run: npm run test:dotnet
@@ -101,7 +118,7 @@ jobs:
           Write-Host "Desktop release: $expected; browser companions: $chromeVersion"
 
       - name: Publish Firefox update to Mozilla Add-ons
-        if: ${{ env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != '' }}
+        if: ${{ vars.PUBLISH_FIREFOX_ON_RELEASE == 'true' && env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != '' }}
         shell: pwsh
         run: |
           $listing = Invoke-RestMethod 'https://addons.mozilla.org/api/v5/addons/addon/timelens-tracker/'
@@ -122,9 +139,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Mozilla Add-ons submission failed" }
 
       - name: Note manual Firefox publishing requirement
-        if: ${{ env.AMO_JWT_ISSUER == '' || env.AMO_JWT_SECRET == '' }}
+        if: ${{ vars.PUBLISH_FIREFOX_ON_RELEASE != 'true' || env.AMO_JWT_ISSUER == '' || env.AMO_JWT_SECRET == '' }}
         shell: pwsh
-        run: Write-Warning "AMO credentials are not configured; upload the versioned Firefox package to the existing Mozilla Add-ons listing to activate automatic updates."
+        run: Write-Host "Store publishing is opt-in through PUBLISH_FIREFOX_ON_RELEASE and AMO credentials. GitHub packages are included; the existing signed Firefox listing remains separate."
 
       - name: Prepare desktop executable
         shell: pwsh
@@ -180,6 +197,7 @@ jobs:
         run: |
           $assets = @(
             "TimeLens.exe",
+            "TimeLens-Android-preview.apk",
             "TimeLens-Setup.exe",
             "TimeLens-Chrome-Extension.zip",
             "TimeLens-Firefox-Extension.zip"
@@ -194,6 +212,7 @@ jobs:
         with:
           files: |
             TimeLens.exe
+            TimeLens-Android-preview.apk
             TimeLens-Setup.exe
             TimeLens-Chrome-Extension.zip
             TimeLens-Firefox-Extension.zip

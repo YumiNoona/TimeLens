@@ -2,7 +2,7 @@
 
 # TimeLens
 
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet)](https://dotnet.microsoft.com/)
 [![Native AOT](https://img.shields.io/badge/Native_AOT-Windows-00AA00?style=flat-square)](https://learn.microsoft.com/dotnet/core/deploying/native-aot/)
 [![Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?style=flat-square&logo=svelte)](https://svelte.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-local-003B57?style=flat-square&logo=sqlite)](https://sqlite.org/)
@@ -26,7 +26,7 @@ Setup installs the self-contained app to `%LOCALAPPDATA%\Programs\TimeLens` by d
 
 ## Build
 
-Prerequisites: .NET 9 SDK, Node.js 22 or newer, Inno Setup 6, and Visual Studio C++ build tools with a Windows SDK for Native AOT.
+Prerequisites: .NET 10 SDK, Node.js 22.18 or newer, Inno Setup 6, and Visual Studio C++ build tools with a Windows SDK for Native AOT.
 
 ```powershell
 .\scripts\publish.ps1                 # dashboard + app EXE + Windows installer
@@ -65,6 +65,7 @@ TimeLens/
 ├── server/                      # server-only GitHub release integration
 ├── web/                         # public landing page and documentation
 ├── installer/                   # Inno Setup per-user Windows installer
+├── android/                     # independent native Android preview
 ├── src/
 │   ├── TimeLens.Core/           # models and interfaces
 │   ├── TimeLens.Api/            # local Kestrel API and updater
@@ -103,6 +104,7 @@ All non-secret values above already have these defaults in the server code. With
 The release workflow builds the dashboard, publishes the Native AOT app, verifies matching desktop/dashboard versions, and uploads:
 
 - `TimeLens.exe`
+- `TimeLens-Android-preview.apk` (debug-signed evaluation build)
 - `TimeLens-Setup.exe`
 - `TimeLens-Firefox-Extension.zip`
 - `SHA256SUMS.txt`
@@ -133,7 +135,7 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 ## Stack
 
-- .NET 9, Native AOT, Kestrel, Microsoft.Data.Sqlite
+- .NET 10, Native AOT, Kestrel, Microsoft.Data.Sqlite
 - Svelte 5, Vite, TypeScript, local fonts and icons
 - Raw Win32 tray integration and Windows activity/audio/session APIs
 - Vercel static hosting and serverless release proxy
@@ -142,4 +144,10 @@ The activity database is `%LOCALAPPDATA%\TimeLens\activity.db` and uses SQLite W
 
 <p align="center">Built With 💙 Made By <a href="https://venusapp.in/">Veil</a></p>
 
-TimeLens 8.2.0 unifies foreground browser attribution and tightens position-proven media timing. See [8.2.0 release notes](docs/releases/8.2.0.md).
+TimeLens 8.4.0 improves mobile navigation, dashboard validation and session reliability, and starts a separate native Android app. See [8.4.0 release notes](docs/releases/8.4.0.md).
+
+## Android
+
+The [Android preview](android/README.md) tracks the phone independently, with five native tabs and a tablet navigation rail. It stores activity locally and does not require Windows, an account or Internet access. The debug-signed APK is an evaluation build with partial feature parity. Read its limits before installing.
+
+The [Android roadmap](docs/android-roadmap.md) maps desktop features to Android and proposes optional encrypted local PC pairing, weekly reports, widgets, scheduled archival and focus routines. Pairing is planned; neither app exposes its activity over the network by default.

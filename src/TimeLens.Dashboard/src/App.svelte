@@ -35,9 +35,6 @@
   });
   let timelineGrouped = $state(true);
   let showTitles = $state(false);
-  const browseTimeSeconds = $derived(browserTime
-    .filter(entry => entry.domain !== '127.0.0.1' && entry.domain !== 'test.example.com')
-    .reduce((sum, entry) => sum + (entry.totalSeconds ?? entry.totalMinutes * 60), 0));
 
   let view = $state('today');
   let historyDate = $state('');
@@ -362,7 +359,7 @@
           <p class="page-purpose">Compare desktop app usage, keyboard activity, clicks, and uncategorized apps.</p>
         </div>
       </div>
-      <div class="content"><AppsView data={$data} browserSites={browserSites} {browserTime} /></div>
+      <div class="content"><AppsView data={$data} /></div>
     {:else if view === 'timeline' && $data}
       <div class="topbar">
         <div class="page-heading">
@@ -672,7 +669,7 @@
     .shell { flex-direction: column; }
     .main {
       padding: 0 12px;
-      padding-bottom: 76px;
+      padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
     }
     .today-header { align-items: flex-start; gap: var(--space-4); }
     .today-date { font-size: var(--text-xl); }

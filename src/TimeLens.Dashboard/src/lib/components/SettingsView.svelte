@@ -48,7 +48,6 @@
   let showTitles = $state(false);
   let breakReminder = $state(false);
   let breakInterval = $state(50);
-  let focusMode = $state(false);
   let timeFormat = $state('12h');
   let showSeconds = $state(false);
   let pollInterval = $state(30);
@@ -142,7 +141,6 @@
       showTitles = s.showTitles ?? false;
       breakReminder = s.breakReminder ?? false;
       breakInterval = s.breakIntervalMinutes ?? 50;
-      focusMode = s.focusMode ?? false;
       timeFormat = s.timeFormat ?? '12h';
       showSeconds = s.showSeconds ?? false;
       pollInterval = s.pollIntervalSeconds ?? 30;

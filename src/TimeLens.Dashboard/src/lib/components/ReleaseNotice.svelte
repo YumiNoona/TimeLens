@@ -6,6 +6,7 @@
   let notice: Notice | null = $state(null);
   let notes = $state<string[]>([]);
   let dismissing = $state(false);
+  let dismissError = $state('');
 
   function cleanNotes(value: string): string[] {
     return value.split(/\r?\n/)
@@ -32,11 +33,14 @@
   async function dismiss() {
     if (dismissing) return;
     dismissing = true;
+    dismissError = '';
     try {
       const response = await fetch('/api/release-notice/dismiss', { method: 'POST' });
       if (!response.ok) throw new Error();
       dialog?.close();
       notice = null;
+    } catch {
+      dismissError = 'Could not save your choice. Please try Continue again.';
     } finally { dismissing = false; }
   }
 
@@ -57,14 +61,15 @@
       <button class="close" type="button" aria-label="Dismiss release details" onclick={dismiss} disabled={dismissing}><i class="ti ti-x"></i></button>
     </div>
     <div class="release-body">
+      {#if dismissError}<p role="alert">{dismissError}</p>{/if}
       <h3>What’s new</h3>
       <ul>
         {#if notes.length}
           {#each notes as note}<li>{note}</li>{/each}
         {:else}
-          <li>Reliable multi-hour YouTube and background-media duration tracking.</li>
-          <li>Accurate, quieter browser-coverage diagnostics.</li>
-          <li>Refresh-safe navigation and a more compact contribution calendar.</li>
+          <li>Mobile navigation with larger tabs and quick access to every view.</li>
+          <li>Updated build dependencies and stricter dashboard checks.</li>
+          <li>Offline work remains optional in Settings → Tracking.</li>
         {/if}
       </ul>
     </div>

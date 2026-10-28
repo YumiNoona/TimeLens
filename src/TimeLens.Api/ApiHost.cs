@@ -307,6 +307,8 @@ public static class ApiHost
                 return;
             }
 
+            // An open dashboard must not lose its session after twelve hours of use.
+            apiSecurity.IssueDashboardCookie(ctx);
             await next();
         });
 

@@ -425,7 +425,6 @@
   .builtin-toggle i.rotated { transform: rotate(90deg); }
   .builtin-toggle-hint { font-size: 10px; color: var(--md-on-surf-dim); font-weight: 400; }
   .builtin-body { max-height: 500px; overflow-y: auto; }
-  .builtin-grid { }
   .builtin-section { border-bottom: 1px solid var(--md-outline); }
   .builtin-section:last-child { border-bottom: none; }
   .builtin-title {

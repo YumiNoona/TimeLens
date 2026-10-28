@@ -25,7 +25,6 @@
       `${b.exeName} ${b.windowTitle ?? ''} ${b.project ?? ''}`.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const maxDuration = $derived(Math.max(...(groupedMode ? tree : filtered).map(b => b.durationSeconds), 1));
 
   type TreeNode = {
     id: string;
@@ -118,6 +117,8 @@
     }
     return result;
   });
+
+  const maxDuration = $derived(Math.max(...(groupedMode ? tree : filtered).map(b => b.durationSeconds), 1));
 
   function fmtHour(n: number): string { return fmtHourFull(n, $timeFormat); }
 

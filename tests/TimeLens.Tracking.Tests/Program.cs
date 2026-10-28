@@ -543,6 +543,15 @@ try
         }
         Check((await anonymous.GetAsync("/api/settings")).StatusCode == System.Net.HttpStatusCode.Unauthorized,
             "Unauthenticated localhost callers must not read settings");
+        using (var renewedSession = await dashboard.GetAsync("/api/settings"))
+        {
+            renewedSession.EnsureSuccessStatusCode();
+            Check(renewedSession.Headers.TryGetValues("Set-Cookie", out var cookies) &&
+                  cookies.Any(cookie => cookie.StartsWith("TimeLens-Session=", StringComparison.Ordinal) &&
+                                       cookie.Contains("max-age=43200", StringComparison.OrdinalIgnoreCase) &&
+                                       cookie.Contains("httponly", StringComparison.OrdinalIgnoreCase)),
+                "Authenticated API requests must renew the protected dashboard session");
+        }
         using (var protectedSetting = new StringContent("{\"block_password_hash\":\"attacker\"}", System.Text.Encoding.UTF8, "application/json"))
             Check((await dashboard.PostAsync("/api/settings", protectedSetting)).StatusCode == System.Net.HttpStatusCode.BadRequest,
                 "Protected settings must not be writable through the public settings route");

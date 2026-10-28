@@ -171,9 +171,16 @@ class UsageRepository(private val context: Context, val preferences: Preferences
     fun archive(force: Boolean = false) =
         synchronized(ActivityStore.lock) {
             val now = System.currentTimeMillis()
+            val zone = ZoneId.systemDefault()
+            store.prune(
+                LocalDate.now()
+                    .minusDays(preferences.retention.toLong() - 1)
+                    .atStartOfDay(zone)
+                    .toInstant()
+                    .toEpochMilli()
+            )
             if (!hasAccess() || (!force && now - preferences.lastArchive < 15_000))
                 return@synchronized
-            val zone = ZoneId.systemDefault()
             val earliest =
                 LocalDate.now()
                     .minusDays(minOf(6, preferences.retention - 1).toLong())
@@ -192,13 +199,6 @@ class UsageRepository(private val context: Context, val preferences: Preferences
                         .toEpochMilli()
             if (!importRange(maxOf(earliest, rewind, preferences.since), now)) return@synchronized
             preferences.lastArchive = now
-            store.prune(
-                LocalDate.now()
-                    .minusDays(preferences.retention.toLong() - 1)
-                    .atStartOfDay(zone)
-                    .toInstant()
-                    .toEpochMilli()
-            )
         }
 
     fun forceArchive() {

@@ -21,14 +21,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import `in`.venusapp.timelens.data.*
 import `in`.venusapp.timelens.domain.PinSecurity
-import `in`.venusapp.timelens.domain.ThemeMode
 import `in`.venusapp.timelens.platform.*
 import kotlinx.coroutines.*
 
 @Composable
 internal fun SettingsScreen(
     model: AppModel,
-    onTheme: (String) -> Unit = model::setTheme,
     onAccess: () -> Unit,
     onExport: (Boolean, Int) -> Unit,
     onImport: () -> Unit,
@@ -36,7 +34,6 @@ internal fun SettingsScreen(
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val prefs = model.preferences
-    val theme = remember(state.revision) { prefs.theme }
     val context = LocalContext.current
     var budget by rememberSaveable { mutableStateOf(prefs.budget.toString()) }
     var delete by remember { mutableStateOf(false) }
@@ -71,28 +68,6 @@ internal fun SettingsScreen(
             }
         }
         SettingsGroup("Appearance") {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ThemeMode.options.forEach { value ->
-                    FilterChip(
-                        theme == value,
-                        onClick = { onTheme(value) },
-                        label = {
-                            Text(
-                                if (value == "system") "Follow system"
-                                else value.replaceFirstChar(Char::uppercase)
-                            )
-                        },
-                    )
-                }
-            }
-            Text(
-                "Follow system matches Android’s appearance. The top-right sun/moon switches to a saved light or dark override.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             SettingSwitch(
                 "Grayscale icons",
                 "On: gray app icons. Off: original app colors.",
@@ -124,6 +99,7 @@ internal fun SettingsScreen(
                 },
             )
         }
+        SettingsGroup("Dashboard") { DashboardSettings(model) }
         SettingsGroup("Protection & removal") {
             ProtectionPanel(model, ::guard)
         }
@@ -309,10 +285,6 @@ internal fun SettingsScreen(
             Spacer(Modifier.width(10.dp))
             Text("Restore Android JSON export")
         }
-        InfoCard(
-            "Independent. Private. Local.",
-            "No account, analytics or Internet permission. Activity stays on your device. Optional website tracking reads supported browser address bars only. PC pairing is not connected.",
-        )
         OutlinedButton(onClick = { guard { delete = true } }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all saved phone activity", color = MaterialTheme.colorScheme.error)
         }
@@ -445,6 +417,7 @@ internal fun SettingsGroup(titleText: String, content: @Composable ColumnScope.(
             Icon(
                 when (titleText) {
                     "Appearance" -> Icons.Outlined.Palette
+                    "Dashboard" -> Icons.Outlined.Dashboard
                     "Permissions & device health" -> Icons.Outlined.VerifiedUser
                     "Tracking & storage" -> Icons.Outlined.Storage
                     "Daily goals & categories" -> Icons.Outlined.Category

@@ -1,7 +1,6 @@
 package `in`.venusapp.timelens.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +30,6 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
         state.history.sumOf {
             (minOf(it.end, todayStart) - maxOf(it.start, yesterdayStart)).coerceAtLeast(0)
         }
-    var customize by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -46,9 +44,6 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            IconButton(onClick = { customize = true }) {
-                Icon(Icons.Outlined.DashboardCustomize, "Customize dashboard")
             }
         }
         SummaryCard(day, prefs.budget)
@@ -109,42 +104,4 @@ internal fun TodayScreen(state: UiState, model: AppModel, onApps: () -> Unit, on
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    if (customize)
-        AlertDialog(
-            onDismissRequest = { customize = false },
-            title = { Text("Your dashboard") },
-            text = {
-                Column {
-                    listOf("hourly", "apps").forEach { key ->
-                        val enabled = key in prefs.cards
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                enabled,
-                                onCheckedChange = { selected ->
-                                    model.edit {
-                                        it.preferences.cards =
-                                            if (selected) prefs.cards + key else prefs.cards - key
-                                    }
-                                },
-                            )
-                            Text(key.replaceFirstChar(Char::uppercase), Modifier.weight(1f))
-                            if (enabled)
-                                IconButton(
-                                    onClick = {
-                                        val order = prefs.cards.toMutableList()
-                                        val index = order.indexOf(key)
-                                        if (index > 0) {
-                                            java.util.Collections.swap(order, index, index - 1)
-                                            model.edit { it.preferences.cards = order }
-                                        }
-                                    }
-                                ) {
-                                    Icon(Icons.Outlined.ArrowUpward, "Move $key up")
-                                }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { customize = false }) { Text("Done") } },
-        )
 }

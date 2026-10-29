@@ -427,7 +427,6 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                             4 ->
                                                 SettingsScreen(
                                                     model,
-                                                    onTheme = changeTheme,
                                                     onAccess = {
                                                         openSetting(
                                                             Settings.ACTION_USAGE_ACCESS_SETTINGS

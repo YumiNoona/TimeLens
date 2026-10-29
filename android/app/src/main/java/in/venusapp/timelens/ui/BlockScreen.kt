@@ -60,7 +60,7 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                 )
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp)) {
-                        SettingSwitch(
+                        ActionToggleRow(
                             "Blocking",
                             if (AppBlockService.connected) "Accessibility service connected"
                             else "Enable the Android service to enforce rules",
@@ -84,27 +84,14 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                         )
                     }
                 }
-                PrimaryTabRow(selectedTabIndex = section) {
-                    listOf(
-                            Triple(Icons.Outlined.Apps, "App rules", 0),
-                            Triple(Icons.Outlined.Language, "Website rules", 1),
-                            Triple(Icons.Outlined.History, "Block activity", 2),
-                        )
-                        .forEach { (icon, label, index) ->
-                            Tab(
-                                section == index,
-                                onClick = { section = index },
-                                icon = { Icon(icon, label) },
-                            )
-                        }
-                }
+                BlockSectionSelector(section) { section = it }
             }
         }
         if (section < 2) {
             if (section == 1)
                 item(key = "website-controls") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        SettingSwitch(
+                        ActionToggleRow(
                             "Website tracking",
                             "Optional · read visible browser address bars and save domains on this phone",
                             prefs.websiteTracking,
@@ -192,8 +179,8 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
-                                Switch(
-                                    rule.enabled,
+                                IconToggleButton(
+                                    checked = rule.enabled,
                                     onCheckedChange = { enabled ->
                                         guard {
                                             model.edit {
@@ -203,7 +190,14 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                                             }
                                         }
                                     },
-                                )
+                                ) {
+                                    Icon(
+                                        if (rule.enabled) Icons.Outlined.CheckCircle
+                                        else Icons.Outlined.RadioButtonUnchecked,
+                                        if (rule.enabled) "Disable rule for $label"
+                                        else "Enable rule for $label",
+                                    )
+                                }
                             }
                             if (rule.mode == "comfort") {
                                 val used = state.allowances[rule.app]

@@ -3,8 +3,8 @@ package `in`.venusapp.timelens.ui
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import `in`.venusapp.timelens.MainActivity
 import `in`.venusapp.timelens.BuildConfig
+import `in`.venusapp.timelens.MainActivity
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -16,15 +16,21 @@ class NavigationRegressionTest {
     @Test
     fun yearReportLoadsAndBuildLabelsAreNotShown() {
         compose.onNodeWithContentDescription("History", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("1 year").performClick()
+        compose.onNodeWithTag("history-range-365").performClick()
         val model = androidx.lifecycle.ViewModelProvider(compose.activity)[AppModel::class.java]
-        compose.waitUntil(15_000) { model.state.value.report?.days == 365 && !model.state.value.loading }
-        compose.onNodeWithText("1 year").assertIsSelected()
+        compose.waitUntil(15_000) {
+            model.state.value.report?.days == 365 && !model.state.value.loading
+        }
+        compose.onNodeWithTag("history-range-365").assertIsSelected()
         assertEquals(365, model.state.value.report?.daily?.size)
         compose.onAllNodes(hasText("ON THIS PHONE", substring = true)).assertCountEquals(0)
         compose.onNodeWithContentDescription("Settings", useUnmergedTree = true).performClick()
-        compose.onAllNodes(hasText("ANDROID ${BuildConfig.VERSION_NAME}", substring = true)).assertCountEquals(0)
-        compose.onAllNodes(hasText("Android ${BuildConfig.VERSION_NAME}", substring = true)).assertCountEquals(0)
+        compose
+            .onAllNodes(hasText("ANDROID ${BuildConfig.VERSION_NAME}", substring = true))
+            .assertCountEquals(0)
+        compose
+            .onAllNodes(hasText("Android ${BuildConfig.VERSION_NAME}", substring = true))
+            .assertCountEquals(0)
     }
 
     private fun scroll(page: Int) =
@@ -49,32 +55,39 @@ class NavigationRegressionTest {
             kotlin.math.abs(before - scroll(4)) < 20f,
         )
         compose.onNodeWithContentDescription("Refresh activity").assertDoesNotExist()
-        compose.onNode(hasContentDescription("Switch to light mode") or hasContentDescription("Switch to dark mode")).performClick()
+        compose
+            .onNode(
+                hasContentDescription("Switch to light mode") or
+                    hasContentDescription("Switch to dark mode")
+            )
+            .performClick()
         compose.waitForIdle()
         assertTrue(kotlin.math.abs(before - scroll(4)) < 20f)
     }
 
     @Test
-    fun explicitThemesAndTopBarTogglePersistWithoutChangingDestination() {
+    fun topBarThemeTogglePersistsWithoutDuplicateAppearanceControls() {
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("Appearance").performClick()
-        compose.onNodeWithText("Light").performScrollTo().performClick()
-        compose.waitUntil(10_000) {
-            compose.onAllNodesWithContentDescription("Switch to dark mode").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithContentDescription("Switch to dark mode").assertExists().performClick()
-        compose.waitUntil(10_000) {
-            compose.onAllNodesWithContentDescription("Switch to light mode").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithContentDescription("Switch to light mode").assertExists()
+        compose.onNodeWithText("Follow system").assertDoesNotExist()
+        compose.onNodeWithText("Light").assertDoesNotExist()
+        compose.onNodeWithText("Dark").assertDoesNotExist()
+        val model = androidx.lifecycle.ViewModelProvider(compose.activity)[AppModel::class.java]
+        val toLight =
+            compose
+                .onAllNodesWithContentDescription("Switch to light mode")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        compose
+            .onNodeWithContentDescription(
+                if (toLight) "Switch to light mode" else "Switch to dark mode"
+            )
+            .performClick()
+        compose.waitUntil(10_000) { model.preferences.theme == if (toLight) "light" else "dark" }
         compose.onNodeWithTag("page-4").assertExists()
-        compose.onNodeWithText("Dark").assertIsSelected()
-        compose.onNodeWithText("Follow system").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithText("Follow system").assertIsSelected()
         compose.onNodeWithContentDescription("Apps", useUnmergedTree = true).performClick()
         compose.onNodeWithTag("page-1").assertExists()
-        compose.onNodeWithContentDescription("Apps").assertIsSelected()
+        assertEquals(if (toLight) "light" else "dark", model.preferences.theme)
     }
 
     @Test

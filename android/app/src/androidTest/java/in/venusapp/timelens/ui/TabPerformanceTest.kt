@@ -69,7 +69,7 @@ class TabPerformanceTest {
             compose.runOnUiThread { model.refresh(force = true) }
             compose.waitUntil(30_000) { !model.state.value.loading }
             compose.onNodeWithContentDescription("History", useUnmergedTree = true).performClick()
-            compose.onNodeWithText("1 year").performClick()
+            compose.onNodeWithTag("history-range-365").performClick()
             compose.waitUntil(30_000) {
                 model.state.value.report?.days == 365 && !model.state.value.loading
             }

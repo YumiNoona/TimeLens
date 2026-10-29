@@ -199,6 +199,11 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
     }
 
+    fun setDashboardCards(cards: List<String>) {
+        preferences.cards = cards.filter { it in setOf("hourly", "apps") }.distinct()
+        mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
+    }
+
     fun setHistoryVisible(visible: Boolean) {
         if (historyVisible == visible) return
         historyVisible = visible

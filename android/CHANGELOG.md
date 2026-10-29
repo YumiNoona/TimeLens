@@ -1,5 +1,14 @@
 # 4.0.0 — Faster tabs, favorites, bulk rules and removal controls
 
+## UI refinements · build 80704
+
+- Removed duplicate theme selectors, the Independent/Private/Local card and Today's customize button. Dashboard modules now have their own Settings section.
+- Replaced Block's tab strip and switch tracks with labelled navigation cards, power actions and compact rule controls.
+- Fixed the year-range layout with equal-width, adaptive choices. App history defaults to collapsed per-app totals with expandable visits, search, sorting, category filters and Collapse all. Period totals are separately collapsible.
+- See [UI refinement notes](UI-REFINEMENTS-4.0.0.md) for the build identifier and verification.
+
+## Initial release
+
 - Virtualized History and Block, including calendar rows and expanded timeline groups. Cached reports load independently of daily activity, and fresh tab visits no longer force complete refreshes.
 - Restricted theme frame capture to explicit appearance changes. Prepared installed-app metadata off the UI thread and reused cached icons immediately.
 - Added app favorites and a favorites filter, plus bulk Comfort/Strict rules with favorites/distraction presets.

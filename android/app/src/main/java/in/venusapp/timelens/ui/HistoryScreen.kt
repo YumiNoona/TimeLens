@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,6 +38,7 @@ internal fun HistoryScreen(
     val maximum = remember(series) { maxOf(1L, series.maxOfOrNull { it.second } ?: 1) }
     val timelineOptions = rememberTimelineOptions()
     val timeline = rememberTimelineContent(state, timelineOptions)
+    var periodAppsExpanded by rememberSaveable { mutableStateOf(false) }
     var visibleApps by rememberSaveable { mutableIntStateOf(8) }
     val primary = MaterialTheme.colorScheme.primary
     val background = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -84,15 +85,7 @@ internal fun HistoryScreen(
                         "Last year · choose any saved day to inspect its visits below.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(7, 30, 90, 365).forEach { value ->
-                        FilterChip(
-                            range == value,
-                            onClick = { model.setHistoryRange(value) },
-                            label = { Text(if (value == 365) "1 year" else "$value days") },
-                        )
-                    }
-                }
+                HistoryRangeSelector(range, model::setHistoryRange)
                 Row(
                     Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -125,37 +118,63 @@ internal fun HistoryScreen(
         item(key = "category-chart") { CategoryChart(apps) }
         if (apps.isNotEmpty())
             item(key = "period-app-title") {
-                Text("Apps in this period", style = MaterialTheme.typography.titleMedium)
-            }
-        items(
-            apps.take(visibleApps),
-            key = { "period:${it.app}" },
-            contentType = { "period-app" },
-        ) { app ->
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Row(
-                    Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                OutlinedCard(
+                    onClick = { periodAppsExpanded = !periodAppsExpanded },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    AppIcon(app.app, app.label)
-                    Column(Modifier.weight(1f)) {
-                        Text(app.label, fontWeight = FontWeight.Medium)
-                        Text(
-                            "${app.sessions} visits · ${app.category}",
-                            style = MaterialTheme.typography.bodySmall,
+                    Row(
+                        Modifier.padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(Icons.Outlined.Apps, null)
+                        Column(Modifier.weight(1f)) {
+                            Text("Period app totals", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "$range days · " + apps.size + " apps",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Icon(
+                            if (periodAppsExpanded) Icons.Outlined.ExpandLess
+                            else Icons.Outlined.ExpandMore,
+                            if (periodAppsExpanded) "Collapse period app totals"
+                            else "Expand period app totals",
                         )
                     }
-                    Text(usage(app.milliseconds))
                 }
             }
+        if (periodAppsExpanded) {
+            items(
+                apps.take(visibleApps),
+                key = { "period:${it.app}" },
+                contentType = { "period-app" },
+            ) { app ->
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AppIcon(app.app, app.label)
+                        Column(Modifier.weight(1f)) {
+                            Text(app.label, fontWeight = FontWeight.Medium)
+                            Text(
+                                "${app.sessions} visits · ${app.category}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Text(usage(app.milliseconds))
+                    }
+                }
+            }
+            if (apps.size > visibleApps)
+                item(key = "more-period-apps") {
+                    TextButton(onClick = { visibleApps += 20 }) {
+                        Text("Show more apps in this period")
+                    }
+                }
         }
-        if (apps.size > visibleApps)
-            item(key = "more-period-apps") {
-                TextButton(onClick = { visibleApps += 20 }) {
-                    Text("Show more apps in this period")
-                }
-            }
         item(key = "calendar-title") {
             Text("Activity calendar", style = MaterialTheme.typography.titleMedium)
         }

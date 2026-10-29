@@ -141,17 +141,15 @@ class MobileControlsTest {
                     HistoryScreen(fixture, model, Modifier.fillMaxSize().testTag("history-fixture"))
                 }
             }
-            compose.onNodeWithText("Every switch, in context.").assertDoesNotExist()
+            compose.onNodeWithText("App history").assertDoesNotExist()
             assertTrue(
                 compose
                     .onAllNodes(hasContentDescription("$date:", substring = true))
                     .fetchSemanticsNodes()
                     .isEmpty()
             )
-            compose
-                .onNodeWithTag("history-fixture")
-                .performScrollToNode(hasText("Every switch, in context."))
-            compose.onNodeWithText("Every switch, in context.").assertIsDisplayed()
+            compose.onNodeWithTag("history-fixture").performScrollToNode(hasText("App history"))
+            compose.onNodeWithText("App history").assertIsDisplayed()
             assertTrue(
                 compose
                     .onAllNodes(hasText("History app", substring = true))

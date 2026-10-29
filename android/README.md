@@ -6,8 +6,10 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 See [4.0.0 changes](RELEASE-4.0.0.md) for measured navigation improvements, favorites, bulk rules and the new Protection & removal controls. Normal phones offer an optional extra removal step; Android-enforced uninstall blocking is available only to an independently provisioned, authorized device/profile owner.
 
+The [4.0.0 UI refinement](UI-REFINEMENTS-4.0.0.md) adds per-app history accordions, adaptive range controls, labelled Block sections and dashboard settings.
+
 - Filled icons mark the selected destination; outlined icons mark others, without a persistent selection bubble. A sun/moon action replaces the top-bar refresh button. Manual import remains under Settings → Tracking & storage.
-- System, Light and Dark appearance modes persist correctly, including across screen changes. The palette animates without recreating screens or resetting scroll; native blocking banners use the same system-theme policy.
+- The top-bar sun/moon controls appearance without repeating theme choices in Settings. The palette animates without recreating screens or resetting scroll; native blocking banners follow the saved appearance policy.
 - Browser adapters now include Brave (stable/beta/nightly), Vivaldi, DuckDuckGo and additional Chrome/Firefox/Edge variants. Only fixed address-bar IDs are inspected; adapters can fail on browser updates or hidden bars.
 - Every matching website rule is evaluated, so a generous child-domain Comfort rule cannot override an exhausted parent allowance. Screen-off suspends polling/rechecks; unlocking resumes enforcement. Temporary measurement errors cover an already matched protected app while retrying.
 - Android-only smoothness improvements are documented in [PERFORMANCE-REVIEW.md](PERFORMANCE-REVIEW.md).

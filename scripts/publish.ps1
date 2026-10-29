@@ -8,7 +8,8 @@ param(
     [string]$Config = "Release",
     [switch]$SkipDashboard,
     [switch]$SkipInstaller,
-    [switch]$Launch
+    [switch]$Launch,
+    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) '.artifacts/release')
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,12 +18,14 @@ $dashboardDir = "$root\src\TimeLens.Dashboard"
 $trayAppDir = "$root\src\TimeLens.TrayApp"
 $publishDir = "$trayAppDir\bin\$Config\net10.0\win-x64\publish"
 $exePath = "$publishDir\TimeLens.TrayApp.exe"
-$rootExePath = "$root\TimeLens.exe"
+$output = [IO.Path]::GetFullPath($OutputDirectory)
+New-Item -ItemType Directory -Path $output -Force | Out-Null
+$rootExePath = Join-Path $output 'TimeLens.exe'
 $installerScript = "$root\installer\TimeLens.iss"
 $installerOutput = "$root\installer\output\TimeLens-Setup.exe"
-$rootInstallerPath = "$root\TimeLens-Setup.exe"
-$chromeExtensionPath = "$root\TimeLens-Chrome-Extension.zip"
-$firefoxExtensionPath = "$root\TimeLens-Firefox-Extension.zip"
+$rootInstallerPath = Join-Path $output 'TimeLens-Setup.exe'
+$chromeExtensionPath = Join-Path $output 'TimeLens-Chrome-Extension.zip'
+$firefoxExtensionPath = Join-Path $output 'TimeLens-Firefox-Extension.zip'
 
 $header = { Write-Host "`n$($args[0])" -ForegroundColor Cyan }
 $ok = { Write-Host "  [ok] $($args[0])" -ForegroundColor Green }
@@ -127,13 +130,13 @@ if (-not $SkipInstaller) {
     & $ok "Inno Setup $innoCompiler"
 }
 
-# --- Deploy to root (double-click ready) ---
-& $header "=== Deploying to root ==="
-Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" "$root\TimeLens.exe"
-& $ok "Standalone root TimeLens.exe ready"
+# --- Collect release outputs away from the source root ---
+& $header "=== Collecting release files ==="
+Copy-Item -Force "$publishDir\TimeLens.TrayApp.exe" $rootExePath
+& $ok "Standalone TimeLens.exe ready"
 
 Remove-Item -LiteralPath $chromeExtensionPath, $firefoxExtensionPath -Force -ErrorAction SilentlyContinue
-& "$root\scripts\package-extensions.ps1" -OutputDirectory $root
+& "$root\scripts\package-extensions.ps1" -OutputDirectory $output
 if ($LASTEXITCODE -ne 0) { throw "Browser extension packaging failed" }
 & $ok "Chrome and Firefox extension packages ready"
 
@@ -142,7 +145,7 @@ if (-not $SkipInstaller) {
     & $header "=== Building Windows installer ==="
     [xml]$trayProject = Get-Content "$trayAppDir\TimeLens.TrayApp.csproj"
     $appVersion = [string]$trayProject.Project.PropertyGroup.Version
-    & $innoCompiler "/DAppVersion=$appVersion" $installerScript
+    & $innoCompiler "/DAppVersion=$appVersion" "/DAppSource=$rootExePath" $installerScript
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with code $LASTEXITCODE" }
     Copy-Item -Force $installerOutput $rootInstallerPath
     & $ok "TimeLens-Setup.exe ready"
@@ -150,12 +153,12 @@ if (-not $SkipInstaller) {
     Write-Host "  Skipping installer build (--SkipInstaller)" -ForegroundColor DarkGray
 }
 
-$releaseAssets = @($rootExePath, $chromeExtensionPath, $firefoxExtensionPath)
+$releaseAssets = @($rootExePath) + @(Get-ChildItem -LiteralPath $output -Filter 'TimeLens-*-Extension.zip' | Select-Object -ExpandProperty FullName)
 if (-not $SkipInstaller) { $releaseAssets += $rootInstallerPath }
 $checksums = foreach ($asset in $releaseAssets) {
     "{0}  {1}" -f (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash.ToLowerInvariant(), (Split-Path -Leaf $asset)
 }
-$checksums | Set-Content -Encoding ascii "$root\SHA256SUMS.txt"
+$checksums | Set-Content -Encoding ascii (Join-Path $output 'SHA256SUMS.txt')
 
 # --- Summary ---
 & $header "=== Build summary ==="

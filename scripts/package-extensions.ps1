@@ -1,5 +1,5 @@
 param(
-    [string]$OutputDirectory = (Split-Path -Parent $PSScriptRoot)
+    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) '.artifacts/packages')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,10 +12,11 @@ $stagingRoot = Join-Path ([IO.Path]::GetTempPath()) "TimeLens-extensions-$([Guid
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 try {
-    foreach ($browser in @('chrome', 'firefox')) {
+    foreach ($browser in @('chrome', 'firefox', 'edge', 'brave')) {
         $stage = Join-Path $stagingRoot $browser
         New-Item -ItemType Directory -Path $stage -Force | Out-Null
-        Copy-Item -Path (Join-Path $sourceRoot "$browser\*") -Destination $stage -Recurse -Force
+        $family = if ($browser -eq 'firefox') { 'firefox' } else { 'chrome' }
+        Copy-Item -Path (Join-Path $sourceRoot "$family\*") -Destination $stage -Recurse -Force
         Copy-Item -LiteralPath (Join-Path $sharedRoot 'background.js') -Destination (Join-Path $stage 'background.js') -Force
         Copy-Item -LiteralPath (Join-Path $sharedRoot 'content.js') -Destination (Join-Path $stage 'content.js') -Force
 
@@ -27,6 +28,9 @@ try {
 }
 finally {
     if (Test-Path -LiteralPath $stagingRoot) {
+        $resolvedStage = [IO.Path]::GetFullPath($stagingRoot)
+        $tempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+        if (-not $resolvedStage.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging path' }
         Remove-Item -LiteralPath $stagingRoot -Recurse -Force
     }
 }

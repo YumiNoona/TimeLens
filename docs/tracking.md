@@ -1,205 +1,23 @@
-# Tracking behavior and regression checks
+# Tracking and data accounting
 
-TimeLens counts observed foreground app use. The active total includes browsers;
-website breakdowns describe that browser time and are not added a second time.
-Apps merely left running in the background are not counted as active work.
+## Windows
 
-Foreground accounting is exclusive: a later window observation supersedes an
-older open row, idle/away spans supersede all apps, and every dashboard/export
-aggregate is built from that same normalized ledger. Consequently app and
-category totals cannot multiply elapsed wall-clock time even if legacy rows overlap.
+One foreground executable owns each interval. Idle, lock, sleep and unknown observation gaps are separate from active use. Short switches retain seconds, and delayed aggregate input flushes keep their capture timestamps. Database startup closes unfinished records at their last durable checkpoint rather than assuming activity until the next launch.
 
-Media playback is a separate concurrent overlay. Spotify or another native audio
-app can keep playing while an editor is foreground; both facts are retained, but
-playback is never added to active-work time. The browser extension reports HTML
-audio/video play, pause, visibility and Picture-in-Picture transitions, plus a
-15-second lease checkpoint while playback continues. Checkpoints include playback
-position and rate: if a browser suspends background JavaScript for up to 30 minutes,
-TimeLens can recover only the duration proven by natural media progress. Implausible
-position jumps are treated as seeks rather than watched time. The browser audible flag is
-used only as a lower-confidence fallback for players that hide their media element.
-No frames, audio samples, captions or page text are captured.
+Browser observations are accepted only for the matching foreground browser family. A finite observation lease and durable checkpoints prevent indefinite attribution after a missing extension. Repeated identical observations refresh that lease without a SQLite write on every notification. Background media is a separate concurrent ledger and is never added to exclusive foreground time.
 
-## Reliability
+Website detail is clipped to browser foreground intervals and excludes idle spans. URL detail, title storage, exclusions, collection pauses and retention follow privacy settings. Input is aggregate counts, not text or key values. Retried input batches use stable IDs to avoid double counting.
 
-- Foreground hooks provide immediate updates, with a one-second poll as a fallback.
-- Repeated observations extend one event in memory. Identical app, idle and browser
-  intervals checkpoint at most every ten seconds, with immediate writes at switches,
-  leave events and normal shutdown. An unexpected crash can lose up to ten seconds
-  of the last interval, rather than inventing unobserved time or rewriting SQLite
-  every second.
-- A gap longer than 30 seconds starts a new event rather than crediting unobserved
-  sleep, downtime or a stalled tracker. A backwards wall-clock jump also splits it.
-- Normal shutdown closes the current app/idle segments and drains queued writes.
-- Legacy timestamp comparisons use SQLite date arithmetic, not text ordering.
-  Missing historical observations cannot be reconstructed reliably.
+## Browser companions
 
-## Idle and away
+Focused normal tabs produce current observations; disconnected old snapshots are not replayed as current tabs. Domain/path/full URL privacy is applied before sending data to the local API. Private tabs are excluded. Durable aggregate input queues are bounded and validated. Supported media-element timing and audible fallback are labeled separately, with close events ending known playback.
 
-The saved idle timeout takes effect on the next poll (180 seconds by default).
-Short pauses for reading or thinking stay active until that threshold. Input
-resumes activity even if the foreground window never changes. Idle begins when
-the threshold is detected; the grace period is retained as active time.
+## Android
 
-Lock, session disconnect and suspend are away states. Waking does not clear a
-known lock. Unlock emits a transition, allowing the idle span to close properly.
+Usage access reads foreground app events into a local archive. Day boundaries use local dates rather than assuming every day has exactly 24 hours. History groups app totals and lazily expands visits. Comfort rules measure a rolling 24-hour allowance; Strict ignores allowance. Optional website tracking reads known exposed browser address bars and counts website time within browser app time.
 
-Audio from the foreground app, or a fresh browser audio signal while a browser
-is foreground, may sustain activity without input for up to two hours. Background
-music does not keep a silent desktop editor active. The extension reports audio from the selected tab of its focused window. Time since
-last input remains visible even when playback sustains activity.
+Android has its own data and permission model. It does not collect global input counts, duplicate Windows background-media reports or sync with Windows. Hidden browser bars, unsupported versions, expired operating-system history and OEM restrictions leave genuine gaps.
 
-Rendering with no input eventually becomes idle. Background rendering is not
-proof of a person's attendance. Adjust the idle timeout in Settings if longer
-reading or review pauses are normal for your work.
+## Verification
 
-## Calendar days
-
-Summary, top apps, categories, heatmap, timeline and activity exports intersect
-sessions with local-day boundaries converted to UTC. A session from 23:00 to
-02:00 contributes one hour to the first day and two to the next. A day is not
-assumed to be 24 hours, so daylight-saving boundaries use local calendar dates.
-Short foreground segments remain visible instead of discarding all under five
-seconds. Historical records are read with corrected boundaries, not rewritten
-merely to change the date allocation.
-
-## Offline time and privacy
-
-Today offers review of completed idle/away spans lasting at least a minute. Confirm
-meetings, calls, brainstorming or other offline work, or label the span as a break
-or personal time. Reconciliation is durable and idempotent. History and Today also
-accept manual past intervals within retention, up to 24 hours, rejecting overlaps
-with recorded foreground or offline work. Offline work is shown separately from
-automatic active time and media; CSV/JSON export labels it `offline`.
-
-Settings supports exact executable exclusions, title/project hiding by app,
-hostname exclusions including subdomains, regex title redaction, and timed pauses.
-Filters run before SQLite/extension queue persistence. Title regexes have a bounded
-timeout and fail closed; browser queue titles are conservatively blank whenever a
-redaction pattern is configured. Website exclusions also hide native browser
-window titles, while anonymous browser-app time can still be counted. Browser
-family exclusions are conservative because extension messages identify the family,
-not whether it is Firefox, Zen, Floorp, Chrome, Brave, etc.
-
-Pause and privacy edits invalidate older queued input. Delete-all includes offline
-entries and rejects delayed pre-deletion input. Browser companions older than 8.3
-are marked outdated and collection is disabled when privacy filters are configured,
-because legacy companions cannot safely filter their own persistent queues.
-New rules do not erase previously
-recorded history; use Delete all activity if that is needed. Focus enforcement stays
-enabled during a recording pause, but privacy-excluded block attempts are not stored.
-
-Firefox uses an event page; both browser families use navigation/focus events plus
-a 30-second recovery alarm, without background keep-alive intervals. Content scripts
-stay dormant while disabled, and media discovery uses captured playback events
-instead of observing every DOM mutation.
-
-## Verification commands
-
-```powershell
-dotnet run --project tests/TimeLens.Tracking.Tests -c Release --self-contained true -r win-x64
-dotnet run --project tests/TimeLens.Startup.Tests -c Release --self-contained true
-```
-
-Tracking checks exercise the production writer and analytics with a controlled
-clock and temporary databases: multi-hour persistence, restart, observation gaps,
-midnight allocation, legacy timestamp formats, and idle/media/lock transitions.
-Both the publish script and release workflow run tracking regressions.
-
-## Sources consulted
-
-- [ActivityWatch heartbeats](https://docs.activitywatch.net/en/latest/buckets-and-events.html#heartbeats): persist observations and merge adjacent identical state within a bounded pulse interval.
-- [ActivityWatch idle detection](https://docs.activitywatch.net/en/latest/faq.html): separate foreground and input-idle observations, with playback as an exception.
-- [Windows GetLastInputInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo): session-specific input timestamps and tick-count caveats.
-
-## Runtime resilience in 7.0.0
-
-Foreground, input timer, session and tray callbacks contain recoverable subscriber
-exceptions so a database or dashboard-launch failure does not escape a native
-callback and stop the tracker. `%LOCALAPPDATA%\TimeLens\runtime.log` records
-startup version/path, shutdown requests, callback errors and unhandled failures.
-The log rotates at 1 MiB. Forced process termination and power loss may not leave
-an exit record; durable activity checkpoints remain the recovery boundary.
-
-## Browser intervals
-
-A single visible browser tab is checkpointed alongside desktop foreground state. Switching
-away or entering idle ends that interval. Five-second extension samples are backed
-by a 30-second browser alarm; after 65 seconds without an extension
-observation the cached tab is discarded. Desktop sampling gaps over 30 seconds are
-never bridged. A crashed extension can therefore leave up to 65 seconds of uncertain
-website attribution while its browser remains foreground. Normal desktop crash loss
-is bounded by the last successful checkpoint, usually about one second; scheduling
-or disk failures can increase that bound. Windows event callbacks remain best effort.
-
-Website time is a breakdown of browser app time, not an additional active total.
-The selected tab must be a normal HTTP(S) page in a focused, non-private window.
-Undated legacy orphan browser rows have no reliable last observation and close at
-their start rather than being extended through downtime. Historical missing data
-cannot be reconstructed. Existing overlapping legacy website rows are not rewritten.
-
-Only the selected tab contributes foreground website time. Other tabs may still
-contribute concurrent media playback while audible, including PiP and background
-playback. The Browser page displays extension connectivity, minimum compatible
-version and foreground-attribution coverage inside the extension's observed window,
-so time before pairing/reconnecting is not mislabeled as a permission failure. Internal,
-private and browser-restricted pages remain intentionally unattributable. Pair tokens survive transient desktop
-restarts and isolated release tests; only explicit revocation removes them.
-
-The default three-minute idle grace is retained as active time, without retroactively
-removing reading time. This differs from ActivityWatch's retrospective AFK boundary.
-Clock corrections split observations rather than guessing what occurred during a jump.
-Multiple profiles of the same browser family cannot be identified by executable alone;
-the extension's focused-window signal supplies that distinction during normal operation.
-
-Additional reference implementations consulted (design inspiration; no source copied):
-- [ActivityWatch window heartbeat loop](https://github.com/ActivityWatch/aw-watcher-window/blob/master/aw_watcher_window/main.py)
-- [ActivityWatch AFK watcher](https://github.com/ActivityWatch/aw-watcher-afk/blob/master/aw_watcher_afk/afk.py)
-- [ActivityWatch web watcher](https://github.com/ActivityWatch/aw-watcher-web)
-- [Firefox WebExtensions background scripts](https://developer.mozilla.org/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background)
-
-## Manual release acceptance
-
-On a Windows desktop, compare a stopwatch with app switches, two same-app windows,
-reading past the idle threshold, selected video playback, locking/unlocking and sleep.
-Load the Firefox ZIP temporarily or Chrome ZIP unpacked, pair it from the Privacy center, switch tabs/windows,
-navigate a single-page application, open an internal page and restart Firefox. Confirm site time stops when
-switching to an editor and resumes on browser focus. Repeat across local midnight.
-Test packaged Windows apps and any elevated apps used in your workflow; Windows access
-restrictions may leave a process unidentified. Store review and clean-VM installer
-acceptance remain separate from automated regression tests.
-
-## Website input and detailed reports
-
-The extension counts trusted keydown and pointerdown events only while its document
-is focused and visible. It never reads typed characters, event key/code values or
-form contents. Each batch has a unique ID; retrying it does not duplicate counts.
-Retries are memory-only and expire after two minutes. A closing page can lose its
-last undelivered batch. Browser-restricted pages and private windows are excluded.
-Browser and input settings control storage. Frame input is attributed to the top-level
-website. Browser counts are reported separately from native app input, not added twice.
-
-Historical website input is unknown and displayed as —. A known zero requires an
-actual observation; partial coverage remains partial. Session counts describe persisted
-focused visits rather than page loads. Heartbeats and title refreshes no longer create
-extra sessions; older session counts may still reflect legacy heartbeat segmentation.
-
-Website totals intersect browser rows with matching active desktop intervals and
-subtract the union of idle spans. The next observed tab selection clips overlapping
-legacy rows without rewriting stored history. Daily and hourly website reports use
-this same calculation. History offers page/executable details, sorting, search and CSV.
-
-Additional design references (no source copied):
-- [ActivityWatch watcher separation](https://docs.activitywatch.net/en/latest/watchers.html)
-- [ActivityWatch aggregate input watcher](https://github.com/ActivityWatch/aw-watcher-input)
-- [ulogme local window and input-frequency tracking](https://github.com/karpathy/ulogme)
-
-## Precision refinements in 7.0.1
-
-Native input is bucketed by executable, PID and UTC capture second. A delayed five-second flush retains that timestamp, including across local midnight and retries. Heatmap values retain fractional minutes instead of dropping sub-minute activity. Timeline bar lengths use recorded duration, while grouped first/last timestamps describe an observation envelope, not continuous attendance. Browser extensions remain at 7.0.0.
-
-Desktop and companion 7.2.0 use identical Chrome and Firefox tracking logic and independently paired profile tokens; revocation removes all paired profiles. Pairing is a local trust check: a short-lived code lets the chosen extension profile write browser observations to the loopback API without exposing the desktop administration API. The Browser page can inspect each day by overview, individual visit, or aggregated page, while preserving the selected URL and title privacy settings.
-
-## Usability refinements in 7.2.0
-
-Export opens with the inclusive last 30 local calendar days selected. Other choices cover today, a specific month, a whole year, or an inclusive custom date range of up to ten years; CSV and JSON use the same clipped event durations. Focus targets can use presets or a custom duration in minutes, hours, or days, capped at one year. Input reports keep numeric columns inside the available card width and use aggregate counts only. Retention accepts every period shown by Settings, from 30 through 730 days.
+Repository tests cover browser events, privacy, recovery, package versions and release selection. .NET regression programs exercise startup/migrations, long sessions, observation gaps, input attribution, media and local deletion. Android has JVM and dedicated-emulator UI/permission tests. scripts/test-startup.ps1 and scripts/test-resource-budget.ps1 run the actual Windows release with isolated data. Emulator and local measurements do not claim every device/browser version has been validated.

@@ -13,7 +13,7 @@ const release = (tag, extra = {}) => ({
 
 test('reset release line is eligible without admitting obsolete builds', () => {
   assert.equal(selectLatestRelease([release('v1.0.0'), release('v2.0.0')]).tag_name, 'v2.0.0');
-  assert.equal(selectLatestRelease([release('v1.0.0')]), undefined);
+  assert.equal(selectLatestRelease([release('v1.0.0')]).tag_name, 'v1.0.0');
 });
 
 test('website and app feed choose the greatest complete stable release', () => {

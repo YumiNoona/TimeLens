@@ -45,6 +45,16 @@ public sealed class BrowserTrackingService(string dbPath, TimeProvider? clock = 
                 Title = LiveStatusStore.Settings.BrowserStoreTitles ? PrivacyPolicy.BrowserTitle(evt.Title ?? "", evt.Browser) : ""
             };
             if (PrivacyPolicy.IgnoreDomain(uri.Host)) { Leave(evt.Browser, 0); return; }
+            // Repeated focus/title notifications refresh the observation lease without
+            // opening SQLite for every browser event. Tick keeps the durable checkpoint.
+            if (_current is not null && _current.TabId == evt.TabId && _current.Browser == evt.Browser &&
+                _current.Url == evt.Url && _current.Title == evt.Title &&
+                now >= _lastTick && now - _lastTick <= TimeSpan.FromSeconds(30) &&
+                now >= _lastCheckpoint && now - _lastCheckpoint < TimeSpan.FromSeconds(10) && now - _lastSeen <= Lease)
+            {
+                _lastSeen = _lastTick = now;
+                return;
+            }
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             if (_current is not null && now >= _lastCheckpoint && now - _lastCheckpoint <= TimeSpan.FromSeconds(30) && now - _lastSeen <= Lease)

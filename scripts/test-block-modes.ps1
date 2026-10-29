@@ -1,5 +1,5 @@
 param(
-    [string]$ExePath = "$PSScriptRoot\..\TimeLens.exe",
+    [string]$ExePath = "$PSScriptRoot\..\.artifacts\release\TimeLens.exe",
     [int]$TimeoutSeconds = 45
 )
 
@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'The block probe failed to build.' }
 
 $exe = (Resolve-Path -LiteralPath $ExePath).Path
 $probePath = (Resolve-Path "$root\tests\TimeLens.BlockProbe\bin\Release\net10.0-windows\TimeLensBlockProbe.exe").Path
-$testRoot = Join-Path $root "artifacts\block-modes-$([Guid]::NewGuid().ToString('N'))"
+$testRoot = Join-Path $root ".artifacts\block-modes-$([Guid]::NewGuid().ToString('N'))"
 $dataDir = Join-Path $testRoot 'fresh-user'
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 

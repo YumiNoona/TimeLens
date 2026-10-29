@@ -1,5 +1,5 @@
 param(
-    [string]$ExePath = "$PSScriptRoot\..\TimeLens.exe",
+    [string]$ExePath = "$PSScriptRoot\..\.artifacts\release\TimeLens.exe",
     [int]$TimeoutSeconds = 45
 )
 
@@ -8,7 +8,7 @@ $exe = (Resolve-Path -LiteralPath $ExePath).Path
 if ([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners().Port -contains 48721) {
     throw 'Close the running TimeLens instance before running the isolated startup test.'
 }
-$testRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "artifacts\startup-$([Guid]::NewGuid().ToString('N'))"
+$testRoot = Join-Path (Split-Path -Parent $PSScriptRoot) ".artifacts\startup-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $dataDir = Join-Path $testRoot 'fresh-user'
 

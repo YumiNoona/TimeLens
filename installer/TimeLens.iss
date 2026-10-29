@@ -1,5 +1,8 @@
 #ifndef AppVersion
-#define AppVersion "2.0.0"
+#define AppVersion "1.0.0"
+#endif
+#ifndef AppSource
+#define AppSource "..\TimeLens.exe"
 #endif
 
 #define AppName "TimeLens"
@@ -56,7 +59,7 @@ Name: "startup"; Description: "Start TimeLens automatically when I sign in"; Gro
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts"; Flags: unchecked
 
 [Files]
-Source: "..\TimeLens.exe"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
+Source: "{#AppSource}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\TimeLens"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; IconIndex: 0

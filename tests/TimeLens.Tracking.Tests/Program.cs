@@ -317,6 +317,19 @@ try
     TimeLens.Api.LiveStatusStore.IsIdle = false;
     var tracker = new BrowserTrackingService(browserPath, clock);
     var tabA = new TimeLens.Api.Dtos.BrowserEventDto("wrong.example", "https://example.com/a", "A", "firefox", false, 1);
+    var quietPath = Path.Combine(root, "quiet-browser.db");
+    DatabaseInitializer.Initialize(quietPath);
+    var quietTracker = new BrowserTrackingService(quietPath, clock);
+    quietTracker.Observe(tabA);
+    clock.Now = start.AddSeconds(1);
+    quietTracker.Observe(tabA);
+    Check(Scalar(quietPath, "SELECT (julianday(end_time)-julianday(start_time))*86400 FROM browser_events") == 0,
+        "Duplicate browser notifications should refresh the lease without a database write");
+    clock.Now = start.AddSeconds(10);
+    quietTracker.Tick();
+    Check(Math.Abs(Scalar(quietPath, "SELECT (julianday(end_time)-julianday(start_time))*86400 FROM browser_events") - 10) < .01,
+        "Coalescing notifications must preserve the next durable activity checkpoint");
+    clock.Now = start;
     for (var i = 0; i <= 3600; i++)
     {
         clock.Now = start.AddSeconds(i);

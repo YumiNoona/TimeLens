@@ -27,7 +27,7 @@ public sealed class UpdateService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TimeLens-Updater/4.0");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("TimeLens-Updater/1.0");
     }
 
     public async Task<UpdateStatusDto> CheckAsync(CancellationToken cancellationToken = default)

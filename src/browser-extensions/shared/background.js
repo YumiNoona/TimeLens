@@ -50,6 +50,16 @@ function safeTitle(title) {
   return redactions.length ? '' : String(title || '');
 }
 
+function validInputBatch(batch) {
+  if (!batch || typeof batch.batchId !== 'string' ||
+      !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(batch.batchId) ||
+      typeof batch.url !== 'string' || batch.url.length > 16384 ||
+      !Number.isFinite(Date.parse(batch.observedAt)) ||
+      !Number.isInteger(batch.keystrokes) || batch.keystrokes < 0 || batch.keystrokes > 1000 ||
+      !Number.isInteger(batch.clicks) || batch.clicks < 0 || batch.clicks > 1000) return false;
+  try { return /^https?:$/.test(new URL(batch.url).protocol); } catch (_) { return false; }
+}
+
 api.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   if (!message || message.type !== 'timelens-collection-state') return false;
   initialize().then(function() {
@@ -63,7 +73,7 @@ function loadInputQueue() {
   if (inputQueueReady) return inputQueueReady;
   inputQueueReady = api.storage.local.get(INPUT_QUEUE_KEY).then(function(saved) {
     inputQueue = Array.isArray(saved && saved[INPUT_QUEUE_KEY])
-      ? saved[INPUT_QUEUE_KEY].filter(function(batch) { return batch && typeof batch.batchId === 'string'; })
+      ? saved[INPUT_QUEUE_KEY].filter(validInputBatch)
       : [];
     if (inputQueue.length > MAX_INPUT_QUEUE_LENGTH)
       inputQueue = inputQueue.slice(-MAX_INPUT_QUEUE_LENGTH);
@@ -99,7 +109,7 @@ async function drainInputQueue() {
       });
       const result = await response.json();
       // A privacy rejection is final. Replaying after resume would undo a pause.
-      if (!result) break;
+      if (result !== true && typeof result?.accepted !== 'boolean') break;
       const delivered = inputQueue.findIndex(item => item.batchId === batch.batchId);
       if (delivered >= 0) inputQueue.splice(delivered, 1);
       await saveInputQueue();
@@ -112,6 +122,7 @@ async function drainInputQueue() {
 }
 
 async function enqueueInput(batch) {
+  if (!validInputBatch(batch)) throw new Error('Invalid aggregate input');
   await loadInputQueue();
   if (!inputQueue.some(function(item) { return item.batchId === batch.batchId; })) {
     inputQueue.push(batch);
@@ -416,8 +427,14 @@ api.runtime.onMessage.addListener(function handleInput(message, sender, sendResp
 
 const recentMediaTabs = new Map();
 const fallbackMediaTabs = new Map();
+const activeMedia = new Map();
 
 function postMediaState(state) {
+  const key = state.tabId + ':' + state.mediaId;
+  if (state.playing) {
+    activeMedia.set(key, state);
+    if (activeMedia.size > 512) activeMedia.delete(activeMedia.keys().next().value);
+  } else activeMedia.delete(key);
   return checkedFetch(MEDIA_API, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state)
   }).then(function(response) { return response.json(); });
@@ -539,7 +556,7 @@ async function sampleFocusedTab() {
       return;
     }
     if (trackingEnabled && !excludedUrl(tab.url) || blockingEnabled) {
-      const body = { tabId: tab.id, domain: new URL(tab.url).hostname, url: tab.url,
+      const body = { tabId: tab.id, domain: new URL(tab.url).hostname, url: privacySafeInput({ url: tab.url }).url,
         title: excludedUrl(tab.url) ? '' : safeTitle(tab.title), browser: BROWSER, audible: !!tab.audible, observedAt: new Date().toISOString() };
       const response = await checkedFetch(EVENT_API, { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -573,7 +590,18 @@ api.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
     sampleFocusedTab();
   if (changeInfo.audible !== undefined) void sampleAudibleTabs();
 });
-api.tabs.onRemoved.addListener(function(tabId) { notifiedTabs.delete(tabId); sampleFocusedTab(); });
+api.tabs.onRemoved.addListener(function(tabId) {
+  notifiedTabs.delete(tabId);
+  recentMediaTabs.delete(tabId);
+  fallbackMediaTabs.delete(tabId);
+  for (const [key, state] of activeMedia) {
+    if (state.tabId !== tabId) continue;
+    activeMedia.delete(key);
+    void postMediaState({ ...state, playing: false, audible: false,
+      observedAt: new Date().toISOString() }).catch(function() {});
+  }
+  sampleFocusedTab();
+});
 api.windows.onFocusChanged.addListener(sampleFocusedTab);
 function initialize() {
   if (initialization) return initialization;

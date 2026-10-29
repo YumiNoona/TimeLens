@@ -1,10 +1,10 @@
 param(
-    [string]$ExePath = "$PSScriptRoot\..\TimeLens.exe",
+    [string]$ExePath = "$PSScriptRoot\..\.artifacts\release\TimeLens.exe",
     [ValidateRange(10, 300)][int]$SampleSeconds = 30
 )
 $ErrorActionPreference = 'Stop'
 $exe = (Resolve-Path -LiteralPath $ExePath).Path
-$probeRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "artifacts\resource-$([Guid]::NewGuid().ToString('N'))"
+$probeRoot = Join-Path (Split-Path -Parent $PSScriptRoot) ".artifacts\resource-$([Guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $probeRoot -Force | Out-Null
 $dataDir = Join-Path $probeRoot 'fresh-user'
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)

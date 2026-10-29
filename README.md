@@ -51,14 +51,14 @@ Explore observed websites and pages, visits and focused browsing time. Supported
 | --- | --- |
 | **Windows app + web dashboard** | Runs in the tray and opens a local dashboard in your browser. Includes activity history, timelines, categories, privacy controls, focus blocking and optional offline-work review. |
 | **Android app** | A native phone experience with Today, Apps, History, Block and Settings. Includes goals, categories, local reports, Comfort allowances, Strict blocking and optional browser integration. |
-| **Firefox & Chrome companions** | Add website and tab context to the Windows app after local pairing. The Firefox store listing is the recommended signed installation; release ZIPs are developer packages. |
+| **Firefox, Chrome, Edge & Brave companions** | Add website and tab context to the Windows app after local pairing. Release ZIPs are ready for the maintainer to submit to browser stores. Normal Firefox installation requires a Mozilla-signed add-on. |
 | **TimeLens website** | Product information, downloads and documentation. It is not a cloud-hosted copy of your activity history. |
 
 Each device keeps its own local history. Windows and Android do not currently sync activity or pair with one another.
 
 ### Android, made for your phone
 
-Use filled and outlined navigation icons, choose a light or dark appearance—or follow your system—and switch themes without losing your place. Browse your history, set personal goals, and choose a rolling Comfort allowance or a Strict block for distractions.
+Use filled and outlined navigation icons, choose a light or dark appearance,and switch themes without losing your place. Browse your history, set personal goals, and choose a rolling Comfort allowance or a Strict block for distractions.
 
 Optional website integration uses known address-bar controls for supported browsers, including Brave, Chrome, Firefox, Edge, Samsung Internet, Vivaldi and DuckDuckGo. Browser updates, hidden bars and device restrictions can leave gaps; this is not exhaustive browsing-history capture.
 
@@ -72,13 +72,13 @@ On Windows, keyboard and mouse statistics are aggregate counts—not a recording
 
 Android uses permissions you explicitly grant for usage insights and optional blocking/browser integration. The app does not request Internet access. History leaves the device when you choose to export or share it.
 
-Blocking is a personal focus aid, not device-owner lockdown. Android's owner can still disable Accessibility or uninstall the app. Available controls and permission requirements differ by platform.
+Blocking is a personal focus aid. Personal-phone removal protection adds a confirmation step; Android-enforced uninstall policies require an authorized managed-device role. Available controls and permission requirements differ by platform.
 
 ## Get started
 
 **Windows:** download a Windows build, launch TimeLens, and open the dashboard from the tray. Add a browser companion if you want website context.
 
-**Android:** review the APK's release notes and permission disclosures before installing. Android builds are currently previews; signing identities matter when replacing an existing installation. Export any history you want to keep before uninstalling an app.
+**Android:** review the APK's release notes and permission disclosures before installing. The release includes a signed, optimized APK and a signed App Bundle for Play upload. Current signed builds update in place; old previews with a different signing key require a separate migration.
 
 **Browser companions:** use the official Firefox listing or review the developer packages in Releases. Companions need the local Windows app; they are not standalone cloud trackers.
 
@@ -89,7 +89,7 @@ Blocking is a personal focus aid, not device-owner lockdown. Android's owner can
 - [Windows app and local API](src/TimeLens.TrayApp)
 - [Web dashboard](src/TimeLens.Dashboard)
 - [Android app](android)
-- [Browser companions](src/browser-extensions)
+- [Browser companions](docs/browser-extension.md)
 - [Public website](web)
 - [Tracking and accounting details](docs/tracking.md)
 - [Documentation screenshot setup](docs/screenshots/README.md)

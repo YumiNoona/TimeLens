@@ -1,5 +1,4 @@
 name: Android build checks
-
 on:
   workflow_call:
   push:
@@ -7,10 +6,8 @@ on:
     paths: ["android/**", ".github/workflows/android.yml"]
   pull_request:
     paths: ["android/**", ".github/workflows/android.yml"]
-
 permissions:
   contents: read
-
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -27,18 +24,13 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build and check Android preview
+      - name: Test and validate release APK and App Bundle
         working-directory: android
-        run: bash gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:assemblePreview :app:lintPreview --console=plain
-      - name: Name preview package
-        run: cp android/app/build/outputs/apk/preview/app-preview.apk TimeLens-Android-preview.apk
+        run: bash gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease --console=plain
       - uses: actions/upload-artifact@v4
         with:
-          name: TimeLens-Android-preview
-          path: TimeLens-Android-preview.apk
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: TimeLens-Android-optimized-unsigned
-          path: android/app/build/outputs/apk/release/*unsigned.apk
+          name: Android-unsigned-validation-only
+          path: |
+            android/app/build/outputs/apk/release/*unsigned.apk
+            android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error

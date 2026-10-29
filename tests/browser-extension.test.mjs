@@ -19,7 +19,7 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   const messageListeners = [];
   const stored = { timelens_pair_token: 'test-token' };
   const api = {
-    runtime: { id: 'test', getManifest: () => ({ version: '8.3.1' }), getURL: p => `extension://${p}`,
+    runtime: { id: 'test', getManifest: () => ({ version: '9.0.0' }), getURL: p => `extension://${p}`,
       onMessage: { addListener(fn) { messageListeners.push(fn); } }, onStartup: event(), onInstalled: event() },
     action: { onClicked: event() },
     windows: { getLastFocused: async () => ({ id: 7, focused, type: 'normal' }), onFocusChanged: event() },
@@ -49,9 +49,10 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   assert.equal(intervals, 0, 'Background workers must not be kept alive by periodic timers');
   await assert.rejects(sandbox.checkedFetch('https://example.net/private'), /Non-local/);
   assert.equal(observations().at(-1).body.tabId, 1);
+  assert.equal(observations().at(-1).body.url, 'https://example.com/', 'Domain privacy must apply before data leaves the extension');
   assert.ok(observations().at(-1).body.observedAt);
   assert.equal(observations().at(-1).headers['X-TimeLens-Extension'], 'test-token');
-  assert.equal(observations().at(-1).headers['X-TimeLens-Extension-Version'], '8.3.1');
+  assert.equal(observations().at(-1).headers['X-TimeLens-Extension-Version'], '9.0.0');
   tab = { ...tab, id: 2, url: 'https://example.com/b' };
   api.tabs.onActivated.listener({ tabId: 2 }); await settle();
   assert.equal(observations().at(-1).body.tabId, 2);
@@ -79,6 +80,11 @@ for (const family of ['chrome', 'firefox']) test(`${family}: focus, navigation, 
   assert.equal(mediaCall.body.url, tab.url);
   assert.equal(mediaCall.body.pictureInPicture, true);
   assert.ok(mediaCall.body.observedAt);
+  tab = { ...tab, id: 3, url: 'https://next.example/' };
+  api.tabs.onRemoved.listener(2); await settle();
+  assert.ok(calls.some(x => x.url.endsWith('/api/media-state') && x.body.tabId === 2 && x.body.playing === false),
+    'Closing a media tab must end playback immediately');
+  await assert.rejects(sandbox.enqueueInput({ batchId: 'bad', url: 'javascript:alert(1)', keystrokes: 1, clicks: 0 }), /Invalid aggregate/);
   unauthorized = true;
   await assert.rejects(sandbox.checkedFetch('http://127.0.0.1:47821/api/extension/settings'), /HTTP 401/);
   assert.equal(stored.timelens_pair_token, 'test-token', 'Transient 401 must not erase pairing');
@@ -141,7 +147,7 @@ test('browser packages contain the canonical scripts and resources', () => {
   for (const family of ['chrome', 'firefox']) {
     const root = new URL(`../src/browser-extensions/${family}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
-    assert.equal(manifest.version, '8.3.1');
+    assert.equal(manifest.version, '9.0.0');
     if (family === 'firefox') {
       assert.equal(manifest.background.persistent, false);
       assert.equal(manifest.browser_specific_settings.gecko.id, 'timelens@timelens.app');

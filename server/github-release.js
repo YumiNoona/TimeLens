@@ -1,5 +1,5 @@
 const githubApi = 'https://api.github.com';
-const minimumReleaseMajor = 2;
+const minimumReleaseMajor = 1;
 
 function repository() {
   return process.env.GITHUB_REPOSITORY || 'YumiNoona/TimeLens';
@@ -20,6 +20,7 @@ async function githubFetch(url, accept) {
     headers: requestHeaders(accept),
     redirect: 'follow',
     cache: 'no-store',
+    signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) {
     const privateHint = response.status === 404 && !process.env.GITHUB_TOKEN
@@ -97,6 +98,7 @@ export async function assetRedirectUrl(asset) {
     headers: requestHeaders('application/octet-stream'),
     redirect: 'manual',
     cache: 'no-store',
+    signal: AbortSignal.timeout(10000),
   });
   if (response.status !== 302) {
     throw new Error(`GitHub asset authorization returned ${response.status} instead of a redirect.`);

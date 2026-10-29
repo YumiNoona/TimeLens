@@ -1,10 +1,10 @@
 package `in`.venusapp.timelens.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -14,7 +14,9 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -124,7 +126,9 @@ internal fun rememberTimelineContent(state: UiState, options: TimelineOptions): 
 internal fun LazyListScope.timelineItems(content: TimelineContent, options: TimelineOptions) {
     item(key = "timeline-controls", contentType = "timeline-controls") {
         var showSearch by rememberSaveable { mutableStateOf(false) }
+        var requestSearchFocus by remember { mutableStateOf(false) }
         var filters by remember { mutableStateOf(false) }
+        val focusManager = LocalFocusManager.current
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -139,33 +143,42 @@ internal fun LazyListScope.timelineItems(content: TimelineContent, options: Time
                     IconButton(onClick = { options.expanded = emptyList() }) {
                         Icon(Icons.Outlined.UnfoldLess, "Collapse all apps")
                     }
-                IconButton(onClick = { showSearch = !showSearch }) {
+                IconButton(
+                    onClick = {
+                        showSearch = !showSearch
+                        requestSearchFocus = showSearch
+                        if (!showSearch) focusManager.clearFocus()
+                    }
+                ) {
                     Icon(
                         if (showSearch) Icons.Outlined.SearchOff else Icons.Outlined.Search,
                         if (showSearch) "Hide history search" else "Search app history",
                     )
                 }
-                IconButton(onClick = { filters = true }) {
+                IconButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        filters = true
+                    }
+                ) {
                     Icon(Icons.Outlined.Tune, "Filter and sort app history")
                 }
             }
             if (showSearch)
-                OutlinedTextField(
+                SearchInput(
                     options.search,
                     { options.search = it },
-                    label = { Text("Search app history") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    trailingIcon = {
-                        if (options.search.isNotEmpty())
-                            IconButton(onClick = { options.search = "" }) {
-                                Icon(Icons.Outlined.Close, "Clear history search")
-                            }
-                    },
+                    label = "Search app history",
+                    clearDescription = "Clear history search",
+                    requestFocus = requestSearchFocus,
+                    onFocusRequested = { requestSearchFocus = false },
                 )
             else if (options.search.isNotEmpty())
                 AssistChip(
-                    onClick = { showSearch = true },
+                    onClick = {
+                        showSearch = true
+                        requestSearchFocus = true
+                    },
                     label = { Text("Search: ${options.search}") },
                     leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(16.dp)) },
                 )
@@ -198,10 +211,16 @@ internal fun LazyListScope.timelineItems(content: TimelineContent, options: Time
                         listOf("time" to "Most time", "visits" to "Most visits", "name" to "Name")
                             .forEach { (key, label) ->
                                 Row(
-                                    Modifier.fillMaxWidth().clickable { sort = key },
+                                    Modifier.fillMaxWidth()
+                                        .selectable(
+                                            selected = sort == key,
+                                            role = Role.RadioButton,
+                                            onClick = { sort = key },
+                                        )
+                                        .heightIn(min = 48.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    RadioButton(sort == key, onClick = { sort = key })
+                                    RadioButton(sort == key, onClick = null)
                                     Text(label)
                                 }
                             }

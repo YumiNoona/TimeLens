@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -17,7 +18,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import `in`.venusapp.timelens.data.*
@@ -30,6 +33,7 @@ internal fun AppsScreen(
     onAccess: () -> Unit = {},
 ) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
+    var requestSearchFocus by remember { mutableStateOf(false) }
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
     val favorites = LocalFavorites.current
     var filters by rememberSaveable { mutableStateOf(false) }
@@ -108,6 +112,7 @@ internal fun AppsScreen(
                     IconButton(
                         onClick = {
                             showSearch = !showSearch
+                            requestSearchFocus = showSearch
                             if (!showSearch) focusManager.clearFocus()
                         }
                     ) {
@@ -132,25 +137,19 @@ internal fun AppsScreen(
                     }
                 }
                 if (showSearch)
-                    OutlinedTextField(
+                    SearchInput(
                         search,
-                        {
-                            search = it
-                        },
-                        label = { Text("Search name or package") },
-                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                        trailingIcon = {
-                            if (search.isNotEmpty())
-                                IconButton(onClick = { search = "" }) {
-                                    Icon(Icons.Outlined.Close, "Clear search")
-                                }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                        { search = it },
+                        label = "Search name or package",
+                        requestFocus = requestSearchFocus,
+                        onFocusRequested = { requestSearchFocus = false },
                     )
                 else if (search.isNotEmpty())
                     AssistChip(
-                        onClick = { showSearch = true },
+                        onClick = {
+                            showSearch = true
+                            requestSearchFocus = true
+                        },
                         label = { Text("Search: $search") },
                         leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(18.dp)) },
                     )
@@ -198,8 +197,17 @@ internal fun AppsScreen(
                     Text("Sort by", style = MaterialTheme.typography.titleSmall)
                     listOf("time" to "Most time", "visits" to "Most visits", "name" to "Name")
                         .forEach { (key, label) ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(ordering == key, onClick = { ordering = key })
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .selectable(
+                                        selected = ordering == key,
+                                        role = Role.RadioButton,
+                                        onClick = { ordering = key },
+                                    )
+                                    .heightIn(min = 48.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(ordering == key, onClick = null)
                                 Text(label)
                             }
                         }
@@ -357,7 +365,12 @@ internal fun AppCard(app: AppUsage, model: AppModel) {
                         { limit = it.filter(Char::isDigit).take(4) },
                         label = { Text("Daily goal · minutes, 0 = off") },
                         isError = parsed == null || parsed !in 0..1440,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                        keyboardActions = dismissKeyboardActions(),
                         singleLine = true,
                     )
                     Text(

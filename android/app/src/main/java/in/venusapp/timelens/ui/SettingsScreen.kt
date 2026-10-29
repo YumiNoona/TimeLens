@@ -144,7 +144,10 @@ internal fun SettingsScreen(
                 budget,
                 { budget = it.filter(Char::isDigit).take(4) },
                 label = { Text("Daily screen budget · 15–1440 minutes") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions =
+                    KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = dismissKeyboardActions(),
+                isError = budget.toIntOrNull()?.let { it in 15..1440 } != true,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -315,7 +318,10 @@ internal fun SettingsScreen(
                         label = { Text("4–12 digit PIN") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions =
-                            KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword,
+                                imeAction = ImeAction.Next,
+                            ),
                         singleLine = true,
                     )
                     OutlinedTextField(
@@ -324,7 +330,11 @@ internal fun SettingsScreen(
                         label = { Text("Confirm PIN") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions =
-                            KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword,
+                                imeAction = ImeAction.Done,
+                            ),
+                        keyboardActions = dismissKeyboardActions(),
                         singleLine = true,
                     )
                     Text(

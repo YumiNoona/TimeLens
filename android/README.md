@@ -6,6 +6,8 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 Android [5.0.0](RELEASE-5.0.0.md) removes the mobile activity calendar grid so grouped app history is easier to reach.
 
+The [5.0.0 input refinement](INPUT-REFINEMENTS-5.0.0.md) restores Block switches and improves keyboard actions, search focus, touch feedback and tap targets.
+
 See [4.0.0 changes](RELEASE-4.0.0.md) for measured navigation improvements, favorites, bulk rules and the new Protection & removal controls. Normal phones offer an optional extra removal step; Android-enforced uninstall blocking is available only to an independently provisioned, authorized device/profile owner.
 
 The [4.0.0 UI refinement](UI-REFINEMENTS-4.0.0.md) adds per-app history accordions, adaptive range controls, labelled Block sections and dashboard settings.

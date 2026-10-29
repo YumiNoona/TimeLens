@@ -99,7 +99,6 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                 ),
         ) {
             CompositionLocalProvider(
-                LocalRippleConfiguration provides null,
                 LocalDisplay provides display,
                 LocalActiveBlockTargets provides
                     remember(state.revision) {
@@ -279,6 +278,7 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                         }
                 }
                 Scaffold(
+                    modifier = Modifier.imePadding(),
                     snackbarHost = { SnackbarHost(snackbar) },
                     topBar = {
                         TopAppBar(

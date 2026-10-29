@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apps
@@ -15,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,7 +166,14 @@ internal fun SettingSwitch(
 ) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        Modifier.fillMaxWidth()
+            .testTag("switch-$title")
+            .toggleable(value = checked, role = Role.Switch) {
+                focusManager.clearFocus()
+                onChange(it)
+            }
+            .heightIn(min = 56.dp)
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -178,11 +187,7 @@ internal fun SettingSwitch(
         }
         Switch(
             checked,
-            onCheckedChange = {
-                focusManager.clearFocus()
-                onChange(it)
-            },
-            modifier = Modifier.testTag("switch-$title"),
+            onCheckedChange = null,
         )
     }
 }

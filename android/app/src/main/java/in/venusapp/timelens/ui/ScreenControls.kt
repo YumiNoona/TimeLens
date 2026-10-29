@@ -168,38 +168,3 @@ internal fun DashboardSettings(model: AppModel) {
         }
     }
 }
-
-@Composable
-internal fun ActionToggleRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        OutlinedButton(
-            onClick = { onChange(!checked) },
-            modifier = Modifier.semantics { stateDescription = if (checked) "On" else "Off" },
-        ) {
-            Icon(
-                if (checked) Icons.Outlined.CheckCircle else Icons.Outlined.PowerSettingsNew,
-                null,
-                Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(if (checked) "Turn off" else "Turn on", maxLines = 1)
-        }
-    }
-}

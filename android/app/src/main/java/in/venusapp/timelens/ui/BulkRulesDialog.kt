@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import `in`.venusapp.timelens.domain.BlockRule
@@ -54,7 +55,13 @@ internal fun BulkRulesDialog(
                         { minutes = it.filter(Char::isDigit).take(4) },
                         singleLine = true,
                         label = { Text("Minutes per app / rolling 24h") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                        keyboardActions = dismissKeyboardActions(),
+                        isError = minutes.toIntOrNull()?.let { it in 1..1440 } != true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -78,12 +85,10 @@ internal fun BulkRulesDialog(
                     }
                     TextButton(onClick = { selected = emptyList() }) { Text("Clear") }
                 }
-                OutlinedTextField(
+                SearchInput(
                     search,
                     { search = it },
-                    singleLine = true,
-                    label = { Text("Find apps") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = "Find apps",
                 )
                 Text(
                     "${selected.size} selected · existing rules for these apps will be replaced",

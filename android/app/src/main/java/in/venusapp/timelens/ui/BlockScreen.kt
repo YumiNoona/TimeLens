@@ -17,7 +17,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,7 +64,7 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                 )
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp)) {
-                        ActionToggleRow(
+                        SettingSwitch(
                             "Blocking",
                             if (AppBlockService.connected) "Accessibility service connected"
                             else "Enable the Android service to enforce rules",
@@ -91,7 +95,7 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
             if (section == 1)
                 item(key = "website-controls") {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        ActionToggleRow(
+                        SettingSwitch(
                             "Website tracking",
                             "Optional · read visible browser address bars and save domains on this phone",
                             prefs.websiteTracking,
@@ -179,7 +183,7 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
-                                IconToggleButton(
+                                Switch(
                                     checked = rule.enabled,
                                     onCheckedChange = { enabled ->
                                         guard {
@@ -190,14 +194,11 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                                             }
                                         }
                                     },
-                                ) {
-                                    Icon(
-                                        if (rule.enabled) Icons.Outlined.CheckCircle
-                                        else Icons.Outlined.RadioButtonUnchecked,
-                                        if (rule.enabled) "Disable rule for $label"
-                                        else "Enable rule for $label",
-                                    )
-                                }
+                                    modifier =
+                                        Modifier.semantics {
+                                            contentDescription = "Rule for $label"
+                                        },
+                                )
                             }
                             if (rule.mode == "comfort") {
                                 val used = state.allowances[rule.app]
@@ -366,12 +367,10 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
             title = { Text("Choose an app") },
             text = {
                 Column {
-                    OutlinedTextField(
+                    SearchInput(
                         search,
                         { search = it },
-                        singleLine = true,
-                        label = { Text("Search apps") },
-                        modifier = Modifier.fillMaxWidth(),
+                        label = "Search apps",
                     )
                     Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                         apps.take(80).forEach { app ->
@@ -383,6 +382,7 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                                                 ?: BlockRule(app.app, "comfort")
                                         chooser = false
                                     }
+                                    .heightIn(min = 48.dp)
                                     .padding(vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -455,6 +455,8 @@ internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
                         { title = it.take(100) },
                         label = { Text("Title") },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     )
                     OutlinedTextField(
                         message,
@@ -503,6 +505,7 @@ private fun BlockRuleEditor(
         }
     var minutes by rememberSaveable(rule.app) { mutableStateOf(rule.allowanceMinutes.toString()) }
     val host = WebAddress.host(domain)
+    val focusManager = LocalFocusManager.current
     val valid =
         (!web || host != null) &&
             (mode == "strict" || minutes.toIntOrNull()?.let { it in 1..1440 } == true)
@@ -522,6 +525,18 @@ private fun BlockRuleEditor(
                         label = { Text("Domain · example.com") },
                         modifier = Modifier.fillMaxWidth(),
                         isError = domain.isNotEmpty() && host == null,
+                        supportingText = {
+                            if (domain.isNotEmpty() && host == null)
+                                Text("Enter a valid domain, such as example.com")
+                        },
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.Uri,
+                                autoCorrectEnabled = false,
+                                imeAction =
+                                    if (mode == "comfort") ImeAction.Next else ImeAction.Done,
+                            ),
+                        keyboardActions = dismissKeyboardActions(),
                     )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
@@ -532,7 +547,10 @@ private fun BlockRuleEditor(
                     )
                     FilterChip(
                         mode == "strict",
-                        onClick = { mode = "strict" },
+                        onClick = {
+                            focusManager.clearFocus()
+                            mode = "strict"
+                        },
                         label = { Text("Strict") },
                         leadingIcon = { Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp)) },
                     )
@@ -549,7 +567,17 @@ private fun BlockRuleEditor(
                         minutes,
                         { minutes = it.filter(Char::isDigit).take(4) },
                         label = { Text("Allowed minutes · 1–1440") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions =
+                            KeyboardOptions(
+                                keyboardType = KeyboardType.Number,
+                                imeAction = ImeAction.Done,
+                            ),
+                        keyboardActions = dismissKeyboardActions(),
+                        isError = minutes.toIntOrNull()?.let { it in 1..1440 } != true,
+                        supportingText = {
+                            if (minutes.toIntOrNull()?.let { it in 1..1440 } != true)
+                                Text("Choose 1 to 1440 minutes")
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

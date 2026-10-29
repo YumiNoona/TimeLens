@@ -103,6 +103,7 @@ class NavigationRegressionTest {
         compose.onNodeWithTag("page-2").assertExists()
         compose.onNodeWithContentDescription("Apps", useUnmergedTree = true).performClick()
         compose.onNodeWithText("nonexistent-app").assertExists()
+        compose.onNode(hasSetTextAction()).assertIsNotFocused()
         compose.onNodeWithContentDescription("Settings").performClick()
         assertEquals(settings, scroll(4), 2f)
     }

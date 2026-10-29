@@ -1,5 +1,13 @@
 # 5.0.0 — Simpler mobile history
 
+## Input refinements · build 80706
+
+- Restored Block switches, full-row settings taps, touch feedback and tappable sort labels.
+- Improved search focus/clear/Search actions, numeric Done actions, URL keyboards, PIN keyboard verification and keyboard avoidance.
+- See [input refinement notes](INPUT-REFINEMENTS-5.0.0.md).
+
+## Initial release
+
 - Removed the activity calendar grid and its caption from Android History. Grouped app history follows the period summaries directly, without a long grid of empty cells.
 - Date selection, range summaries, weekly chart, saved activity and expandable app visits remain available.
 - Version 5.0.0 (build 80705) uses the existing production signing identity for an in-place update from the signed 4.0.0 builds.

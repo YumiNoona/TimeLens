@@ -111,7 +111,7 @@ class MobileControlsTest {
     }
 
     @Test
-    fun aPopulatedYearDoesNotComposeOffscreenVisitsAndCalendarCells() {
+    fun aPopulatedYearKeepsAppVisitsLazyWithoutTheRemovedCalendar() {
         val model = model()
         val models = ViewModelStore().apply { put("test", model) }
         val date = LocalDate.now()
@@ -141,7 +141,7 @@ class MobileControlsTest {
                     HistoryScreen(fixture, model, Modifier.fillMaxSize().testTag("history-fixture"))
                 }
             }
-            compose.onNodeWithText("App history").assertDoesNotExist()
+            compose.onNodeWithText("Activity calendar").assertDoesNotExist()
             assertTrue(
                 compose
                     .onAllNodes(hasContentDescription("$date:", substring = true))
@@ -150,6 +150,7 @@ class MobileControlsTest {
             )
             compose.onNodeWithTag("history-fixture").performScrollToNode(hasText("App history"))
             compose.onNodeWithText("App history").assertIsDisplayed()
+            compose.onNodeWithTag("history-visit-fixture.app.0-1").assertDoesNotExist()
             assertTrue(
                 compose
                     .onAllNodes(hasText("History app", substring = true))

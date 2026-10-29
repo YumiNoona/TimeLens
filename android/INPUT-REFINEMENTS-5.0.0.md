@@ -8,3 +8,5 @@
 - Content adjusts for the keyboard, including the bottom navigation, rather than letting the keyboard cover the page.
 
 App version remains 5.0.0; build 80706 updates the signed 5.0.0 and 4.0.0 releases in place. The base `android-v5.0.0` tag remains unchanged; the refinement is identified separately.
+
+Verified 32 JVM tests and 17 UI checks across the refinement runs, including switch row taps, saved search focus, keyboard actions, PIN retries, protected rule changes, navigation, grouped history and lazy lists. Release build and lint passed. Two UI checks were updated to locate lazy-list rules correctly and account for the calendar removed in the base 5.0.0 release.

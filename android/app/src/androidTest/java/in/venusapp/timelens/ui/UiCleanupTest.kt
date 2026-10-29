@@ -80,19 +80,22 @@ class UiCleanupTest {
             compose.onNodeWithContentDescription("Block", useUnmergedTree = true).performClick()
             compose.onNodeWithContentDescription("Website rules").performClick()
             compose
-                .onNodeWithContentDescription("Rule for example.com")
-                .performScrollTo()
-                .assertIsOn()
-                .performClick()
+                .onNodeWithTag("page-3")
+                .performScrollToNode(hasContentDescription("Rule for example.com"))
+            compose.onNodeWithContentDescription("Rule for example.com").assertIsOn().performClick()
             compose.onNodeWithText("Unlock blocking controls").assertIsDisplayed()
             compose.onNodeWithText("Save rule").assertDoesNotExist()
             assertTrue(model.preferences.blockRules.single().enabled)
             compose.onNodeWithText("Cancel").performClick()
             assertTrue(model.preferences.blockRules.single().enabled)
+            val before = model.state.value.revision
             compose.onNodeWithContentDescription("Rule for example.com").performClick()
             compose.onNode(hasSetTextAction()).performTextInput("1234")
             compose.onNode(hasSetTextAction()).performImeAction()
-            compose.waitUntil(15_000) { !model.preferences.blockRules.single().enabled }
+            compose.waitUntil(15_000) {
+                !model.preferences.blockRules.single().enabled &&
+                    model.state.value.revision > before
+            }
             compose.onNodeWithContentDescription("Rule for example.com").assertIsOff()
             compose.onNodeWithText("Save rule").assertDoesNotExist()
         } finally {

@@ -32,6 +32,8 @@ class MobileControlsTest {
         val models = ViewModelStore().apply { put("test", model) }
         val old = model.preferences.favorites
         model.preferences.favorites = emptySet()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
         val fixture =
             UiState(
                 day =
@@ -59,12 +61,20 @@ class MobileControlsTest {
                     }
                 }
             }
+            compose.runOnUiThread {
+                model.edit(refreshActivity = false) {
+                    entered.countDown()
+                    release.await(10, java.util.concurrent.TimeUnit.SECONDS)
+                }
+            }
+            assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
             compose.onNodeWithContentDescription("Favorite Priority app").performClick()
             compose.waitUntil(10_000) {
                 model.preferences.favorites.contains("fixture.favorite") &&
                     model.state.value.revision > 0
             }
             assertNull(model.state.value.day)
+            release.countDown()
             compose.onNodeWithContentDescription("Show favorite apps").performClick()
             compose.onNodeWithText("Priority app").assertIsDisplayed()
             compose.onNodeWithText("Other app").assertDoesNotExist()
@@ -72,6 +82,7 @@ class MobileControlsTest {
             compose.waitUntil(10_000) { !model.preferences.favorites.contains("fixture.favorite") }
             compose.onNodeWithText("No apps match").assertExists()
         } finally {
+            release.countDown()
             model.preferences.favorites = old
             compose.runOnIdle { models.clear() }
         }

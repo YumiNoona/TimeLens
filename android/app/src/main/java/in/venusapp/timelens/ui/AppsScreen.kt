@@ -270,13 +270,7 @@ internal fun AppCard(app: AppUsage, model: AppModel) {
                 }
                 val favorite = app.app in LocalFavorites.current
                 IconButton(
-                    onClick = {
-                        model.edit(refreshActivity = false) { repo ->
-                            val current = repo.preferences.favorites
-                            repo.preferences.favorites =
-                                if (app.app in current) current - app.app else current + app.app
-                        }
-                    },
+                    onClick = { model.toggleFavorite(app.app) },
                     modifier = Modifier.size(40.dp),
                 ) {
                     Icon(

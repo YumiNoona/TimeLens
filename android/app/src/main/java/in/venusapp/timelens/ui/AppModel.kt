@@ -193,6 +193,12 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
     }
 
+    fun toggleFavorite(app: String) {
+        val current = preferences.favorites
+        preferences.favorites = if (app in current) current - app else current + app
+        mutable.value = mutable.value.copy(revision = mutable.value.revision + 1)
+    }
+
     fun setHistoryVisible(visible: Boolean) {
         if (historyVisible == visible) return
         historyVisible = visible

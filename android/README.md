@@ -4,6 +4,8 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 ## Available features
 
+Android [5.0.0](RELEASE-5.0.0.md) removes the mobile activity calendar grid so grouped app history is easier to reach.
+
 See [4.0.0 changes](RELEASE-4.0.0.md) for measured navigation improvements, favorites, bulk rules and the new Protection & removal controls. Normal phones offer an optional extra removal step; Android-enforced uninstall blocking is available only to an independently provisioned, authorized device/profile owner.
 
 The [4.0.0 UI refinement](UI-REFINEMENTS-4.0.0.md) adds per-app history accordions, adaptive range controls, labelled Block sections and dashboard settings.
@@ -18,7 +20,7 @@ The [4.0.0 UI refinement](UI-REFINEMENTS-4.0.0.md) adds per-app history accordio
 - Space Grotesk bundled offline, with a complete type scale. Light/dark/system themes use a circular reveal; real app icons keep original colors by default. The top-right action switches appearance. Repeated build/device labels are not shown.
 - Today contains current-day screen time, goals, productive-category score, switches, longest session, yesterday comparison, hourly activity and a short top-app preview.
 - Apps contains the app inventory, details, categories and optional daily comparison goals. Search opens from its icon. Filters open a dedicated dialog for used/installed, category and sorting.
-- History contains short-range and full-year totals, averages, app/category breakdowns, a calendar and detailed visits for each saved day. Selecting a day keeps the year overview stable. Deleted history cannot be reconstructed.
+- History contains short-range and full-year totals, averages, app/category breakdowns and expandable visits for each saved day. Use the date selector or weekly chart to choose a day while keeping the year overview stable. Deleted history cannot be reconstructed.
 - Block contains app rules, website rules, a custom banner preview and activity. **Comfort** permits an allowance in a rolling 24-hour window. **Strict** blocks access while the rule and blocking are enabled. Neither has an overlay pause shortcut. Optional PIN protects changes.
 - App Comfort measurement reads Android usage directly, independent of history exclusion, collection pause and archive deletion. Time under TimeLens's blocking overlay is subtracted while the service is running.
 - Optional, separately disclosed browser integration recognizes known address-bar controls for Chrome, Firefox, Edge and Samsung Internet. It saves canonical hostnames and observed foreground time only. Website rules include subdomains. A Strict parent rule takes precedence over a Comfort child rule.

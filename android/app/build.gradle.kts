@@ -15,8 +15,8 @@ android {
         applicationId = "in.venusapp.timelens"
         minSdk = 29
         targetSdk = 36
-        versionCode = 80704
-        versionName = "4.0.0"
+        versionCode = 80705
+        versionName = "5.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

@@ -1,11 +1,8 @@
 package `in`.venusapp.timelens.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -13,9 +10,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
@@ -32,16 +26,11 @@ internal fun HistoryScreen(
     val range = state.historyRange
     val end = if (range == 365) LocalDate.now() else state.date
     val report = state.report?.takeIf { it.end == end && it.days == range }
-    val series = report?.daily.orEmpty()
     val apps = report?.apps.orEmpty()
-    val calendar = remember(series) { series.chunked(14) }
-    val maximum = remember(series) { maxOf(1L, series.maxOfOrNull { it.second } ?: 1) }
     val timelineOptions = rememberTimelineOptions()
     val timeline = rememberTimelineContent(state, timelineOptions)
     var periodAppsExpanded by rememberSaveable { mutableStateOf(false) }
     var visibleApps by rememberSaveable { mutableIntStateOf(8) }
-    val primary = MaterialTheme.colorScheme.primary
-    val background = MaterialTheme.colorScheme.surfaceContainerHighest
     val web =
         remember(state.webHistory, state.date) {
             val from = state.date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -174,35 +163,6 @@ internal fun HistoryScreen(
                         Text("Show more apps in this period")
                     }
                 }
-        }
-        item(key = "calendar-title") {
-            Text("Activity calendar", style = MaterialTheme.typography.titleMedium)
-        }
-        items(calendar.size, key = { "calendar-$it" }, contentType = { "calendar-row" }) { index ->
-            val chunk = calendar[index]
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                chunk.forEach { (date, ms) ->
-                    Box(
-                        Modifier.weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (ms == 0L) background
-                                else primary.copy(alpha = .25f + .75f * ms / maximum)
-                            )
-                            .clickable { onDate(date) }
-                            .semantics { contentDescription = "$date: ${duration(ms)}" }
-                    )
-                }
-                repeat(14 - chunk.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-        item(key = "calendar-caption") {
-            Text(
-                "Empty cells mean no saved activity; Android may no longer have older events.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
         timelineItems(timeline, timelineOptions)
         item(key = "website-title") {

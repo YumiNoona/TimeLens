@@ -6,3 +6,5 @@ local.properties
 *.keystore
 captures/
 signing.properties
+!app/src/debug/
+!app/src/debug/AndroidManifest.xml

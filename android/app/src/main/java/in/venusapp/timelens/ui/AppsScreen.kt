@@ -23,8 +23,15 @@ import androidx.compose.ui.unit.dp
 import `in`.venusapp.timelens.data.*
 
 @Composable
-internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Modifier, onAccess: () -> Unit = {}) {
+internal fun AppsScreen(
+    state: UiState,
+    model: AppModel,
+    modifier: Modifier = Modifier,
+    onAccess: () -> Unit = {},
+) {
     var showSearch by rememberSaveable { mutableStateOf(false) }
+    var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    val favorites = LocalFavorites.current
     var filters by rememberSaveable { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     var search by rememberSaveable { mutableStateOf("") }
@@ -32,35 +39,45 @@ internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Mo
     var installed by rememberSaveable { mutableStateOf(false) }
     var sort by rememberSaveable { mutableStateOf("time") }
     val usage = remember(state.day?.apps) { state.day?.apps.orEmpty().associateBy { it.app } }
-    val source = remember(installed, state.installed, usage, state.revision) {
-        if (installed)
-            state.installed.map { app ->
-                usage[app.app]
-                    ?: AppUsage(
-                        app.app,
-                        app.label,
-                        0,
-                        0,
-                        model.preferences.category(app.app),
-                        model.preferences.limit(app.app),
-                    )
-            }
-        else usage.values.toList()
-    }
-    val apps = remember(source, category, search, sort) {
-        source
-            .filter {
-                (category == "All" || it.category == category) &&
-                    (it.label.contains(search, true) || it.app.contains(search, true))
-            }
-            .let { rows ->
-                when (sort) {
-                    "name" -> rows.sortedBy { it.label.lowercase() }
-                    "visits" -> rows.sortedByDescending { it.sessions }
-                    else -> rows.sortedByDescending { it.milliseconds }
+    val source =
+        remember(
+            installed,
+            state.installed,
+            usage,
+            state.revision,
+            state.appCategories,
+            state.appGoals,
+        ) {
+            if (installed)
+                state.installed.map { app ->
+                    usage[app.app]
+                        ?: AppUsage(
+                            app.app,
+                            app.label,
+                            0,
+                            0,
+                            state.appCategories[app.app] ?: "Other",
+                            state.appGoals[app.app] ?: 0,
+                        )
                 }
-            }
-    }
+            else usage.values.toList()
+        }
+    val apps =
+        remember(source, category, search, sort, favorites, favoritesOnly) {
+            source
+                .filter {
+                    (!favoritesOnly || it.app in favorites) &&
+                        (category == "All" || it.category == category) &&
+                        (it.label.contains(search, true) || it.app.contains(search, true))
+                }
+                .let { rows ->
+                    when (sort) {
+                        "name" -> rows.sortedBy { it.label.lowercase() }
+                        "visits" -> rows.sortedByDescending { it.sessions }
+                        else -> rows.sortedByDescending { it.milliseconds }
+                    }
+                }
+        }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(if (LocalDisplay.current.compact) 14.dp else 20.dp),
@@ -77,6 +94,15 @@ internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Mo
                             if (installed) "Installed on this phone" else "Used today",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconToggleButton(
+                        checked = favoritesOnly,
+                        onCheckedChange = { favoritesOnly = it },
+                    ) {
+                        Icon(
+                            if (favoritesOnly) Icons.Outlined.Star else Icons.Outlined.StarBorder,
+                            "Show favorite apps",
                         )
                     }
                     IconButton(
@@ -97,7 +123,9 @@ internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Mo
                         }
                     ) {
                         BadgedBox(
-                            badge = { if (category != "All" || sort != "time" || installed) Badge() }
+                            badge = {
+                                if (category != "All" || sort != "time" || installed) Badge()
+                            }
                         ) {
                             Icon(Icons.Outlined.FilterList, "Filter apps")
                         }
@@ -142,10 +170,13 @@ internal fun AppsScreen(state: UiState, model: AppModel, modifier: Modifier = Mo
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (apps.isEmpty()) InfoCard("No apps match", "Try a different search, category or date.")
+                if (apps.isEmpty())
+                    InfoCard("No apps match", "Try a different search, category or date.")
             }
         }
-        items(apps, key = { "app:${it.app}" }, contentType = { "app" }) { app -> AppCard(app, model) }
+        items(apps, key = { "app:${it.app}" }, contentType = { "app" }) { app ->
+            AppCard(app, model)
+        }
     }
     if (filters) {
         var selection by remember { mutableStateOf(category) }
@@ -237,9 +268,25 @@ internal fun AppCard(app: AppUsage, model: AppModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                val favorite = app.app in LocalFavorites.current
+                IconButton(
+                    onClick = {
+                        model.edit(refreshActivity = false) { repo ->
+                            val current = repo.preferences.favorites
+                            repo.preferences.favorites =
+                                if (app.app in current) current - app.app else current + app.app
+                        }
+                    },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
+                        if (favorite) "Unfavorite " + app.label else "Favorite " + app.label,
+                    )
+                }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(usage(app.milliseconds), fontWeight = FontWeight.SemiBold)
-                    if (model.preferences.blockRules.any { it.app == app.app && it.enabled })
+                    if (app.app in LocalActiveBlockTargets.current)
                         Text(
                             "RULE ACTIVE",
                             style = MaterialTheme.typography.labelSmall,

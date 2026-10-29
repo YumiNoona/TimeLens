@@ -2,8 +2,8 @@ package `in`.venusapp.timelens.data
 
 import android.content.Context
 import `in`.venusapp.timelens.domain.BlockRule
-import `in`.venusapp.timelens.domain.ThemeMode
 import `in`.venusapp.timelens.domain.BrowserCatalog
+import `in`.venusapp.timelens.domain.ThemeMode
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONArray
@@ -27,8 +27,11 @@ class Preferences(context: Context) {
         migrateBlockControls()
         if (!prefs.contains("originalIconColorsDefault")) {
             // Retire the old monochrome default once; later explicit choices remain respected.
-            prefs.edit().putBoolean("grayIcons", false)
-                .putBoolean("originalIconColorsDefault", true).apply()
+            prefs
+                .edit()
+                .putBoolean("grayIcons", false)
+                .putBoolean("originalIconColorsDefault", true)
+                .apply()
         }
     }
 
@@ -87,41 +90,56 @@ class Preferences(context: Context) {
             prefs.edit().putStringSet("excluded", value.toSet()).commit()
         }
 
+    private val automaticCategories = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     fun category(app: String): String =
         prefs.getString("category.$app", null)
-            ?: when {
-                app.contains("launcher", true) ||
-                    app == "com.android.settings" ||
-                    app == appContext.packageName -> "Utilities"
-                BrowserCatalog.supported(app) || app.contains("chrome", true) ||
-                    app.contains("firefox", true) ||
-                    app.contains("browser", true) ||
-                    app.contains("opera", true) -> "Browsing"
-                app.contains("classroom", true) ||
-                    app.contains("duolingo", true) ||
-                    app.contains("kindle", true) ||
-                    app.contains("coursera", true) -> "Education"
-                app.contains("gmail", true) ||
-                    app.contains("messaging", true) ||
-                    app.contains("whatsapp", true) ||
-                    app.contains("telegram", true) ||
-                    app.contains("slack", true) ||
-                    app.contains("teams", true) -> "Communication"
-                else ->
-                    runCatching {
-                            when (appContext.packageManager.getApplicationInfo(app, 0).category) {
-                                android.content.pm.ApplicationInfo.CATEGORY_GAME -> "Gaming"
-                                android.content.pm.ApplicationInfo.CATEGORY_AUDIO,
-                                android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> "Entertainment"
-                                android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "Social"
-                                android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Work"
-                                android.content.pm.ApplicationInfo.CATEGORY_NEWS -> "News"
-                                android.content.pm.ApplicationInfo.CATEGORY_MAPS -> "Utilities"
-                                else -> "Other"
+            ?: automaticCategories.getOrPut(app) {
+                when {
+                    app.contains("launcher", true) ||
+                        app == "com.android.settings" ||
+                        app == appContext.packageName -> "Utilities"
+                    BrowserCatalog.supported(app) ||
+                        app.contains("chrome", true) ||
+                        app.contains("firefox", true) ||
+                        app.contains("browser", true) ||
+                        app.contains("opera", true) -> "Browsing"
+                    app.contains("classroom", true) ||
+                        app.contains("duolingo", true) ||
+                        app.contains("kindle", true) ||
+                        app.contains("coursera", true) -> "Education"
+                    app.contains("gmail", true) ||
+                        app.contains("messaging", true) ||
+                        app.contains("whatsapp", true) ||
+                        app.contains("telegram", true) ||
+                        app.contains("slack", true) ||
+                        app.contains("teams", true) -> "Communication"
+                    else ->
+                        runCatching {
+                                when (
+                                    appContext.packageManager.getApplicationInfo(app, 0).category
+                                ) {
+                                    android.content.pm.ApplicationInfo.CATEGORY_GAME -> "Gaming"
+                                    android.content.pm.ApplicationInfo.CATEGORY_AUDIO,
+                                    android.content.pm.ApplicationInfo.CATEGORY_VIDEO ->
+                                        "Entertainment"
+                                    android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "Social"
+                                    android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY ->
+                                        "Work"
+                                    android.content.pm.ApplicationInfo.CATEGORY_NEWS -> "News"
+                                    android.content.pm.ApplicationInfo.CATEGORY_MAPS -> "Utilities"
+                                    else -> "Other"
+                                }
                             }
-                        }
-                        .getOrDefault("Other")
+                            .getOrDefault("Other")
+                }
             }
+
+    var favorites: Set<String>
+        get() = prefs.getStringSet("favorites", emptySet())!!.toSet()
+        set(value) {
+            prefs.edit().putStringSet("favorites", value.toSet()).apply()
+        }
 
     fun setCategory(app: String, value: String) {
         prefs.edit().putString("category.$app", value).apply()

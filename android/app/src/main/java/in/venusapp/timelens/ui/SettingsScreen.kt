@@ -79,18 +79,27 @@ internal fun SettingsScreen(
                     FilterChip(
                         theme == value,
                         onClick = { onTheme(value) },
-                        label = { Text(if (value == "system") "Follow system" else value.replaceFirstChar(Char::uppercase)) },
+                        label = {
+                            Text(
+                                if (value == "system") "Follow system"
+                                else value.replaceFirstChar(Char::uppercase)
+                            )
+                        },
                     )
                 }
             }
-            Text("Follow system matches Android’s appearance. The top-right sun/moon switches to a saved light or dark override.",
+            Text(
+                "Follow system matches Android’s appearance. The top-right sun/moon switches to a saved light or dark override.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SettingSwitch(
                 "Grayscale icons",
                 "On: gray app icons. Off: original app colors.",
                 prefs.grayIcons,
-                { value -> model.edit(refreshActivity = false) { it.preferences.grayIcons = value } },
+                { value ->
+                    model.edit(refreshActivity = false) { it.preferences.grayIcons = value }
+                },
             )
             SettingSwitch(
                 "Compact cards",
@@ -102,14 +111,21 @@ internal fun SettingsScreen(
                 "24-hour clock",
                 "Use 00:00–23:59 in timelines",
                 prefs.use24Hour,
-                { value -> model.edit(refreshActivity = false) { it.preferences.use24Hour = value } },
+                { value ->
+                    model.edit(refreshActivity = false) { it.preferences.use24Hour = value }
+                },
             )
             SettingSwitch(
                 "Show seconds",
                 "Detailed durations in cards and app views",
                 prefs.showSeconds,
-                { value -> model.edit(refreshActivity = false) { it.preferences.showSeconds = value } },
+                { value ->
+                    model.edit(refreshActivity = false) { it.preferences.showSeconds = value }
+                },
             )
+        }
+        SettingsGroup("Protection & removal") {
+            ProtectionPanel(model, ::guard)
         }
         SettingsGroup("Tracking & storage") {
             SettingSwitch(
@@ -434,6 +450,7 @@ internal fun SettingsGroup(titleText: String, content: @Composable ColumnScope.(
                     "Daily goals & categories" -> Icons.Outlined.Category
                     "Privacy & exclusions" -> Icons.Outlined.PrivacyTip
                     "Blocking PIN" -> Icons.Outlined.Lock
+                    "Protection & removal" -> Icons.Outlined.Security
                     else -> Icons.Outlined.FileDownload
                 },
                 null,

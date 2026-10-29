@@ -4,6 +4,8 @@ Independent local activity tracking for Android 10+, with a native dashboard, re
 
 ## Available features
 
+See [4.0.0 changes](RELEASE-4.0.0.md) for measured navigation improvements, favorites, bulk rules and the new Protection & removal controls. Normal phones offer an optional extra removal step; Android-enforced uninstall blocking is available only to an independently provisioned, authorized device/profile owner.
+
 - Filled icons mark the selected destination; outlined icons mark others, without a persistent selection bubble. A sun/moon action replaces the top-bar refresh button. Manual import remains under Settings → Tracking & storage.
 - System, Light and Dark appearance modes persist correctly, including across screen changes. The palette animates without recreating screens or resetting scroll; native blocking banners use the same system-theme policy.
 - Browser adapters now include Brave (stable/beta/nightly), Vivaldi, DuckDuckGo and additional Chrome/Firefox/Edge variants. Only fixed address-bar IDs are inspected; adapters can fail on browser updates or hidden bars.
@@ -36,7 +38,7 @@ Android Settings, the launcher, dialer and TimeLens remain accessible. Strict re
 
 On upgrade, old Always rules become Strict and old daily-budget rules become rolling Comfort rules. Former focus/schedule rules are disabled for review so the upgrade does not unexpectedly make them permanent blocks. Existing timer state is cleared; timers are no longer part of the UI.
 
-### Moving from the 8.4 debug preview
+### Moving from testing previews, including 3.0
 
 The old APK used debug signing. Android cannot update it with a different release certificate. Export wanted days as JSON from the old app **before uninstalling it**, install this signed APK and use **Settings → Restore Android JSON export**. Restore preserves unrelated local activity and validates overlaps. Exclusions and retention still apply; choose a longer retention period before restoring older history. Activity exports do not include all old UI preferences.
 
@@ -64,7 +66,7 @@ keyAlias=timelens
 keyPassword=your-private-password
 ```
 
-Keep the persistent keystore and passwords outside the repository and back them up securely. The old key referenced by prior builds is not present on this machine. Credentials must remain local; no Play Store submission is performed.
+Keep the persistent keystore and passwords outside the repository and back them up securely. The original release signing identity is available for 4.0.0. The published 3.0 preview used a different temporary certificate whose private key is unavailable. It cannot update to 4.0.0 in place. Export wanted app activity before deliberately reinstalling, or test on another device first. These exports do not preserve website observations, rules, category settings or PINs automatically. Credentials remain local; no Play Store submission is performed.
 
 ## Verification and boundaries
 

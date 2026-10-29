@@ -1,3 +1,13 @@
+# 4.0.0 — Faster tabs, favorites, bulk rules and removal controls
+
+- Virtualized History and Block, including calendar rows and expanded timeline groups. Cached reports load independently of daily activity, and fresh tab visits no longer force complete refreshes.
+- Restricted theme frame capture to explicit appearance changes. Prepared installed-app metadata off the UI thread and reused cached icons immediately.
+- Added app favorites and a favorites filter, plus bulk Comfort/Strict rules with favorites/distraction presets.
+- Added Protection & removal: standard Android administrator confirmation for personal phones and Android-enforced uninstall policy for authorized managed-device owners. No automatic enrollment, Settings interception, password or device-wipe policies.
+- Verified 32 JVM tests and 36 selected API 35 tests, including actual uninstall rejection and recovery under an opt-in temporary managed role. Release/preview build and lint passed. Twelve repository tests passed. The unchanged Brave-specific check was not rerun in this emulator; other adapters/OEM devices remain separate validation.
+- Production signing uses the original release certificate. The missing temporary 3.0-preview key prevents an in-place update from that preview; see the migration notes.
+- See [release notes](RELEASE-4.0.0.md) for reproducible performance observations, management/recovery boundaries and test scope.
+
 # 8.7.0 — Appearance, browser adapters and stronger enforcement
 
 - Replaced selected-navigation bubbles with filled/outlined icon pairs. The top-right action is now a sun/moon appearance toggle; manual archival remains in Settings.

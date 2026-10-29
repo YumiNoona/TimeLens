@@ -5,8 +5,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -69,9 +69,10 @@ fun TimeLensApp(model: AppModel = viewModel()) {
     var page by rememberSaveable { mutableIntStateOf(0) }
     // Preferences are not Snapshot state: explicitly observe the edit revision at this scope.
     val theme = remember(state.revision) { prefs.theme }
-    val display = remember(state.revision) {
-        DisplayOptions(prefs.showSeconds, prefs.use24Hour, prefs.compact, prefs.grayIcons)
-    }
+    val display =
+        remember(state.revision) {
+            DisplayOptions(prefs.showSeconds, prefs.use24Hour, prefs.compact, prefs.grayIcons)
+        }
     val dark = ThemeMode.isDark(theme, isSystemInDarkTheme())
     val scheme = monoScheme(dark)
     val pageStates = rememberSaveableStateHolder()
@@ -83,7 +84,7 @@ fun TimeLensApp(model: AppModel = viewModel()) {
         page = index
         val date =
             if (index == 2) java.time.LocalDate.parse(historyDate) else java.time.LocalDate.now()
-        if (state.date != date || index == 3) model.refresh(date)
+        model.refreshIfStale(date)
     }
     BackHandler(page != 0) { navigate(0) }
     LaunchedEffect(page) { model.setHistoryVisible(page == 2) }
@@ -99,8 +100,12 @@ fun TimeLensApp(model: AppModel = viewModel()) {
         ) {
             CompositionLocalProvider(
                 LocalRippleConfiguration provides null,
-                LocalDisplay provides
-                    display
+                LocalDisplay provides display,
+                LocalActiveBlockTargets provides
+                    remember(state.revision) {
+                        prefs.blockRules.filter { it.enabled }.map { it.app }.toSet()
+                    },
+                LocalFavorites provides remember(state.revision) { prefs.favorites },
             ) {
                 val wide =
                     with(LocalDensity.current) {
@@ -115,7 +120,10 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                             .filterIsInstance<android.app.Activity>()
                             .firstOrNull()
                     activity?.window?.let { window ->
-                        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                        androidx.core.view.WindowCompat.getInsetsController(
+                                window,
+                                window.decorView,
+                            )
                             .apply {
                                 isAppearanceLightStatusBars = !dark
                                 isAppearanceLightNavigationBars = !dark
@@ -129,7 +137,8 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                     mutableStateOf<List<`in`.venusapp.timelens.domain.Session>?>(null)
                 }
                 val importer =
-                    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri
+                        ->
                         if (uri != null)
                             scope.launch {
                                 try {
@@ -149,20 +158,24 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                             }
                     }
                 val export =
-                    rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) {
-                        uri ->
+                    rememberLauncherForActivityResult(
+                        ActivityResultContracts.CreateDocument("*/*")
+                    ) { uri ->
                         val snapshot =
-                            pendingExport.takeIf { it.isNotEmpty() }?.let { File(context.cacheDir, it) }
+                            pendingExport
+                                .takeIf { it.isNotEmpty() }
+                                ?.let { File(context.cacheDir, it) }
                         pendingExport = ""
                         if (uri != null && snapshot != null)
                             scope.launch {
                                 val success =
                                     withContext(Dispatchers.IO) {
                                         runCatching {
-                                            context.contentResolver.openOutputStream(uri, "wt")?.use {
-                                                output ->
-                                                snapshot.inputStream().use { it.copyTo(output) }
-                                            } ?: error("No output stream")
+                                            context.contentResolver
+                                                .openOutputStream(uri, "wt")
+                                                ?.use { output ->
+                                                    snapshot.inputStream().use { it.copyTo(output) }
+                                                } ?: error("No output stream")
                                         }
                                             .also { snapshot.delete() }
                                             .isSuccess
@@ -202,11 +215,14 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                             }
                                             .asReversed()
                                 snapshot.writeText(
-                                    if (json) Export.jsonRange(selected) else Export.csvRange(selected)
+                                    if (json) Export.jsonRange(selected)
+                                    else Export.csvRange(selected)
                                 )
                             }
                             pendingExport = filename
-                            export.launch("TimeLens-${day.date}-${range}d.${if(json) "json" else "csv"}")
+                            export.launch(
+                                "TimeLens-${day.date}-${range}d.${if(json) "json" else "csv"}"
+                            )
                         } catch (cancelled: CancellationException) {
                             snapshot.delete()
                             throw cancelled
@@ -256,7 +272,8 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                     if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && page in 0..3)
                         while (true) {
                             delay(30_000)
-                            // History is immutable while browsing a past date. Today follows midnight.
+                            // History is immutable while browsing a past date. Today follows
+                            // midnight.
                             if (page != 2 || model.state.value.date == java.time.LocalDate.now())
                                 model.refresh(java.time.LocalDate.now())
                         }
@@ -269,11 +286,16 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                 Text(Pages[page].title, style = MaterialTheme.typography.titleLarge)
                             },
                             actions = {
-                                IconButton(onClick = {
-                                    changeTheme(if (dark) "light" else "dark")
-                                }) {
-                                    Icon(if (dark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
-                                        if (dark) "Switch to light mode" else "Switch to dark mode")
+                                IconButton(
+                                    onClick = {
+                                        changeTheme(if (dark) "light" else "dark")
+                                    }
+                                ) {
+                                    Icon(
+                                        if (dark) Icons.Outlined.LightMode
+                                        else Icons.Outlined.DarkMode,
+                                        if (dark) "Switch to light mode" else "Switch to dark mode",
+                                    )
                                 }
                             },
                         )
@@ -285,12 +307,19 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                     NavigationBarItem(
                                         selected = page == index,
                                         onClick = { navigate(index) },
-                                        icon = { Icon(if (page == index) item.selectedIcon else item.icon, item.title) },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                                            selectedIconColor = scheme.onSurface,
-                                            unselectedIconColor = scheme.onSurfaceVariant,
-                                        ),
+                                        icon = {
+                                            Icon(
+                                                if (page == index) item.selectedIcon else item.icon,
+                                                item.title,
+                                            )
+                                        },
+                                        colors =
+                                            NavigationBarItemDefaults.colors(
+                                                indicatorColor =
+                                                    androidx.compose.ui.graphics.Color.Transparent,
+                                                selectedIconColor = scheme.onSurface,
+                                                unselectedIconColor = scheme.onSurfaceVariant,
+                                            ),
                                         alwaysShowLabel = false,
                                     )
                                 }
@@ -304,10 +333,17 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                                     NavigationRailItem(
                                         selected = page == index,
                                         onClick = { navigate(index) },
-                                        icon = { Icon(if (page == index) item.selectedIcon else item.icon, null) },
-                                        colors = NavigationRailItemDefaults.colors(
-                                            indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                                        ),
+                                        icon = {
+                                            Icon(
+                                                if (page == index) item.selectedIcon else item.icon,
+                                                null,
+                                            )
+                                        },
+                                        colors =
+                                            NavigationRailItemDefaults.colors(
+                                                indicatorColor =
+                                                    androidx.compose.ui.graphics.Color.Transparent
+                                            ),
                                         label = { Text(item.title) },
                                     )
                                 }
@@ -316,68 +352,104 @@ fun TimeLensApp(model: AppModel = viewModel()) {
                             val contentWidth = minOf(maxWidth, 1100.dp)
                             // A page owns both its scroll offset and its saveable controls. Refresh
                             // never
-                            // inserts an item before this content or changes its composition identity.
+                            // inserts an item before this content or changes its composition
+                            // identity.
                             pageStates.SaveableStateProvider(page) {
                                 if (page == 1) {
-                                    AppsScreen(state, model,
-                                        modifier = Modifier.width(contentWidth).fillMaxHeight()
-                                            .testTag("page-1").align(androidx.compose.ui.Alignment.TopCenter),
-                                        onAccess = { openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS) })
-                                } else
-                                Column(
-                                    Modifier.width(contentWidth)
-                                        .fillMaxHeight()
-                                        .testTag("page-$page")
-                                        .align(androidx.compose.ui.Alignment.TopCenter)
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(if (prefs.compact) 14.dp else 20.dp),
-                                    verticalArrangement =
-                                        Arrangement.spacedBy(if (prefs.compact) 12.dp else 18.dp),
-                                ) {
-                                    state.error?.let { InfoCard("Could not refresh", it) }
-                                    if (page == 2)
-                                        DateSelector(state.date) {
+                                    AppsScreen(
+                                        state,
+                                        model,
+                                        modifier =
+                                            Modifier.width(contentWidth)
+                                                .fillMaxHeight()
+                                                .testTag("page-1")
+                                                .align(androidx.compose.ui.Alignment.TopCenter),
+                                        onAccess = {
+                                            openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                        },
+                                    )
+                                } else if (page == 2) {
+                                    HistoryScreen(
+                                        state,
+                                        model,
+                                        modifier =
+                                            Modifier.width(contentWidth)
+                                                .fillMaxHeight()
+                                                .testTag("page-2")
+                                                .align(androidx.compose.ui.Alignment.TopCenter),
+                                        onDate = {
                                             historyDate = it.toString()
                                             model.refresh(it)
-                                        }
-                                    if (page in 0..2 && state.day?.hasAccess == false)
-                                        PermissionCard {
+                                        },
+                                        onAccess = {
                                             openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                                        }
-                                    when (page) {
-                                        0 ->
-                                            TodayScreen(
-                                                state,
-                                                model,
-                                                onApps = { navigate(1) },
-                                                onFocus = { navigate(3) },
-                                            )
-                                        2 -> HistoryScreen(state, model)
-                                        3 -> BlockScreen(model)
-                                        4 ->
-                                            SettingsScreen(
-                                                model,
-                                                onTheme = changeTheme,
-                                                onAccess = {
-                                                    openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                                                },
-                                                onExport = ::saveExport,
-                                                onImport = {
-                                                    importer.launch(
-                                                        arrayOf(
-                                                            "application/json",
-                                                            "text/plain",
-                                                            "application/octet-stream",
+                                        },
+                                    )
+                                } else if (page == 3) {
+                                    BlockScreen(
+                                        model,
+                                        Modifier.width(contentWidth)
+                                            .fillMaxHeight()
+                                            .testTag("page-3")
+                                            .align(androidx.compose.ui.Alignment.TopCenter),
+                                    )
+                                } else
+                                    Column(
+                                        Modifier.width(contentWidth)
+                                            .fillMaxHeight()
+                                            .testTag("page-$page")
+                                            .align(androidx.compose.ui.Alignment.TopCenter)
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(if (prefs.compact) 14.dp else 20.dp),
+                                        verticalArrangement =
+                                            Arrangement.spacedBy(
+                                                if (prefs.compact) 12.dp else 18.dp
+                                            ),
+                                    ) {
+                                        state.error?.let { InfoCard("Could not refresh", it) }
+                                        if (page == 2)
+                                            DateSelector(state.date) {
+                                                historyDate = it.toString()
+                                                model.refresh(it)
+                                            }
+                                        if (page in 0..2 && state.day?.hasAccess == false)
+                                            PermissionCard {
+                                                openSetting(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                            }
+                                        when (page) {
+                                            0 ->
+                                                TodayScreen(
+                                                    state,
+                                                    model,
+                                                    onApps = { navigate(1) },
+                                                    onFocus = { navigate(3) },
+                                                )
+                                            4 ->
+                                                SettingsScreen(
+                                                    model,
+                                                    onTheme = changeTheme,
+                                                    onAccess = {
+                                                        openSetting(
+                                                            Settings.ACTION_USAGE_ACCESS_SETTINGS
                                                         )
-                                                    )
-                                                },
-                                                exportEnabled =
-                                                    state.day != null &&
-                                                        !state.loading &&
-                                                        pendingExport.isEmpty(),
-                                            )
+                                                    },
+                                                    onExport = ::saveExport,
+                                                    onImport = {
+                                                        importer.launch(
+                                                            arrayOf(
+                                                                "application/json",
+                                                                "text/plain",
+                                                                "application/octet-stream",
+                                                            )
+                                                        )
+                                                    },
+                                                    exportEnabled =
+                                                        state.day != null &&
+                                                            !state.loading &&
+                                                            pendingExport.isEmpty(),
+                                                )
+                                        }
                                     }
-                                }
                             }
                             if (state.loading)
                                 LinearProgressIndicator(

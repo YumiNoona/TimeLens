@@ -4,6 +4,8 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -25,12 +27,13 @@ import `in`.venusapp.timelens.platform.AppBlockService
 import `in`.venusapp.timelens.platform.AppSafety
 
 @Composable
-internal fun BlockScreen(model: AppModel) {
+internal fun BlockScreen(model: AppModel, modifier: Modifier = Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
     val prefs = model.preferences
     val context = LocalContext.current
     var section by rememberSaveable { mutableIntStateOf(0) }
     var chooser by rememberSaveable { mutableStateOf(false) }
+    var bulk by rememberSaveable { mutableStateOf(false) }
     var editor by remember { mutableStateOf<BlockRule?>(null) }
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
     var disclosure by rememberSaveable { mutableStateOf(false) }
@@ -43,97 +46,123 @@ internal fun BlockScreen(model: AppModel) {
     fun openAccess() {
         runCatching { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        SectionTitle("Make room for life.", "Choose an allowance or keep distractions closed.")
-        OutlinedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp)) {
-                SettingSwitch(
-                    "Blocking",
-                    if (AppBlockService.connected) "Accessibility service connected"
-                    else "Enable the Android service to enforce rules",
-                    prefs.blocksEnabled,
-                ) { value ->
-                    guard {
-                        if (value && !AppBlockService.connected) disclosure = true
-                        else model.edit { it.preferences.blocksEnabled = value }
+    val allRules = remember(state.revision) { prefs.blockRules }
+    LazyColumn(
+        modifier,
+        contentPadding = PaddingValues(if (LocalDisplay.current.compact) 14.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        item(key = "block-header") {
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                SectionTitle(
+                    "Make room for life.",
+                    "Choose an allowance or keep distractions closed.",
+                )
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(20.dp)) {
+                        SettingSwitch(
+                            "Blocking",
+                            if (AppBlockService.connected) "Accessibility service connected"
+                            else "Enable the Android service to enforce rules",
+                            prefs.blocksEnabled,
+                        ) { value ->
+                            guard {
+                                if (value && !AppBlockService.connected) disclosure = true
+                                else model.edit { it.preferences.blocksEnabled = value }
+                            }
+                        }
+                        if (!AppBlockService.connected)
+                            TextButton(onClick = { disclosure = true }) {
+                                Icon(Icons.Outlined.VerifiedUser, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Set up blocking")
+                            }
+                        Text(
+                            "Comfort · a time allowance in the last 24 hours\nStrict · no access while the rule is enabled",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
-                if (!AppBlockService.connected)
-                    TextButton(onClick = { disclosure = true }) {
-                        Icon(Icons.Outlined.VerifiedUser, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Set up blocking")
-                    }
-                Text(
-                    "Comfort · a time allowance in the last 24 hours\nStrict · no access while the rule is enabled",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                PrimaryTabRow(selectedTabIndex = section) {
+                    listOf(
+                            Triple(Icons.Outlined.Apps, "App rules", 0),
+                            Triple(Icons.Outlined.Language, "Website rules", 1),
+                            Triple(Icons.Outlined.History, "Block activity", 2),
+                        )
+                        .forEach { (icon, label, index) ->
+                            Tab(
+                                section == index,
+                                onClick = { section = index },
+                                icon = { Icon(icon, label) },
+                            )
+                        }
+                }
             }
-        }
-        PrimaryTabRow(selectedTabIndex = section) {
-            listOf(
-                    Triple(Icons.Outlined.Apps, "App rules", 0),
-                    Triple(Icons.Outlined.Language, "Website rules", 1),
-                    Triple(Icons.Outlined.History, "Block activity", 2),
-                )
-                .forEach { (icon, label, index) ->
-                    Tab(
-                        section == index,
-                        onClick = { section = index },
-                        icon = { Icon(icon, label) },
-                    )
-                }
         }
         if (section < 2) {
-            if (section == 1) {
-                SettingSwitch(
-                    "Website tracking",
-                    "Optional · read visible browser address bars and save domains on this phone",
-                    prefs.websiteTracking,
-                ) { enabled ->
-                    if (enabled) websites = true
-                    else guard { model.edit { it.preferences.websiteTracking = false } }
-                }
-                InfoCard(
-                    "Supported browser integration",
-                    `in`.venusapp.timelens.domain.BrowserCatalog.description + " adapters read known address bars only. Browser versions, hidden bars and private browsing can leave gaps. Rules include subdomains and all matching allowances apply. Website time is a subset of browser app time.",
-                )
-                if (prefs.websiteTracking && !AppBlockService.connected)
-                    TextButton(onClick = ::openAccess) { Text("Enable the Accessibility service") }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (section == 0) "App rules" else "Website rules",
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                IconButton(
-                    onClick = {
-                        guard {
-                            if (section == 0) chooser = true
-                            else editor = BlockRule("web:", "comfort")
+            if (section == 1)
+                item(key = "website-controls") {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SettingSwitch(
+                            "Website tracking",
+                            "Optional · read visible browser address bars and save domains on this phone",
+                            prefs.websiteTracking,
+                        ) { enabled ->
+                            if (enabled) websites = true
+                            else guard { model.edit { it.preferences.websiteTracking = false } }
                         }
+                        InfoCard(
+                            "Supported browser integration",
+                            `in`.venusapp.timelens.domain.BrowserCatalog.description +
+                                " adapters read known address bars only. Browser versions, hidden bars and private browsing can leave gaps. Rules include subdomains and all matching allowances apply. Website time is a subset of browser app time.",
+                        )
+                        if (prefs.websiteTracking && !AppBlockService.connected)
+                            TextButton(onClick = ::openAccess) {
+                                Text("Enable the Accessibility service")
+                            }
                     }
-                ) {
-                    Icon(
-                        Icons.Outlined.Add,
-                        if (section == 0) "Add app rule" else "Add website rule",
+                }
+            item(key = "rule-actions") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (section == 0) "App rules" else "Website rules",
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    IconButton(
+                        onClick = {
+                            guard {
+                                if (section == 0) chooser = true
+                                else editor = BlockRule("web:", "comfort")
+                            }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Outlined.Add,
+                            if (section == 0) "Add app rule" else "Add website rule",
+                        )
+                    }
+                    IconButton(onClick = { banner = true }) {
+                        Icon(Icons.Outlined.Wallpaper, "Customize blocking banner")
+                    }
+                    if (section == 0)
+                        IconButton(onClick = { guard { bulk = true } }) {
+                            Icon(Icons.Outlined.PlaylistAdd, "Create multiple app rules")
+                        }
+                }
+            }
+            val rules = allRules.filter { it.app.startsWith("web:") == (section == 1) }
+            if (rules.isEmpty())
+                item(key = "rules-empty") {
+                    InfoCard(
+                        "No rules yet",
+                        if (section == 0) "Tap + to choose an app."
+                        else "Tap + to add a domain, such as example.com.",
                     )
                 }
-                IconButton(onClick = { banner = true }) {
-                    Icon(Icons.Outlined.Wallpaper, "Customize blocking banner")
-                }
-            }
-            val rules = prefs.blockRules.filter { it.app.startsWith("web:") == (section == 1) }
-            if (rules.isEmpty())
-                InfoCard(
-                    "No rules yet",
-                    if (section == 0) "Tap + to choose an app."
-                    else "Tap + to add a domain, such as example.com.",
-                )
             rules.forEach { rule ->
-                key(rule.app) {
+                item(key = "rule:" + rule.app, contentType = "rule") {
                     val web = rule.app.startsWith("web:")
                     val label =
                         if (web) rule.app.removePrefix("web:")
@@ -199,29 +228,33 @@ internal fun BlockScreen(model: AppModel) {
                 }
             }
         } else {
-            Row(
-                Modifier.height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Metric(
-                    "Today",
-                    state.blocksToday.toString(),
-                    "Blocked openings",
-                    Modifier.weight(1f),
-                )
-                Metric(
-                    "7 days",
-                    state.blocksWeek.toString(),
-                    "Blocked openings",
-                    Modifier.weight(1f),
-                )
+            item(key = "block-counts") {
+                Row(
+                    Modifier.height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Metric(
+                        "Today",
+                        state.blocksToday.toString(),
+                        "Blocked openings",
+                        Modifier.weight(1f),
+                    )
+                    Metric(
+                        "7 days",
+                        state.blocksWeek.toString(),
+                        "Blocked openings",
+                        Modifier.weight(1f),
+                    )
+                }
             }
             if (state.blocks.isEmpty())
-                InfoCard(
-                    "Nothing blocked yet",
-                    "Attempts appear here when a rule covers an app or website.",
-                )
-            state.blocks.take(60).forEach { event ->
+                item(key = "blocks-empty") {
+                    InfoCard(
+                        "Nothing blocked yet",
+                        "Attempts appear here when a rule covers an app or website.",
+                    )
+                }
+            itemsIndexed(state.blocks, contentType = { _, _ -> "block-event" }) { _, event ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.padding(16.dp),
@@ -251,12 +284,29 @@ internal fun BlockScreen(model: AppModel) {
                 }
             }
         }
-        Text(
-            "Strict removes the pause shortcut. Rules can be edited here; a PIN can protect changes. Android always lets the phone owner disable the service.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        item(key = "block-boundary") {
+            Text(
+                "Strict removes the pause shortcut. Rules can be edited here; a PIN can protect changes. Android always lets the phone owner disable the service.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
+    if (bulk)
+        BulkRulesDialog(
+            state,
+            safe,
+            prefs.favorites,
+            onDismiss = { bulk = false },
+            onSave = { rules ->
+                model.edit { repo ->
+                    val targets = rules.map { it.app }.toSet()
+                    repo.preferences.blockRules =
+                        repo.preferences.blockRules.filterNot { it.app in targets } + rules
+                }
+                bulk = false
+            },
+        )
     if (pending != null)
         PinChallenge(
             prefs,

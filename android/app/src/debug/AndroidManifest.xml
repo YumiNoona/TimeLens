@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Allows dedicated-emulator policy tests to remove their temporary owner safely. -->
+    <application android:testOnly="true" />
+</manifest>

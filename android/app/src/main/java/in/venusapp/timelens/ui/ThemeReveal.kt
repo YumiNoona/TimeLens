@@ -17,24 +17,36 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import kotlin.math.hypot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /** One short-lived old frame; no disk capture or whole-screen recomposition on every tick. */
 @Composable
-internal fun ThemeReveal(onChange: (String) -> Unit, content: @Composable ((String) -> Unit) -> Unit) {
+internal fun ThemeReveal(
+    onChange: (String) -> Unit,
+    onCapture: (() -> Unit)? = null,
+    content: @Composable ((String) -> Unit) -> Unit,
+) {
     val layer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     val progress = remember { Animatable(1f) }
     var oldFrame by remember { mutableStateOf<ImageBitmap?>(null) }
     var switching by remember { mutableStateOf(false) }
+    var capture by remember { mutableStateOf<CompletableDeferred<Unit>?>(null) }
     val change: (String) -> Unit = { theme ->
         if (!switching) {
             switching = true
             scope.launch {
                 try {
+                    val drawn = CompletableDeferred<Unit>()
+                    capture = drawn
+                    withTimeout(1000) { drawn.await() }
                     val frame = layer.toImageBitmap()
+                    capture = null
+                    onCapture?.invoke()
                     progress.snapTo(0f)
                     oldFrame = frame
                     onChange(theme)
@@ -42,9 +54,14 @@ internal fun ThemeReveal(onChange: (String) -> Unit, content: @Composable ((Stri
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    android.util.Log.w("TimeLensTheme", "Theme capture unavailable; applying appearance without an overlay", error)
+                    android.util.Log.w(
+                        "TimeLensTheme",
+                        "Theme capture unavailable; applying appearance without an overlay",
+                        error,
+                    )
                     onChange(theme)
                 } finally {
+                    capture = null
                     oldFrame = null
                     switching = false
                 }
@@ -52,17 +69,33 @@ internal fun ThemeReveal(onChange: (String) -> Unit, content: @Composable ((Stri
         }
     }
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().drawWithContent {
-            layer.record { this@drawWithContent.drawContent() }
-            drawLayer(layer)
-        }) { content(change) }
+        Box(
+            Modifier.fillMaxSize().drawWithContent {
+                val request = capture
+                if (request != null) {
+                    layer.record { this@drawWithContent.drawContent() }
+                    drawLayer(layer)
+                    request.complete(Unit)
+                } else drawContent()
+            }
+        ) {
+            content(change)
+        }
         oldFrame?.let { frame ->
             Canvas(Modifier.matchParentSize()) {
                 val origin = Offset(size.width - 28f * density, 52f * density)
                 val radius = hypot(size.width, size.height) * progress.value
-                val reveal = Path().apply {
-                    addOval(Rect(origin.x-radius, origin.y-radius, origin.x+radius, origin.y+radius))
-                }
+                val reveal =
+                    Path().apply {
+                        addOval(
+                            Rect(
+                                origin.x - radius,
+                                origin.y - radius,
+                                origin.x + radius,
+                                origin.y + radius,
+                            )
+                        )
+                    }
                 clipPath(reveal, ClipOp.Difference) { drawImage(frame) }
             }
         }

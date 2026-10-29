@@ -5,11 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import `in`.venusapp.timelens.data.BlockEvent
 import `in`.venusapp.timelens.data.DayUsage
+import `in`.venusapp.timelens.data.HistoryReport
 import `in`.venusapp.timelens.data.InstalledApp
 import `in`.venusapp.timelens.data.Preferences
 import `in`.venusapp.timelens.data.SiteStore
 import `in`.venusapp.timelens.data.UsageRepository
-import `in`.venusapp.timelens.data.HistoryReport
 import `in`.venusapp.timelens.domain.Session
 import `in`.venusapp.timelens.domain.WebAddress
 import `in`.venusapp.timelens.platform.AppBlockService
@@ -17,10 +17,10 @@ import `in`.venusapp.timelens.platform.BackgroundTasks
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -41,6 +41,9 @@ data class UiState(
     val allowances: Map<String, Long?> = emptyMap(),
     val historyRange: Int = 7,
     val report: HistoryReport? = null,
+    val reportLoading: Boolean = false,
+    val appCategories: Map<String, String> = emptyMap(),
+    val appGoals: Map<String, Int> = emptyMap(),
 )
 
 class AppModel(application: Application) : AndroidViewModel(application) {
@@ -53,6 +56,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private var historyVisible = false
     private var reportCache: HistoryReport? = null
     private var reportAt = 0L
+    private var reportJob: Job? = null
+    private var refreshedAt = 0L
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
 
@@ -60,9 +65,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         // Timer ticks must not repeatedly cancel a slow refresh before it can finish.
         if (!force && refreshJob?.isActive == true && date == mutable.value.date) return
         refreshJob?.cancel()
-        val reportDays = mutable.value.historyRange
-        val reportEnd = if (reportDays == 365) LocalDate.now() else date
-        val includeReport = historyVisible
         mutable.value =
             mutable.value.copy(
                 date = date,
@@ -79,35 +81,41 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                             val day = repository.load(date)
                             ensureActive()
                             val now = System.currentTimeMillis()
-                            val installed = installedCache?.takeIf {
-                                !force && android.os.SystemClock.elapsedRealtime() - installedAt < 60_000
-                            } ?: repository.installedApps().also {
-                                installedCache = it
-                                installedAt = android.os.SystemClock.elapsedRealtime()
-                            }
-                            val comfortRules = preferences.blockRules.filter { it.mode == "comfort" }
-                            val appAllowances = repository.allowanceUsages(
-                                comfortRules.filterNot { it.app.startsWith("web:") }.map { it.app }.toSet(), now
-                            )
-                            val webAllowances = if (comfortRules.any { it.app.startsWith("web:") })
-                                SiteStore(getApplication()).use { it.read(now - 86_400_000L, now) }
-                            else emptyList()
-                            ensureActive()
-                            val report = if (includeReport) {
-                                reportCache?.takeIf {
-                                    !force && it.end == reportEnd && it.days == reportDays &&
-                                        android.os.SystemClock.elapsedRealtime() - reportAt < 60_000
-                                } ?: repository.report(reportEnd, reportDays).also {
-                                    reportCache = it
-                                    reportAt = android.os.SystemClock.elapsedRealtime()
+                            val installed =
+                                installedCache?.takeIf {
+                                    !force &&
+                                        android.os.SystemClock.elapsedRealtime() - installedAt <
+                                            60_000
                                 }
-                            } else null
+                                    ?: repository.installedApps().also {
+                                        installedCache = it
+                                        installedAt = android.os.SystemClock.elapsedRealtime()
+                                    }
+                            val comfortRules =
+                                preferences.blockRules.filter { it.mode == "comfort" }
+                            val appAllowances =
+                                repository.allowanceUsages(
+                                    comfortRules
+                                        .filterNot { it.app.startsWith("web:") }
+                                        .map { it.app }
+                                        .toSet(),
+                                    now,
+                                )
+                            val webAllowances =
+                                if (comfortRules.any { it.app.startsWith("web:") })
+                                    SiteStore(getApplication()).use {
+                                        it.read(now - 86_400_000L, now)
+                                    }
+                                else emptyList()
+                            ensureActive()
                             UiState(
                                 date = date,
                                 day = day,
                                 history = repository.history(date, 7),
-                                historyRange = reportDays,
-                                report = report,
+                                appCategories =
+                                    installed.associate { it.app to preferences.category(it.app) },
+                                appGoals =
+                                    installed.associate { it.app to preferences.limit(it.app) },
                                 installed = installed,
                                 blocks = repository.blockHistory(),
                                 focusCompleted = repository.completedFocusToday(),
@@ -115,23 +123,32 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                                 blocksWeek = repository.blockedCount(7),
                                 webHistory = repository.websites(date, 1),
                                 allowances =
-                                    comfortRules
-                                        .associate { rule ->
-                                            rule.app to
-                                                if (rule.app.startsWith("web:"))
-                                                    webAllowances.filter {
+                                    comfortRules.associate { rule ->
+                                        rule.app to
+                                            if (rule.app.startsWith("web:"))
+                                                webAllowances
+                                                    .filter {
                                                         WebAddress.matches(
                                                             it.app,
                                                             rule.app.removePrefix("web:"),
                                                         )
-                                                    }.sumOf { it.milliseconds }
-                                                else appAllowances[rule.app]
-                                        },
+                                                    }
+                                                    .sumOf { it.milliseconds }
+                                            else appAllowances[rule.app]
+                                    },
                             )
                         }
                     }
                 ensureActive()
-                mutable.value = result.copy(revision = mutable.value.revision)
+                refreshedAt = android.os.SystemClock.elapsedRealtime()
+                mutable.value =
+                    result.copy(
+                        revision = mutable.value.revision,
+                        historyRange = mutable.value.historyRange,
+                        report = mutable.value.report,
+                        reportLoading = mutable.value.reportLoading,
+                    )
+                if (historyVisible) loadReport(force)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -166,6 +183,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun archiveNow() {
+        installedCache = null
         edit { it.forceArchive() }
     }
 
@@ -178,18 +196,77 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     fun setHistoryVisible(visible: Boolean) {
         if (historyVisible == visible) return
         historyVisible = visible
-        if (visible) refresh(force = true)
+        if (visible) loadReport()
     }
 
     fun setHistoryRange(days: Int) {
         if (days !in listOf(7, 30, 90, 365) || days == mutable.value.historyRange) return
         mutable.value = mutable.value.copy(historyRange = days)
-        refresh(force = true)
+        loadReport()
     }
+
+    fun refreshIfStale(date: LocalDate = mutable.value.date) {
+        if (
+            mutable.value.date == date &&
+                mutable.value.day != null &&
+                android.os.SystemClock.elapsedRealtime() - refreshedAt < 30_000
+        )
+            return
+        refresh(date)
+    }
+
+    private fun loadReport(force: Boolean = false) {
+        val days = mutable.value.historyRange
+        val end = if (days == 365) LocalDate.now() else mutable.value.date
+        val cached = reportCache?.takeIf {
+            !force &&
+                it.days == days &&
+                it.end == end &&
+                android.os.SystemClock.elapsedRealtime() - reportAt < 60_000
+        }
+        if (cached != null) {
+            mutable.value = mutable.value.copy(report = cached, reportLoading = false)
+            return
+        }
+        if (
+            reportJob?.isActive == true &&
+                !force &&
+                mutable.value.reportLoading &&
+                requestedReport == (end to days)
+        )
+            return
+        reportJob?.cancel()
+        requestedReport = end to days
+        mutable.value = mutable.value.copy(reportLoading = true)
+        reportJob = viewModelScope.launch {
+            try {
+                val report =
+                    withContext(Dispatchers.IO) { gate.withLock { repository.report(end, days) } }
+                ensureActive()
+                reportCache = report
+                reportAt = android.os.SystemClock.elapsedRealtime()
+                val currentEnd =
+                    if (mutable.value.historyRange == 365) LocalDate.now() else mutable.value.date
+                if (mutable.value.historyRange == days && currentEnd == end)
+                    mutable.value = mutable.value.copy(report = report, reportLoading = false)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutable.value =
+                    mutable.value.copy(
+                        reportLoading = false,
+                        error = "Could not load this history range. Try again.",
+                    )
+            }
+        }
+    }
+
+    private var requestedReport: Pair<LocalDate, Int>? = null
 
     override fun onCleared() {
         // Cancellation cannot interrupt blocking SQLite calls. Wait for the same gate before close.
         refreshJob?.cancel()
+        reportJob?.cancel()
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             gate.withLock { repository.close() }
         }

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -171,97 +170,5 @@ internal fun WeekChart(state: UiState, onDate: (java.time.LocalDate) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-@Composable
-internal fun HistoryScreen(state: UiState, model: AppModel) {
-    val range = state.historyRange
-    val reportEnd = if (range == 365) java.time.LocalDate.now() else state.date
-    val report = state.report?.takeIf { it.end == reportEnd && it.days == range }
-    val series = report?.daily.orEmpty()
-    val apps = report?.apps.orEmpty()
-    val total = report?.total ?: 0L
-    var visibleApps by rememberSaveable { mutableIntStateOf(8) }
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        SectionTitle("Your history.", "Trends across days, plus every visit in order.")
-        if (range == 365) Text("Last year · choose any saved day to inspect its visits below.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(7, 30, 90, 365).forEach { value ->
-                FilterChip(
-                    range == value,
-                    onClick = { model.setHistoryRange(value) },
-                    label = { Text(if (value == 365) "1 year" else "$value days") },
-                )
-            }
-        }
-        Row(
-            Modifier.height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Metric("Total time", usage(total), "${apps.size} apps", Modifier.weight(1f))
-            Metric("Daily average", usage(total / range), "Saved activity", Modifier.weight(1f))
-        }
-        if (model.preferences.retention < range) {
-            InfoCard("Shorter retention is enabled", "Only the last ${model.preferences.retention} days are retained. Choose one-year retention to keep future activity for a full year. Previously deleted history cannot be recovered.")
-            TextButton(onClick = { model.edit { it.preferences.retention = 365 } }) { Text("Keep one year of history") }
-        }
-        WeekChart(state) { model.refresh(it) }
-        CategoryChart(apps)
-        if (apps.isNotEmpty()) {
-            Text("Apps in this period", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            apps.take(visibleApps).forEach { app ->
-                key(app.app) {
-                    OutlinedCard(Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AppIcon(app.app, app.label)
-                            Column(Modifier.weight(1f)) {
-                                Text(app.label, fontWeight = FontWeight.Medium)
-                                Text("${app.sessions} visits · ${app.category}", style = MaterialTheme.typography.bodySmall)
-                            }
-                            Text(usage(app.milliseconds))
-                        }
-                    }
-                }
-            }
-            if (apps.size > visibleApps) TextButton(onClick = { visibleApps += 20 }) { Text("Show more apps in this period") }
-        }
-        Text(
-            "Activity calendar",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        val primary = MaterialTheme.colorScheme.primary
-        val background = MaterialTheme.colorScheme.surfaceContainerHighest
-        val max = maxOf(1L, series.maxOfOrNull { it.second } ?: 1)
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            series.chunked(14).forEach { chunk ->
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    chunk.forEach { (date, ms) ->
-                        Box(
-                            Modifier.weight(1f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    if (ms == 0L) background
-                                    else primary.copy(alpha = .25f + .75f * ms / max)
-                                )
-                                .clickable { model.refresh(date) }
-                                .semantics { contentDescription = "$date: ${duration(ms)}" }
-                        )
-                    }
-                    repeat(14 - chunk.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-        Text(
-            "Empty cells mean no saved activity; Android may no longer have older events.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TimelineScreen(state, model)
-        WebsiteHistory(state.webHistory, state.date)
     }
 }

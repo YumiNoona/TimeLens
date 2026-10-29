@@ -1,4 +1,5 @@
 <resources>
+    <string name="removal_admin_description">Optional extra removal confirmation. TimeLens requests no screen-lock, password or device-wipe policies. On an independently provisioned managed device, an authorized administrator can additionally block uninstallation. Android administration controls remain available for recovery.</string>
     <string name="block_accessibility_label">TimeLens app blocking</string>
     <string name="block_accessibility_description">TimeLens detects app switches and covers selected apps. If you separately enable website tracking in TimeLens, it reads known browser address-bar controls to save domain names and observed time locally and enforce website rules. It does not read webpage text, passwords, URL paths, or search queries. Browser support varies and private tabs may be included when exposed by the browser. No data is sent off this phone. You can turn website tracking off in TimeLens or disable this service here.</string>
 </resources>

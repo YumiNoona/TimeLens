@@ -12,7 +12,7 @@ android {
     namespace = "in.venusapp.timelens"
     compileSdk = 36
     defaultConfig {
-        applicationId = "in.venusapp.timelens"
+        applicationId = "com.veilafk.timelens"
         minSdk = 29
         targetSdk = 36
         versionCode = 80707

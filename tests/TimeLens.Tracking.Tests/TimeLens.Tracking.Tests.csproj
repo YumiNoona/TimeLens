@@ -12,6 +12,7 @@
     <Compile Include="../../src/TimeLens.TrayApp/Services/DatabaseInitializer.cs" Link="DatabaseInitializer.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/DataRetentionService.cs" Link="DataRetentionService.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/SettingsService.cs" Link="SettingsService.cs" />
+    <Compile Include="../../src/TimeLens.TrayApp/Services/CategoryClassifier.cs" Link="CategoryClassifier.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/EventWriter.cs" Link="EventWriter.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Services/WriterQueue.cs" Link="WriterQueue.cs" />
     <Compile Include="../../src/TimeLens.TrayApp/Watchers/IdleMonitor.cs" Link="IdleMonitor.cs" />

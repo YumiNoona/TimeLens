@@ -106,6 +106,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
 
     private readonly object _rulesGate = new();
     private readonly List<CustomRule> _customRules = new();
+    private CustomRule[] _orderedRules = [];
     public IReadOnlyList<CustomRule> CustomRules
     {
         get { lock (_rulesGate) return _customRules.ToArray(); }
@@ -119,6 +120,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
             var rule = new CustomRule(pattern, category, ruleType, target, priority);
             if (existing >= 0) _customRules[existing] = rule;
             else _customRules.Add(rule);
+            RefreshOrderedRules();
         }
     }
 
@@ -129,6 +131,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
             var idx = _customRules.FindIndex(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase));
             if (idx < 0) return false;
             _customRules.RemoveAt(idx);
+            RefreshOrderedRules();
             return true;
         }
     }
@@ -137,6 +140,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
     {
         if (!File.Exists(csvPath)) return;
 
+        var builtins = new List<CustomRule>();
         foreach (var line in File.ReadLines(csvPath))
         {
             var trimmed = line.Trim();
@@ -151,13 +155,22 @@ public sealed class CategoryClassifier : ICategoryClassifier
             var ruleType = parts.Length > 3 ? parts[3].Trim() : "substring";
 
             if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(category)) continue;
+            builtins.Add(new CustomRule(pattern, category, ruleType, target, Priority: 100));
+        }
 
-            lock (_rulesGate)
-            {
-                if (!_customRules.Any(r => string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)
-                                           && string.Equals(r.Target, target, StringComparison.OrdinalIgnoreCase)))
-                    _customRules.Add(new CustomRule(pattern, category, ruleType, target, Priority: 100));
-            }
+        lock (_rulesGate)
+        {
+            var existing = _customRules
+                .Select(rule => (rule.Pattern, rule.Target))
+                .ToHashSet(RuleIdentityComparer.Instance);
+            var changed = false;
+            foreach (var rule in builtins)
+                if (existing.Add((rule.Pattern, rule.Target)))
+                {
+                    _customRules.Add(rule);
+                    changed = true;
+                }
+            if (changed) RefreshOrderedRules();
         }
     }
 
@@ -167,8 +180,7 @@ public sealed class CategoryClassifier : ICategoryClassifier
             return "system";
 
         // Custom rules first, ordered by priority (lower = higher priority)
-        CustomRule[] rules;
-        lock (_rulesGate) rules = _customRules.OrderBy(r => r.Priority).ToArray();
+        var rules = Volatile.Read(ref _orderedRules);
         foreach (var rule in rules)
         {
             var text = rule.Target switch
@@ -211,6 +223,22 @@ public sealed class CategoryClassifier : ICategoryClassifier
         try { return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50)); }
         catch (ArgumentException) { return false; }
         catch (RegexMatchTimeoutException) { return false; }
+    }
+
+    private void RefreshOrderedRules() =>
+        Volatile.Write(ref _orderedRules, _customRules.OrderBy(rule => rule.Priority).ToArray());
+
+    private sealed class RuleIdentityComparer : IEqualityComparer<(string Pattern, string Target)>
+    {
+        public static readonly RuleIdentityComparer Instance = new();
+
+        public bool Equals((string Pattern, string Target) x, (string Pattern, string Target) y) =>
+            StringComparer.OrdinalIgnoreCase.Equals(x.Pattern, y.Pattern) &&
+            StringComparer.OrdinalIgnoreCase.Equals(x.Target, y.Target);
+
+        public int GetHashCode((string Pattern, string Target) value) =>
+            HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(value.Pattern),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.Target));
     }
 
     public static string? ExtractProject(string exeName, string? windowTitle)

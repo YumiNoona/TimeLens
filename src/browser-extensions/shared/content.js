@@ -58,7 +58,9 @@ function refreshCollection() {
     finally { sending = false; }
   }
   document.addEventListener('keydown', event => { if (event.isTrusted) collect(1, 0); }, true);
-  document.addEventListener('pointerdown', event => { if (event.isTrusted) collect(0, 1); }, true);
+  // Count completed primary clicks (including keyboard activation), not pointer
+  // presses that may be cancelled, dragged, or used for a context menu.
+  document.addEventListener('click', event => { if (event.isTrusted && event.button === 0) collect(0, 1); }, true);
   window.addEventListener('pagehide', flush);
   window.addEventListener('blur', flush);
   window.addEventListener('focus', () => { if (window === window.top) collect(0, 0); void flush(); });

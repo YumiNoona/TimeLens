@@ -1,6 +1,6 @@
 # Browser companions
 
-Version 9.0.0 adds local website context and configured website blocking to TimeLens for Windows. Chrome, Edge and Brave packages share the Chromium implementation; Firefox uses the same canonical collectors with its browser-specific manifest. Store submission is performed by the maintainer.
+Version 9.0.1 counts trusted completed primary clicks and aligns last-seen website times with active foreground intervals. Version 9.0.0 added local website context and configured website blocking to TimeLens for Windows. Chrome, Edge and Brave packages share the Chromium implementation; Firefox uses the same canonical collectors with its browser-specific manifest. Store submission is performed by the maintainer.
 
 ## Package and install
 

@@ -61,6 +61,7 @@ public static class BrowserAnalyticsService
                 .Where(a => a.End > a.Start).OrderBy(a => a.Start).ToArray();
             double seconds = 0;
             var cursor = start;
+            var lastActiveEnd = DateTime.MinValue;
             foreach (var span in eligible)
             {
                 var from = span.Start > cursor ? span.Start : cursor;
@@ -69,12 +70,13 @@ public static class BrowserAnalyticsService
                 seconds += (to - from).TotalSeconds;
                 recordInterval?.Invoke(from, to);
                 cursor = to;
+                if (to > lastActiveEnd) lastActiveEnd = to;
             }
             if (seconds <= 0) continue;
             var page = GetPage(v.Domain, v.Url, v.Browser);
             page.Seconds += seconds;
             page.Sessions++;
-            if (end >= page.LastSeen) { page.LastSeen = end; page.Title = v.Title; }
+            if (lastActiveEnd >= page.LastSeen) { page.LastSeen = lastActiveEnd; page.Title = v.Title; }
         }
         using (var cmd = conn.CreateCommand())
         {

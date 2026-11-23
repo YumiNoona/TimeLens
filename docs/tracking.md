@@ -6,7 +6,7 @@ One foreground executable owns each interval. Idle, lock, sleep and unknown obse
 
 Browser observations are accepted only for the matching foreground browser family. A finite observation lease and durable checkpoints prevent indefinite attribution after a missing extension. Repeated identical observations refresh that lease without a SQLite write on every notification. Background media is a separate concurrent ledger and is never added to exclusive foreground time.
 
-Website detail is clipped to browser foreground intervals and excludes idle spans. URL detail, title storage, exclusions, collection pauses and retention follow privacy settings. Input is aggregate counts, not text or key values. Retried input batches use stable IDs to avoid double counting.
+Website detail is clipped to browser foreground intervals and excludes idle spans. URL detail, title storage, exclusions, collection pauses and retention follow privacy settings. Input is aggregate counts, not text or key values; clicks count trusted completed primary click events, while keystrokes count trusted keydown events. Retried input batches use stable IDs to avoid double counting.
 
 ## Browser companions
 

@@ -40,7 +40,7 @@
     <input aria-label="Search usage" placeholder={mode === 'sites' ? 'Search websites…' : 'Search applications…'} bind:value={query} />
     <select aria-label="Sort usage" bind:value={sort}><option value="time">Most time</option><option value="clicks">Most clicks</option><option value="keys">Most keystrokes</option><option value="name">Name</option></select>
   </div>
-  <p class="hint">Website time is part of browser app time, not added on top. Input counts are recorded events, never typed text. “—” means website input was not collected; historical counts cannot be reconstructed. Sessions may include title changes in older history.</p>
+  <p class="hint">Website time is foreground, non-idle time within browser app time. Clicks count trusted completed primary clicks; keystrokes are counts only, never typed text. “—” means website input was not collected; historical counts cannot be reconstructed. Sessions may include title changes in older history.</p>
   <div class="usage-scroll"><table><thead><tr><th>{mode === 'sites' ? 'Website' : 'Executable / app'}</th><th>Active time</th><th>Keystrokes</th><th>Clicks</th><th>Sessions</th><th>{mode === 'sites' ? 'Last seen' : 'Details'}</th></tr></thead><tbody>
   {#each rows as row}
     <tr><td><button class="row-name" aria-expanded={expanded.has(row.id)} onclick={() => toggle(row.id)}><span>{expanded.has(row.id) ? '−' : '+'}</span>{row.id}</button></td><td class="time">{fmtPrecise(row.seconds, $showSeconds)}</td><td>{count(row.keys)}</td><td>{count(row.clicks)}</td><td>{row.sessions}</td><td>{row.lastSeen ? seen(row.lastSeen) : 'Window titles'}</td></tr>

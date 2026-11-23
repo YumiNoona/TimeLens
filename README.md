@@ -74,26 +74,6 @@ Android uses permissions you explicitly grant for usage insights and optional bl
 
 Blocking is a personal focus aid. Personal-phone removal protection adds a confirmation step; Android-enforced uninstall policies require an authorized managed-device role. Available controls and permission requirements differ by platform.
 
-## Get started
-
-**Windows:** download a Windows build, launch TimeLens, and open the dashboard from the tray. Add a browser companion if you want website context.
-
-**Android:** review the APK's release notes and permission disclosures before installing. The release includes a signed, optimized APK and a signed App Bundle for Play upload. Current signed builds update in place; old previews with a different signing key require a separate migration.
-
-**Browser companions:** use the official Firefox listing or review the developer packages in Releases. Companions need the local Windows app; they are not standalone cloud trackers.
-
-[Browse downloads →](https://github.com/YumiNoona/TimeLens/releases) · [Read the documentation →](https://timelens.venusapp.in/docs)
-
-## Explore the project
-
-- [Windows app and local API](src/TimeLens.TrayApp)
-- [Web dashboard](src/TimeLens.Dashboard)
-- [Android app](android)
-- [Browser companions](docs/browser-extension.md)
-- [Public website](web)
-- [Tracking and accounting details](docs/tracking.md)
-- [Documentation screenshot setup](docs/screenshots/README.md)
-
 ---
 
 <p align="center">Built with 💙 by <a href="https://venusapp.in/">Veil</a></p>

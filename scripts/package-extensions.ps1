@@ -1,5 +1,7 @@
 param(
-    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) '.artifacts/packages')
+    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) '.artifacts/packages'),
+    [ValidateSet('chrome', 'firefox', 'edge', 'brave')]
+    [string[]]$Browsers = @('chrome', 'firefox', 'edge', 'brave')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +14,7 @@ $stagingRoot = Join-Path ([IO.Path]::GetTempPath()) "TimeLens-extensions-$([Guid
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 try {
-    foreach ($browser in @('chrome', 'firefox', 'edge', 'brave')) {
+    foreach ($browser in $Browsers) {
         $stage = Join-Path $stagingRoot $browser
         New-Item -ItemType Directory -Path $stage -Force | Out-Null
         $family = if ($browser -eq 'firefox') { 'firefox' } else { 'chrome' }
